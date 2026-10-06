@@ -1,6 +1,12 @@
 pluginManagement {
     repositories {
-        google()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -11,13 +17,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-
-        maven { url = uri("https://maven.mozilla.org/maven2") }
     }
 }
 
-rootProject.name = "WebToApp"
+rootProject.name = "HKETA"
 include(":app")
-include(":shell")
-include(":clone-host")
-include(":feature-stacks:admob")
