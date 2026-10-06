@@ -1,0 +1,260 @@
+name: Android CI Build
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  # push 时取消旧 run 可以省时间，但打包 APK 要十几分钟，
+  # 连续 push 会把跑到一半的打包 kill 掉，所以这里关掉自动取消。
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Download code
+        uses: actions/checkout@v6
+
+      - name: Prepare Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Android tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install needed tools
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.2.13676358"
+
+      # 只把日志写进文件，不要 tee 到终端 —— 完整 Gradle 日志会被 GitHub 截断成
+      # "This step has been truncated"，什么都看不到。下面只把报错打印出来。
+      - name: Run app compile
+        id: compile_app
+        run: |
+          ./gradlew --console=plain --no-daemon --no-configuration-cache \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -PskipShellTemplateSync=true \
+            -PskipStackBundlesSync=true \
+            -PallowDebugSignedRelease=true \
+            :app:compileStandardDebugKotlin > compile-app.log 2>&1
+          echo "exit=$?"
+
+      - name: Run shell compile
+        if: always()
+        run: |
+          ./gradlew --console=plain --no-daemon --no-configuration-cache \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -PskipShellTemplateSync=true \
+            -PskipStackBundlesSync=true \
+            -PallowDebugSignedRelease=true \
+            :shell:compileDebugKotlin > compile-shell.log 2>&1 || true
+
+      - name: Run unit tests
+        if: always()
+        run: |
+          ./gradlew --console=plain --no-daemon --no-configuration-cache \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -PskipShellTemplateSync=true \
+            -PskipStackBundlesSync=true \
+            -PallowDebugSignedRelease=true \
+            :app:testStandardDebugUnitTest > unit-test.log 2>&1 || true
+
+      # 关键：把真正的报错打到终端（量很小，不会被截断），并写成 Annotations
+      - name: Print error digest
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import re, os
+          out = ["## Gradle 报错摘要", ""]
+          for name in ["compile-app.log", "compile-shell.log", "unit-test.log"]:
+              if not os.path.exists(name):
+                  continue
+              lines = open(name, errors="ignore").read().splitlines()
+              # 1) What went wrong
+              wgw = []
+              for i, l in enumerate(lines):
+                  if "What went wrong:" in l or l.strip().startswith("FAILURE:"):
+                      wgw += lines[i:i+18]
+                      break
+              # 2) Kotlin / KSP errors
+              ks = [l for l in lines if l.startswith("e: ") or "error:" in l]
+              ks = list(dict.fromkeys(ks))[:40]
+              # 3) failed tasks / tests
+              ft = [l for l in lines if " FAILED" in l or "Execution failed for task" in l or "There were failing tests" in l]
+              ft = list(dict.fromkeys(ft))[:20]
+              out.append(f"### {name}")
+              out.append("**What went wrong**"); out.append("```"); out += wgw; out.append("```")
+              out.append(f"**编译错误 ({len(ks)})**"); out.append("```"); out += ks; out.append("```")
+              out.append(f"**失败任务 ({len(ft)})**"); out.append("```"); out += ft; out.append("```")
+              out.append("")
+              # 关键改动：即使没有 `e: ` 开头的 Kotlin 错误（KSP / Room / 配置阶段失败
+              # 常常不产生这种行），也要把 "What went wrong" 打成 annotation ——
+              # 否则外部只能看到一句 "Process completed with exit code 1."。
+              announced = 0
+              for l in ks[:15]:
+                  print("::error::[kotlin] " + l[:200]); announced += 1
+              for l in wgw[:15]:
+                  if announced >= 25: break
+                  t = l.strip()
+                  if not t or t.startswith("```"): continue
+                  print("::error::[gradle] " + t[:200]); announced += 1
+              for l in ft[:10]:
+                  if announced >= 30: break
+                  print("::error::[task] " + l.strip()[:200]); announced += 1
+          open("/tmp/summary.md", "w").write("\n".join(out))
+          PY
+          echo "--- 摘要已写入 Job Summary ---"
+
+      # 把完整日志推到 ci-logs 分支（外部可以直接读取，不受 GitHub 登录/截断限制）。
+      # 只是诊断用途，失败绝不能让 job 标红。
+      - name: Push logs to ci-logs branch
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git fetch origin ci-logs || true
+          git checkout -B ci-logs origin/ci-logs 2>/dev/null || git checkout --orphan ci-logs
+          mkdir -p logs
+          cp compile-app.log logs/compile-app.log 2>/dev/null || true
+          cp compile-shell.log logs/compile-shell.log 2>/dev/null || true
+          cp unit-test.log logs/unit-test.log 2>/dev/null || true
+          cp /tmp/summary.md logs/summary.md 2>/dev/null || true
+          git add -f logs
+          git commit -m "CI logs run ${{ github.run_number }} (${{ github.sha }})" || echo "no change"
+          git push -f origin ci-logs
+
+      # 把完整日志推到 ci-logs 分支，外部可以直接读取（不受 GitHub 登录/截断限制）
+      # 日志推送只是诊断用途，失败不应该让整个 job 标红。
+  build-apk:
+    # 与 check 并行：每次 push 都产出一个可安装的 debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Download code
+        uses: actions/checkout@v6
+
+      - name: Prepare Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Android tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install needed tools
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.2.13676358"
+
+      - name: Build debug APK
+        run: |
+          ./gradlew --console=plain --no-daemon --no-configuration-cache \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -PskipShellTemplateSync=true \
+            -PskipStackBundlesSync=true \
+            -PallowDebugSignedRelease=true \
+            :app:assembleStandardDebug > assemble.log 2>&1
+          echo "exit=$?"
+
+      - name: Show build error
+        if: failure()
+        run: |
+          grep -E "What went wrong:|FAILURE:" -A 15 assemble.log | head -40 || true
+          grep -hE "^e: " assemble.log | sort -u | head -25 || true
+
+      # 把 Gradle 输出的 app-standard-debug.apk 改成一个一眼看懂的名字，
+      # 并额外放一份固定名 latest.apk，方便直接抓最新版本。
+      - name: Rename and collect APK
+        run: |
+          mkdir -p apk-out
+          SRC=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          echo "source: $SRC"
+          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
+            echo "::error::No APK under app/build/outputs/apk — assembleStandardDebug failed"
+            find app/build/outputs -maxdepth 3 -type d 2>/dev/null | head -20
+            exit 1
+          fi
+          VERSION=$(grep -m1 'versionName' app/build.gradle.kts | sed 's/.*"\([^"]*\)".*/\1/')
+          VERSION=${VERSION:-dev}
+          OUT="code-to-app-v${VERSION}-run${{ github.run_number }}-debug.apk"
+          cp "$SRC" "apk-out/$OUT"
+          cp "$SRC" "apk-out/latest.apk"
+          echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
+          ls -lh apk-out
+
+      # ⚠️ 改推到独立分支 ci-logs-build：
+      # check 与 build-apk 两个 job 并行跑，同时 push 同一个 ci-logs 分支会撞锁
+      # (remote: cannot lock ref 'refs/heads/ci-logs')。分支分开就互不干扰。
+      - name: Push APK to apk branch
+        if: success()
+        continue-on-error: true
+        run: |
+          set -x
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          # apk 分支已经被塞进整个仓库（1900+ 文件），先彻底清空重建，
+          # 只留 builds/ 一个目录，分支体积从几百 MB 降到几十 MB。
+          git fetch origin apk || true
+          git checkout -B apk origin/apk 2>/dev/null || git checkout --orphan apk
+          git rm -rq --cached . 2>/dev/null || true
+          # ⚠️ 必须排除 apk-out：上一步刚把 APK 复制进去，
+          # 若被这条清理命令删掉，后面 cp 会因源文件不存在而静默失败（|| true 吞掉），
+          # 结果 apk 分支只剩旧档、artifact 为 0。
+          find . -maxdepth 1 -mindepth 1 -not -name .git -not -name builds -not -name apk-out -exec rm -rf {} + 2>/dev/null || true
+          mkdir -p builds
+          # APK_NAME 可能含空格（versionName 写成 "1.0.0 beta2" 时），必须加引号
+          # 先校验 APK 真的存在，不存在就直接报错，避免静默产出空分支
+          ls -lh apk-out
+          if [ ! -f "apk-out/$APK_NAME" ]; then
+            echo "::error::APK missing: apk-out/$APK_NAME (collect step did not produce it)"
+            exit 1
+          fi
+          cp "apk-out/$APK_NAME" builds/
+          cp apk-out/latest.apk builds/latest.apk
+          # 只保留最近 8 个 build
+          ls -1t builds/*.apk 2>/dev/null | tail -n +9 | while read f; do rm -f "$f"; done
+          ls -lh builds
+          git add -f builds
+          git commit -m "APK run ${{ github.run_number }} (${{ github.sha }})" || echo "nothing to commit"
+          # 用 -f：分支刚被彻底重写过，普通 push 一定是非快进，会被拒绝
+          git push -f origin apk
+
+
+      # 只在真的产出 APK 时才上传：if-no-files-found 改成 warn，
+      # 否则 run 被新 push 取消时（build 中途被 kill，apk-out 为空）会白白标红。
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-to-app-debug-run-${{ github.run_number }}
+          path: apk-out/*.apk
+          if-no-files-found: warn
+          retention-days: 30
