@@ -6,6 +6,24 @@
     <string name="tab_search">搜尋</string>
     <string name="tab_rail">鐵路</string>
     <string name="tab_nearby">附近</string>
+
+    <!-- 主頁（App1933 樣式） -->
+    <string name="tab_home">主頁</string>
+    <string name="tab_favorites">收藏</string>
+    <string name="title_favorites">收藏車站</string>
+    <string name="home_refresh">用定位搵附近路線</string>
+    <string name="home_hint">撳上面個掣，會用你嘅位置列出附近車站同即時到站預報。</string>
+    <string name="home_empty">附近搵唔到車站，試下移動少少或者去「設定」執行深度索引。</string>
+    <string name="home_need_location">拎唔到定位，請確認已授權位置權限。</string>
+    <string name="home_more_routes">仲有 %1$d 條路線冇班次</string>
+    <string name="fav_add">收藏此車站</string>
+    <string name="fav_remove">取消收藏</string>
+    <string name="fav_added">已加入收藏</string>
+    <string name="fav_removed">已取消收藏</string>
+    <string name="fav_empty">仲未收藏任何車站。喺車站預報頁撳個心形圖示就可以收藏。</string>
+    <string name="fav_title">收藏</string>
+    <string name="fav_refresh">更新</string>
+    <string name="fav_cancel">取消</string>
     <string name="tab_settings">設定</string>
 
     <!-- 頁首標題 -->
@@ -48,7 +66,7 @@
     <string name="eta_departing">開出</string>
     <string name="eta_special">特別班次</string>
     <string name="eta_cars">%1$s 卡</string>
-    <string name="eta_sep">　</string>
+    <string name="eta_sep">"　"</string>
 
     <!-- 附近車站 -->
     <string name="nearby_button">用定位搵附近車站</string>
@@ -78,6 +96,20 @@
     <string name="settings_rail_builtin">鐵路站表（重鐵 10 線 98 站、輕鐵 11 線 68 站）內置於 App，離線可用</string>
     <string name="settings_version">HKETA %1$s　原生 Android App（Kotlin + Compose）</string>
     <string name="settings_privacy">只向官方接口發出 HTTPS 請求，不收集任何個人資料；定位只用於排序附近車站。</string>
+
+    <!-- 版本更新 -->
+    <string name="update_section">版本更新</string>
+    <string name="update_current">目前版本 %1$s</string>
+    <string name="update_check">檢查更新</string>
+    <string name="update_checking">正在檢查更新…</string>
+    <string name="update_latest">已經係最新版本</string>
+    <string name="update_available">發現新版本 %1$s</string>
+    <string name="update_no_release">尚未發布正式版本（CI 喺 push v* 標籤時先會建立 Release）</string>
+    <string name="update_failed">檢查失敗：%1$s</string>
+    <string name="update_download">下載更新</string>
+    <string name="update_view_release">查看 Release</string>
+    <string name="update_notes">更新內容</string>
+    <string name="update_size">大小約 %1$.1f MB</string>
     <string name="settings_logo_desc">HKETA</string>
 
     <string name="route_bound_from">由 %1$s</string>
