@@ -10,6 +10,7 @@ import android.os.Build
 import android.widget.RemoteViews
 import com.hketa.app.MainActivity
 import com.hketa.app.R
+import com.hketa.app.data.suspendCatching
 import com.hketa.app.data.EtaRepository
 import com.hketa.app.data.FavoritesStore
 import com.hketa.app.data.Operator
@@ -75,7 +76,7 @@ class HketaWidgetProvider : AppWidgetProvider() {
         return coroutineScope {
             favs.map { fav ->
                 async {
-                    val eta = runCatching {
+                    val eta = suspendCatching {
                         when (fav.op) {
                             Operator.KMB -> repo.kmbEta(fav.id).let { all ->
                                 (if (fav.route.isBlank()) all else all.filter { it.route == fav.route })
@@ -85,7 +86,7 @@ class HketaWidgetProvider : AppWidgetProvider() {
                                 .minByOrNull { it.minutes ?: Int.MAX_VALUE }
                             Operator.MTR_HR -> {
                                 val line = RailData.linesOf(context, Operator.MTR_HR, fav.id)
-                                    .firstOrNull()?.id ?: return@runCatching null
+                                    .firstOrNull()?.id ?: return@suspendCatching null
                                 repo.mtrHeavyRailEta(line, fav.id) {
                                     RailData.nameOf(context, Operator.MTR_HR, it)
                                 }.first.minByOrNull { it.minutes ?: Int.MAX_VALUE }
