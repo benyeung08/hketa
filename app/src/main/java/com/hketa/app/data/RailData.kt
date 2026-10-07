@@ -16,6 +16,7 @@ data class RailStop(
 data class RailLine(
     val id: String = "",      // 重鐵：AEL / TML …；輕鐵：610 / 705 …
     val name: String = "",    // 重鐵：屯馬線；輕鐵：610
+    val nameEn: String = "",  // 重鐵官方英文名（Tuen Ma Line…）；輕鐵係數字，同 name 一樣
     val orig: String = "",
     val dest: String = "",
     val stops: List<RailStop> = emptyList()

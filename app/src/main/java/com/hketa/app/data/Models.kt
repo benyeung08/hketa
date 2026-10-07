@@ -34,6 +34,7 @@ data class StopDef(
     val op: Operator = Operator.KMB,
     val id: String = "",
     val name: String = "",
+    val nameEn: String = "",
     val lat: Double = 0.0,
     val lon: Double = 0.0
 )
