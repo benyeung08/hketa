@@ -29,13 +29,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # 之前 `|| true` 會吞晒 SDK 安裝失敗，令 gradle 用唔到 android-35 而失敗、卻顯示綠剔。
+      # 而家安裝完會驗證，搵唔到 platforms;android-35 即刻紅。
       - name: Install Android SDK 35 components
         run: |
           set -x
           ls "$ANDROID_HOME" || true
           yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platforms;android-35" "build-tools;35.0.0" || true
           yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+          echo "--- 已安裝嘅 platforms ---"
           ls "$ANDROID_HOME/platforms" || true
+          if [ ! -d "$ANDROID_HOME/platforms/android-35" ]; then
+            echo "::error::搵唔到 platforms;android-35，唔能夠 compileSdk 35"
+            exit 1
+          fi
 
       # 專案缺少 gradlew 腳本，因此直接安裝 Gradle 8.9 建置（AGP 8.7.3 需求）
       - name: Install Gradle 8.9
@@ -50,13 +57,26 @@ jobs:
           java -version
           gradle --version | head -12
 
+      # 重點：一定要 `set -o pipefail`。
+      # 淨係寫 `gradle ... | tee log` 嘅話，管道退出碼係 tee（永遠 0），
+      # gradle 嘅失敗會被吞掉、步驟顯示綠剔，一路滑去「Collect APKs」先報
+      # “find: app/build/outputs/apk: No such file or directory”。
       - name: Build Debug APK
-        id: build_debug
-        run: gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee /tmp/debug-build.log
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee /tmp/debug-build.log
 
       - name: Build Release APK
-        id: build_release
-        run: gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+
+      - name: Show build outputs
+        run: |
+          echo "--- app/build/outputs ---"
+          find app/build/outputs -maxdepth 4 2>/dev/null || echo "(唔存在)"
+          echo "--- 所有 apk ---"
+          find app/build -name "*.apk" 2>/dev/null || true
 
       - name: Collect APKs
         run: |
@@ -79,7 +99,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 建置失敗時一樣上傳完整 log，方便直接下載睇錯誤（唔使喺 Actions 頁逐段展開）
+      # 失敗時：① 錯誤節錄直接寫入 Actions 摘要頁（一眼睇到，唔使下載）
+      #        ② 上傳完整 log（需要更多上下文時下載）
+      - name: Write errors to job summary
+        if: failure()
+        run: |
+          {
+            echo "## ❌ 建置失敗"
+            echo
+            echo "### 錯誤節錄"
+            echo '```'
+            grep -h -E "^(e: |error: |FAILURE: |.*What went wrong)" -A 4 /tmp/*-build.log 2>/dev/null | head -80 \
+              || echo "(擷取唔到錯誤行)"
+            echo '```'
+            echo
+            echo "完整 log 請下載 **build-log** artifact。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
