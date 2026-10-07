@@ -51,10 +51,12 @@ jobs:
           gradle --version | head -12
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        id: build_debug
+        run: gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee /tmp/debug-build.log
 
       - name: Build Release APK
-        run: gradle :app:assembleRelease --stacktrace --no-daemon
+        id: build_release
+        run: gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
 
       - name: Collect APKs
         run: |
@@ -76,3 +78,12 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 建置失敗時一樣上傳完整 log，方便直接下載睇錯誤（唔使喺 Actions 頁逐段展開）
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/*-build.log
+          if-no-files-found: ignore
