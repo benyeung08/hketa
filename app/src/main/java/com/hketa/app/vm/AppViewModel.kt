@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.EtaText
+import com.hketa.app.data.FavoriteStop
+import com.hketa.app.data.FavoritesStore
+import com.hketa.app.data.HomeItem
 import com.hketa.app.data.EtaRepository
 import com.hketa.app.data.IndexData
 import com.hketa.app.data.IndexStat
@@ -16,7 +19,10 @@ import com.hketa.app.data.RailLine
 import com.hketa.app.data.RouteDef
 import com.hketa.app.data.RouteStopDef
 import com.hketa.app.data.StopDef
+import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.StopWithSeq
+import com.hketa.app.data.UpdateChecker
+import com.hketa.app.data.UpdateState
 import com.hketa.app.R
 import com.hketa.app.location.LocationProvider
 import kotlinx.coroutines.async
@@ -36,6 +42,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val INDEX_VERSION = 2
+        private const val UPDATE_THROTTLE_MS = 30 * 60 * 1000L
+        private const val HOME_RADIUS_M = 800.0
+        private const val HOME_MAX_STOPS = 12
     }
 
     /** 取本地化字串（語言切換後 Application 資源會跟住變） */
@@ -96,8 +105,83 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _nearbyOrigin = MutableStateFlow("")
     val nearbyOrigin: StateFlow<String> = _nearbyOrigin.asStateFlow()
 
+    // ============ 主頁（App1933 樣式：附近車站 + 即時預報） ============
+
+    private val _homeItems = MutableStateFlow<List<HomeItem>>(emptyList())
+    val homeItems: StateFlow<List<HomeItem>> = _homeItems.asStateFlow()
+
+    private val _homeLoading = MutableStateFlow(false)
+    val homeLoading: StateFlow<Boolean> = _homeLoading.asStateFlow()
+
+    private val _favorites = MutableStateFlow<List<FavoriteStop>>(emptyList())
+    val favorites: StateFlow<List<FavoriteStop>> = _favorites.asStateFlow()
+
+    /** 收藏頁用：key（FavoriteStop.key）→ 該站嘅到站預報 */
+    private val _favoriteEtas = MutableStateFlow<Map<String, List<EtaEntry>>>(emptyMap())
+    val favoriteEtas: StateFlow<Map<String, List<EtaEntry>>> = _favoriteEtas.asStateFlow()
+
+    private val _favoritesLoading = MutableStateFlow(false)
+    val favoritesLoading: StateFlow<Boolean> = _favoritesLoading.asStateFlow()
+
+    private lateinit var favoritesStore: FavoritesStore
+
+    // ============ 版本更新 ============
+
+    private val _updateState = MutableStateFlow(UpdateState.IDLE)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    private val _updateInfo = MutableStateFlow<GitHubRelease?>(null)
+    val updateInfo: StateFlow<GitHubRelease?> = _updateInfo.asStateFlow()
+
+    private val _updateError = MutableStateFlow("")
+    val updateError: StateFlow<String> = _updateError.asStateFlow()
+
+    /** 節流用：30 分鐘內唔重複打 GitHub API（手動按掣可以 force 無視） */
+    private var lastUpdateCheckAt = 0L
+
     init {
         viewModelScope.launch { ensureIndex() }
+        refreshFavorites()
+    }
+
+    // ============ 版本更新 ============
+
+    /**
+     * 檢查更新。進入「設定」頁會自動檢查一次（30 分鐘節流），
+     * 撳「檢查更新」掣則 force = true 立即查。
+     */
+    fun checkUpdate(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (_updateState.value == UpdateState.CHECKING) return
+        if (!force && now - lastUpdateCheckAt < UPDATE_THROTTLE_MS) return
+
+        viewModelScope.launch {
+            lastUpdateCheckAt = now
+            _updateState.value = UpdateState.CHECKING
+            _updateError.value = ""
+
+            val current = UpdateChecker.currentVersion(getApplication())
+            runCatching {
+                val release = UpdateChecker.fetchLatest()
+                when {
+                    release == null -> {
+                        _updateInfo.value = null
+                        _updateState.value = UpdateState.NO_RELEASE
+                    }
+                    UpdateChecker.isNewer(release.tag_name, current) -> {
+                        _updateInfo.value = release
+                        _updateState.value = UpdateState.AVAILABLE
+                    }
+                    else -> {
+                        _updateInfo.value = release
+                        _updateState.value = UpdateState.UP_TO_DATE
+                    }
+                }
+            }.onFailure {
+                _updateError.value = it.message.orEmpty()
+                _updateState.value = UpdateState.ERROR
+            }
+        }
     }
 
     // ============ 索引 ============
@@ -519,6 +603,153 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (list.isEmpty() && _message.value == null) {
                 _message.value = str(R.string.eta_empty)
             }
+        }
+    }
+
+    // ============ 主頁 ============
+
+    private fun ensureFavorites() {
+        if (!::favoritesStore.isInitialized) {
+            favoritesStore = FavoritesStore(getApplication())
+        }
+    }
+
+    fun refreshFavorites() {
+        ensureFavorites()
+        _favorites.value = favoritesStore.all()
+    }
+
+    /** 收藏頁：一次過拉晒所有收藏車站嘅到站預報 */
+    fun loadFavoriteEtas() {
+        viewModelScope.launch {
+            ensureFavorites()
+            refreshFavorites()
+            val list = favoritesStore.all()
+            if (list.isEmpty()) {
+                _favoriteEtas.value = emptyMap()
+                return@launch
+            }
+            _favoritesLoading.value = true
+            val map = coroutineScope {
+                list.map { fav ->
+                    async {
+                        val etas = runCatching { etasForFavorite(fav) }.getOrDefault(emptyList())
+                        fav.key to etas.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                    }
+                }.awaitAll().toMap()
+            }
+            _favoriteEtas.value = map
+            _favoritesLoading.value = false
+        }
+    }
+
+    private suspend fun etasForFavorite(fav: FavoriteStop): List<EtaEntry> = when (fav.op) {
+        Operator.KMB -> repo.kmbEta(fav.id).let { all ->
+            if (fav.route.isBlank()) all.take(6)
+            else all.filter { it.route == fav.route }
+        }
+        Operator.LRT -> repo.lightRailEta(fav.id, etaText())
+        Operator.MTR_HR -> {
+            val line = RailData.linesOf(getApplication(), Operator.MTR_HR, fav.id).firstOrNull()?.id
+            if (line == null) emptyList()
+            else repo.mtrHeavyRailEta(line, fav.id, etaText()) {
+                RailData.nameOf(getApplication(), Operator.MTR_HR, it)
+            }.first
+        }
+        Operator.CTB -> if (fav.route.isBlank()) emptyList() else repo.ctbEta(fav.id, fav.route)
+        Operator.NLB -> if (fav.routeId.isBlank()) emptyList() else repo.nlbEta(fav.routeId, fav.id)
+        Operator.GMB -> if (fav.routeId.isBlank()) emptyList() else repo.gmbEta(fav.id, fav.routeId)
+        Operator.MTR_BUS -> repo.mtrBus(fav.route).second
+    }
+
+    fun isFavorite(stop: StopDef, route: RouteDef? = null): Boolean {
+        ensureFavorites()
+        return favoritesStore.contains(FavoritesStore.from(stop, route).key)
+    }
+
+    /** 收藏／取消收藏；回傳收藏後嘅狀態（true = 已收藏） */
+    fun toggleFavorite(stop: StopDef, route: RouteDef? = null): Boolean {
+        ensureFavorites()
+        val f = FavoritesStore.from(stop, route)
+        val was = favoritesStore.contains(f.key)
+        favoritesStore.toggle(f)
+        refreshFavorites()
+        _message.value = str(if (was) R.string.fav_removed else R.string.fav_added)
+        return !was
+    }
+
+    fun removeFavorite(key: String) {
+        ensureFavorites()
+        favoritesStore.remove(key)
+        refreshFavorites()
+    }
+
+    /**
+     * 載入主頁：定位 → 搵附近車站 → 逐個站拉到站預報。
+     * 九巴一個請求就攞到嗰個站全部路線嘅 ETA，所以主頁以九巴站最快最齊。
+     */
+    fun loadHome(context: android.content.Context) {
+        viewModelScope.launch {
+            ensureFavorites()
+            _favorites.value = favoritesStore.all()
+            _homeLoading.value = true
+
+            val fix = LocationProvider.current(context)
+            if (fix == null) {
+                _homeItems.value = emptyList()
+                _homeLoading.value = false
+                _message.value = str(R.string.home_need_location)
+                return@launch
+            }
+            _nearbyOrigin.value = "%.5f, %.5f（${fix.source}）".format(fix.lat, fix.lon)
+
+            val idx = _index.value
+            val stops = idx.stops
+                .filter { it.lat != 0.0 || it.lon != 0.0 }
+                .mapNotNull { st ->
+                    val d = distanceMeters(fix.lat, fix.lon, st.lat, st.lon)
+                    if (d > HOME_RADIUS_M) return@mapNotNull null
+                    st to d.toInt()
+                }
+                .sortedBy { it.second }
+                .take(HOME_MAX_STOPS)
+
+            val items = coroutineScope {
+                stops.map { (st, dist) ->
+                    async {
+                        val routes = idx.routeStops
+                            .filter { it.op == st.op && it.stopId == st.id }
+                            .map { it.route }
+                            .distinct()
+                            .sortedWith(compareBy<String> { it.length }.thenBy { it })
+                        val etas = runCatching {
+                            when (st.op) {
+                                // 九巴：一個請求攞晒全站路線預報
+                                Operator.KMB -> repo.kmbEta(st.id)
+                                Operator.LRT -> repo.lightRailEta(st.id, etaText())
+                                Operator.MTR_HR -> {
+                                    val line = RailData.linesOf(
+                                        getApplication(), Operator.MTR_HR, st.id
+                                    ).firstOrNull()?.id
+                                    if (line == null) emptyList()
+                                    else repo.mtrHeavyRailEta(line, st.id, etaText()) {
+                                        RailData.nameOf(getApplication(), Operator.MTR_HR, it)
+                                    }.first
+                                }
+                                // 城巴／嶼巴／小巴要逐條路線查，請求太多 —— 主頁唔預先拉
+                                else -> emptyList()
+                            }
+                        }.getOrDefault(emptyList())
+                            .sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                            .take(6)
+                        HomeItem(st, routes, etas, dist)
+                    }
+                }.awaitAll()
+            }
+
+            _homeItems.value = items
+            _homeLoading.value = false
+            if (items.isEmpty()) _message.value = str(R.string.home_empty)
         }
     }
 
