@@ -78,3 +78,17 @@ data class NearbyStop(val stop: StopDef, val distanceMeters: Int, val routes: Li
 
 /** 一間機構的索引完成度 */
 data class IndexStat(val op: Operator, val routes: Int, val stops: Int)
+
+/**
+ * 主頁一筆：一個車站 + 該站嘅到站預報（App1933 主頁樣式）。
+ * routes = 嗰個站停靠嘅路線號；etas = 即時預報。
+ */
+data class HomeItem(
+    val stop: StopDef = StopDef(),
+    val routes: List<String> = emptyList(),
+    val etas: List<EtaEntry> = emptyList(),
+    val distanceMeters: Int = 0
+) {
+    /** 最近一班嘅分鐘數（冇就 null） */
+    val nextMinutes: Int? get() = etas.firstOrNull()?.minutes
+}
