@@ -97,6 +97,20 @@
     <string name="settings_version">HKETA %1$s　原生 Android App（Kotlin + Compose）</string>
     <string name="settings_privacy">只向官方接口發出 HTTPS 請求，不收集任何個人資料；定位只用於排序附近車站。</string>
 
+
+    <!-- 路線地圖 -->
+    <string name="map_title">路線地圖</string>
+    <string name="map_show">顯示地圖</string>
+    <string name="map_hide">隱藏地圖</string>
+    <string name="map_no_coords">呢條路線冇車站座標，畫唔到地圖</string>
+
+    <!-- 桌面小工具 -->
+    <string name="widget_refresh">更新</string>
+    <string name="widget_no_fav">未有收藏車站，撳開 App 收藏後會顯示喺度</string>
+    <string name="widget_now">現已到站</string>
+    <string name="widget_minutes">%1$d 分</string>
+    <string name="settings_widget_hint">長按桌面空白位 →「小工具」→ 搵 HKETA，加入後會顯示收藏車站嘅下一班車。</string>
+
     <!-- 版本更新 -->
     <string name="update_section">版本更新</string>
     <string name="update_current">目前版本 %1$s</string>
