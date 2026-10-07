@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,12 +22,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 import kotlinx.coroutines.delay
 
@@ -39,6 +42,8 @@ fun EtaScreen(
     val route by vm.selectedRoute.collectAsState()
     val etas by vm.etas.collectAsState()
     val busy by vm.busy.collectAsState()
+    val favorites by vm.favorites.collectAsState()
+    val isFav = if (stop != null) favorites.any { it.op == stop.op && it.id == stop.id && it.route.isBlank() } else false
     val dash = stringResource(R.string.eta_dash)
     val soon = stringResource(R.string.eta_soon)
 
@@ -55,12 +60,26 @@ fun EtaScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(
-            text = stop?.name ?: stringResource(R.string.eta_stop_default),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        val opLabel = stop?.op?.label() ?: ""
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = (stop?.name ?: stringResource(R.string.eta_stop_default)) +
+                    (if (stop?.id.isNullOrBlank()) "" else "（${stop?.id}）"),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            if (stop != null) {
+                IconButton(onClick = { vm.toggleFavorite(stop, null) }) {
+                    Icon(
+                        painter = painterResource(if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off),
+                        contentDescription = stringResource(if (isFav) R.string.fav_remove else R.string.fav_add),
+                        tint = if (isFav) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        val opLabel = stop?.op?.labelText() ?: ""
         Muted("$opLabel　${stop?.id ?: ""}　${stringResource(R.string.eta_auto_refresh)}")
 
         if (route != null) {

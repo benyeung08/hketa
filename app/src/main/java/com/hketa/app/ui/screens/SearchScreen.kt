@@ -1,6 +1,7 @@
 package com.hketa.app.ui.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +27,7 @@ import com.hketa.app.R
 import com.hketa.app.data.RouteDef
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,7 +35,9 @@ import com.hketa.app.vm.AppViewModel
 fun SearchScreen(
     vm: AppViewModel,
     onOpenRoute: (RouteDef) -> Unit,
-    onOpenStop: (StopDef) -> Unit
+    onOpenStop: (StopDef) -> Unit,
+    onOpenRail: () -> Unit = {},
+    onOpenNearby: () -> Unit = {}
 ) {
     val query by vm.query.collectAsState()
     val results by vm.results.collectAsState()
@@ -53,6 +57,23 @@ fun SearchScreen(
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onOpenRail,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 3.dp)
+            ) { Text(stringResource(R.string.tab_rail)) }
+            OutlinedButton(
+                onClick = onOpenNearby,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 3.dp)
+            ) { Text(stringResource(R.string.tab_nearby)) }
+        }
 
         Spacer(Modifier.height(8.dp))
         Muted(status)
@@ -115,7 +136,7 @@ private fun RouteRow(r: RouteDef, onClick: (RouteDef) -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "${r.op.label()}${if (r.dest.isBlank()) "" else " " + stringResource(R.string.route_bound_to, r.dest)}",
+                text = "${r.op.labelText()}${if (r.dest.isBlank()) "" else " " + stringResource(R.string.route_bound_to, r.dest)}",
                 style = MaterialTheme.typography.bodyMedium
             )
             if (r.orig.isNotBlank()) {
@@ -136,7 +157,7 @@ private fun StopRow(s: StopDef, onClick: (StopDef) -> Unit) {
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(text = s.name, style = MaterialTheme.typography.bodyLarge)
-            Muted(s.op.label())
+            Muted(s.op.labelText())
         }
     }
 }
