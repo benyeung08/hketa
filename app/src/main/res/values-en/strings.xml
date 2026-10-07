@@ -6,6 +6,24 @@
     <string name="tab_search">Search</string>
     <string name="tab_rail">Rail</string>
     <string name="tab_nearby">Nearby</string>
+
+    <!-- Home (App1933 style) -->
+    <string name="tab_home">Home</string>
+    <string name="tab_favorites">Saved</string>
+    <string name="title_favorites">Saved stops</string>
+    <string name="home_refresh">Find routes near me</string>
+    <string name="home_hint">Tap the button above to list nearby stops and live arrival times.</string>
+    <string name="home_empty">No stops nearby — move a little, or run a deep index from Settings.</string>
+    <string name="home_need_location">Could not get a location fix. Check that location permission is granted.</string>
+    <string name="home_more_routes">%1$d more routes with no departures</string>
+    <string name="fav_add">Save this stop</string>
+    <string name="fav_remove">Remove from saved</string>
+    <string name="fav_added">Added to saved stops</string>
+    <string name="fav_removed">Removed from saved stops</string>
+    <string name="fav_empty">No saved stops yet. Tap the heart icon on an arrivals screen to save one.</string>
+    <string name="fav_title">Saved</string>
+    <string name="fav_refresh">Refresh</string>
+    <string name="fav_cancel">Cancel</string>
     <string name="tab_settings">Settings</string>
 
     <!-- Screen titles -->
@@ -48,7 +66,7 @@
     <string name="eta_departing">Departing</string>
     <string name="eta_special">Special</string>
     <string name="eta_cars">%1$s cars</string>
-    <string name="eta_sep"> · </string>
+    <string name="eta_sep">" · "</string>
 
     <!-- Nearby stops -->
     <string name="nearby_button">Find stops near me</string>
@@ -78,6 +96,20 @@
     <string name="settings_rail_builtin">Rail tables (10 heavy rail lines / 98 stations, 11 Light Rail routes / 68 stops) are bundled in the app and work offline</string>
     <string name="settings_version">HKETA %1$s — native Android app (Kotlin + Compose)</string>
     <string name="settings_privacy">Sends HTTPS requests only to the official endpoints and collects no personal data. Location is used solely to sort nearby stops.</string>
+
+    <!-- Updates -->
+    <string name="update_section">Updates</string>
+    <string name="update_current">Current version %1$s</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_latest">You\'re on the latest version</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_no_release">No release published yet (CI creates one when you push a v* tag)</string>
+    <string name="update_failed">Check failed: %1$s</string>
+    <string name="update_download">Download update</string>
+    <string name="update_view_release">View release</string>
+    <string name="update_notes">What\'s new</string>
+    <string name="update_size">About %1$.1f MB</string>
     <string name="settings_logo_desc">HKETA</string>
 
     <string name="route_bound_from">from %1$s</string>
