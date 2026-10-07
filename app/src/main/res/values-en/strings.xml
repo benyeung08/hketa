@@ -97,6 +97,20 @@
     <string name="settings_version">HKETA %1$s — native Android app (Kotlin + Compose)</string>
     <string name="settings_privacy">Sends HTTPS requests only to the official endpoints and collects no personal data. Location is used solely to sort nearby stops.</string>
 
+
+    <!-- Route map -->
+    <string name="map_title">Route map</string>
+    <string name="map_show">Show map</string>
+    <string name="map_hide">Hide map</string>
+    <string name="map_no_coords">No stop coordinates for this route, so the map cannot be drawn</string>
+
+    <!-- Home-screen widget -->
+    <string name="widget_refresh">Refresh</string>
+    <string name="widget_no_fav">No saved stops yet — save one in the app and it will appear here</string>
+    <string name="widget_now">Now</string>
+    <string name="widget_minutes">%1$d min</string>
+    <string name="settings_widget_hint">Long-press an empty spot on the home screen → Widgets → pick HKETA. It then shows the next departure at your saved stops.</string>
+
     <!-- Updates -->
     <string name="update_section">Updates</string>
     <string name="update_current">Current version %1$s</string>
