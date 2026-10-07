@@ -1,6 +1,5 @@
 package com.hketa.app.data
 
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -8,7 +7,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 
 object Urls {
@@ -98,6 +96,7 @@ class EtaRepository {
                 op = Operator.KMB,
                 id = it.stop,
                 name = it.name_tc,
+                nameEn = it.name_en,
                 lat = it.lat.toDoubleOrNull() ?: 0.0,
                 lon = it.long.toDoubleOrNull() ?: 0.0
             )
@@ -145,6 +144,7 @@ class EtaRepository {
                 op = Operator.CTB,
                 id = it.stop,
                 name = it.name_tc,
+                nameEn = it.name_en,
                 lat = it.lat.toDoubleOrNull() ?: 0.0,
                 lon = it.long.toDoubleOrNull() ?: 0.0
             )
@@ -250,6 +250,7 @@ class EtaRepository {
                 op = Operator.GMB,
                 id = id,
                 name = pick(o, "name_tc", "stopName", "name", "description_tc"),
+                nameEn = pick(o, "name_en", "stopNameEn", "description_en"),
                 lat = num(pick(o, "latitude", "lat")),
                 lon = num(pick(o, "longitude", "long", "lon", "lng"))
             )
@@ -265,6 +266,7 @@ class EtaRepository {
             op = Operator.GMB,
             id = stopId,
             name = pick(o, "name_tc", "stopName", "name", "description_tc"),
+            nameEn = pick(o, "name_en", "stopNameEn", "description_en"),
             lat = num(pick(o, "latitude", "lat")),
             lon = num(pick(o, "longitude", "long", "lon", "lng"))
         )
@@ -401,7 +403,7 @@ class EtaRepository {
             .flatMap { listOf(Urls.lightRailV1(it), Urls.lightRailV2(it)) }
 
         for (url in candidates) {
-            val text = runCatching { Http.get(url) }.getOrNull() ?: continue
+            val text = suspendCatching { Http.get(url) }.getOrNull() ?: continue
             val parsed = parseLightRail(text, t)
             if (parsed.isNotEmpty()) return parsed
         }

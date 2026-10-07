@@ -54,7 +54,7 @@ object UpdateChecker {
      * @return null = 仲未發布過 Release（HTTP 404）；其他錯誤會丟出例外由呼叫方處理。
      */
     suspend fun fetchLatest(): GitHubRelease? {
-        val text = runCatching { Http.get(LATEST) }
+        val text = suspendCatching { Http.get(LATEST) }
             .getOrElse { e ->
                 // Http.get 失敗時嘅 message 形如 "HTTP 404 @ <url>"
                 if (e.message.orEmpty().contains("404")) return null
