@@ -32,6 +32,9 @@ Compose**, calling the official ETA endpoints of Hong Kong transport operators d
 - **Light Rail** — 11 regular routes / 68 stops (505, 507, 610, 614, 614P, 615, 615P, 705, 706, 751, 761P)
 - **Rail data bundled** — official lines, stations and coordinates ship inside the app, so they work offline with no indexing wait
 - **Three UI languages** — switch between 繁體中文, 简体中文 and English from Settings, no reinstall needed
+- **App1933-style home** — opens straight to live arrivals at nearby stops, in the form "route → destination · X min", with official stop codes
+- **Saved stops** — tap the heart on an arrivals screen; the Saved tab refreshes ETA for every saved stop at once
+- **Update check** — Settings can check for updates straight from GitHub Releases and download the APK
 
 ## Interface language
 
@@ -68,6 +71,37 @@ Traditional wording.
 
 Data that comes **from the official endpoints** — stop names, route names and the like — is left in
 its original form (mostly Traditional Chinese) rather than translated.
+
+## Interface layout (modelled on App1933)
+
+Four bottom tabs: **Home / Saved / Search / Settings**
+
+| Tab | Contents |
+|---|---|
+| Home | Location → stops within 800 m → live arrivals per stop (one KMB request covers every route at that stop) |
+| Saved | Saved stops; entering the tab fetches ETA for all of them concurrently |
+| Search | Search by route number or stop name; quick entries for Rail and Nearby at the top |
+| Settings | Index management, language, updates, data sources |
+
+**Not included (unlike App1933)**: club1933 membership, eCoin wallet, KMB monthly pass, the games
+room, the bot1933 AI assistant, live occupancy and route maps — these need KMB's private APIs or
+merchant credentials. This project uses only open government data (data.gov.hk endpoints).
+
+## Update mechanism
+
+The Settings screen has a "Check for updates" button backed by the GitHub Releases API:
+
+```
+GET https://api.github.com/repos/benyeung08/hketa/releases/latest
+```
+
+- It compares the latest release `tag_name` against the installed version (read from PackageManager, so it always tracks `versionName`)
+- When a newer version exists it shows the version, release notes, a direct APK download button and a link to the release page
+- Opening Settings triggers one silent check (throttled to 30 minutes); the button forces an immediate re-check
+- If no release has ever been published it says so instead of showing an error
+
+**To ship a new version**: bump `versionName` in `app/build.gradle.kts`, then push a `v*` tag —
+CI builds the APK and attaches it to a Release, and the app picks it up.
 
 ## Getting the APK (fastest route)
 
