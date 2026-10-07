@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HKETA — HK Transport ETA</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_search">Search</string>
+    <string name="tab_rail">Rail</string>
+    <string name="tab_nearby">Nearby</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Screen titles -->
+    <string name="title_search">HKETA Transport ETA</string>
+    <string name="title_rail">Rail</string>
+    <string name="title_route">Route stops</string>
+    <string name="title_eta">Arrival times</string>
+    <string name="title_nearby">Nearby stops</string>
+    <string name="title_settings">Settings</string>
+
+    <!-- Search -->
+    <string name="search_hint">Route number or stop name, e.g. 1A, K51, Tuen Ma, Sha Tin</string>
+    <string name="search_group_stops">Stops</string>
+    <string name="search_group_routes">Routes</string>
+    <string name="search_empty">No match. Try digits only (e.g. 6 instead of 6A), or open the Rail tab.</string>
+    <string name="route_bound_to">to %1$s</string>
+
+    <!-- Route stops -->
+    <string name="stops_loading">Loading stops…</string>
+    <string name="stops_empty">No stop data available</string>
+    <string name="stops_failed">Could not load stops: %1$s</string>
+    <string name="stops_none_msg">This route has no stop data yet</string>
+
+    <!-- Arrival times -->
+    <string name="eta_stop_default">Stop</string>
+    <string name="eta_auto_refresh">Auto-refreshing every 20 seconds</string>
+    <string name="eta_loading">Fetching arrival times…</string>
+    <string name="eta_empty">No departures right now (last service may have passed)</string>
+    <string name="eta_query_failed">Query failed: %1$s</string>
+    <string name="eta_scheduled">Scheduled %1$s</string>
+    <string name="eta_soon">Arriving now</string>
+    <string name="eta_minutes">%1$d min</string>
+    <string name="eta_dash">—</string>
+
+    <!-- Arrival remarks assembled by the data layer -->
+    <string name="eta_platform">Platform %1$s</string>
+    <string name="eta_delayed">Delayed</string>
+    <string name="eta_via_racecourse">via Racecourse</string>
+    <string name="eta_arriving">Arriving</string>
+    <string name="eta_departing">Departing</string>
+    <string name="eta_special">Special</string>
+    <string name="eta_cars">%1$s cars</string>
+    <string name="eta_sep"> · </string>
+
+    <!-- Nearby stops -->
+    <string name="nearby_button">Find stops near me</string>
+    <string name="nearby_origin">Location: %1$s</string>
+    <string name="nearby_denied">Could not get a fix. Check that location permission is granted, or try again outdoors.</string>
+    <string name="nearby_calculating">Calculating…</string>
+    <string name="nearby_meters">%1$d m</string>
+    <string name="nearby_km">%1$.1f km</string>
+    <string name="nearby_empty">No indexed stops within 3 km. Run a deep index from Settings to add more.</string>
+
+    <!-- Settings -->
+    <string name="settings_index">Route index</string>
+    <string name="settings_rebuild">Rebuild index</string>
+    <string name="settings_deep_ctb">Deep-index Citybus</string>
+    <string name="settings_deep_gmb">Deep-index minibus</string>
+    <string name="settings_deep_hint">Citybus has no bulk stop endpoint and minibus stop coordinates must be fetched route by route, so both deep indexes issue many requests — Wi-Fi recommended. Once finished they appear in “Nearby stops”.</string>
+    <string name="settings_stats">Index statistics</string>
+    <string name="settings_stats_routes">%1$s: %2$d routes / %3$d stops</string>
+    <string name="settings_routestops">Route–stop mappings: %1$d</string>
+    <string name="settings_sources">Data sources</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_follow">Follow system</string>
+    <string name="settings_language_zh_hant">繁體中文</string>
+    <string name="settings_language_zh_hans">简体中文</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_hint">Choosing 繁體中文 / 简体中文 only changes the interface text. Stop and route names from the official endpoints stay in their original form.</string>
+    <string name="settings_rail_builtin">Rail tables (10 heavy rail lines / 98 stations, 11 Light Rail routes / 68 stops) are bundled in the app and work offline</string>
+    <string name="settings_version">HKETA %1$s — native Android app (Kotlin + Compose)</string>
+    <string name="settings_privacy">Sends HTTPS requests only to the official endpoints and collects no personal data. Location is used solely to sort nearby stops.</string>
+    <string name="settings_logo_desc">HKETA</string>
+
+    <string name="route_bound_from">from %1$s</string>
+    <string name="rail_termini">%1$s ⇄ %2$s · %3$d stops</string>
+    <string name="rail_stops_count">%1$d stops</string>
+    <string name="src_kmb">KMB: data.etabus.gov.hk</string>
+    <string name="src_ctb">Citybus (CTB): rt.data.gov.hk/v2/transport/citybus</string>
+    <string name="src_nlb">NLB: rt.data.gov.hk/v2/transport/nlb</string>
+    <string name="src_gmb">GMB minibus: data.etagmb.gov.hk</string>
+    <string name="src_mtr_bus">MTR Bus: rt.data.gov.hk/v1/transport/mtr/bus</string>
+    <string name="src_mtr_hr">MTR heavy rail: rt.data.gov.hk/v1/transport/mtr/getSchedule.php</string>
+    <string name="src_lrt">Light Rail: rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule</string>
+
+    <!-- Operator names -->
+    <string name="op_kmb">KMB</string>
+    <string name="op_ctb">Citybus</string>
+    <string name="op_nlb">NLB</string>
+    <string name="op_gmb">Minibus</string>
+    <string name="op_mtr_bus">MTR Bus</string>
+    <string name="op_mtr_hr">MTR</string>
+    <string name="op_lrt">Light Rail</string>
+
+    <!-- Index status -->
+    <string name="index_ready">Index ready (%1$d routes)</string>
+    <string name="index_done">Index complete: %1$d routes / %2$d stops</string>
+    <string name="index_step_kmb">Downloading KMB routes…</string>
+    <string name="index_step_kmb_rs">Downloading KMB route–stop mappings…</string>
+    <string name="index_step_kmb_stops">Downloading KMB stop coordinates…</string>
+    <string name="index_step_ctb">Downloading Citybus routes…</string>
+    <string name="index_step_nlb">Downloading NLB routes and stops…</string>
+    <string name="index_step_gmb">Downloading GMB minibus routes…</string>
+    <string name="index_step_failed">%1$s failed: %2$s</string>
+    <string name="index_deep_ctb_progress">Deep-indexing Citybus %1$s (%2$d/%3$d)</string>
+    <string name="index_deep_ctb_done">Citybus deep index complete: %1$d stops added</string>
+    <string name="index_deep_ctb_msg">Citybus stops added to “Nearby stops”</string>
+    <string name="index_deep_gmb_progress">Deep-indexing minibus %1$s (%2$d/%3$d)</string>
+    <string name="index_deep_gmb_done">Minibus deep index complete: %1$d stops added</string>
+    <string name="index_deep_gmb_msg">Minibus stops added to “Nearby stops”</string>
+    <string name="index_no_ctb">No Citybus routes yet — rebuild the index first</string>
+    <string name="index_no_gmb">No minibus routes yet — rebuild the index first</string>
+    <string name="index_mtrbus_hint">Query MTR Bus live</string>
+</resources>
