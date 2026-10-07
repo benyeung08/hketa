@@ -26,6 +26,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.hketa.app.ui.screens.EtaScreen
+import com.hketa.app.ui.screens.FavoritesScreen
+import com.hketa.app.ui.screens.HomeScreen
 import com.hketa.app.ui.screens.NearbyScreen
 import com.hketa.app.ui.screens.RailScreen
 import com.hketa.app.ui.screens.RouteStopsScreen
@@ -35,11 +37,13 @@ import com.hketa.app.ui.screens.SettingsScreen
 import com.hketa.app.vm.AppViewModel
 
 object Dest {
+    const val HOME = "home"
     const val SEARCH = "search"
     const val RAIL = "rail"
     const val ROUTE = "route"
     const val ETA = "eta"
     const val NEARBY = "nearby"
+    const val FAVORITES = "favorites"
     const val SETTINGS = "settings"
 }
 
@@ -77,7 +81,9 @@ fun AppRoot(
                             Dest.NEARBY -> stringResource(R.string.title_nearby)
                             Dest.SETTINGS -> stringResource(R.string.title_settings)
                             Dest.RAIL -> stringResource(R.string.title_rail)
-                            else -> stringResource(R.string.title_search)
+                            Dest.FAVORITES -> stringResource(R.string.title_favorites)
+                            Dest.HOME -> stringResource(R.string.app_name)
+                            else -> stringResource(R.string.app_name)
                         }
                     )
                 },
@@ -92,41 +98,41 @@ fun AppRoot(
             )
         },
         bottomBar = {
-            if (currentRoute == Dest.SEARCH || currentRoute == Dest.RAIL ||
-                currentRoute == Dest.NEARBY || currentRoute == Dest.SETTINGS
+            if (currentRoute == Dest.HOME || currentRoute == Dest.SEARCH ||
+                currentRoute == Dest.FAVORITES || currentRoute == Dest.SETTINGS
             ) {
                 NavigationBar {
+                    NavigationBarItem(
+                        selected = currentRoute == Dest.HOME,
+                        onClick = {
+                            navController.navigate(Dest.HOME) {
+                                launchSingleTop = true
+                                popUpTo(Dest.HOME) { inclusive = false }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.tab_home)) },
+                        icon = { Box(Modifier.size(1.dp)) }
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Dest.FAVORITES,
+                        onClick = {
+                            navController.navigate(Dest.FAVORITES) {
+                                launchSingleTop = true
+                                popUpTo(Dest.HOME) { inclusive = false }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.tab_favorites)) },
+                        icon = { Box(Modifier.size(1.dp)) }
+                    )
                     NavigationBarItem(
                         selected = currentRoute == Dest.SEARCH,
                         onClick = {
                             navController.navigate(Dest.SEARCH) {
                                 launchSingleTop = true
-                                popUpTo(Dest.SEARCH) { inclusive = false }
+                                popUpTo(Dest.HOME) { inclusive = false }
                             }
                         },
                         label = { Text(stringResource(R.string.tab_search)) },
-                        icon = { Box(Modifier.size(1.dp)) }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Dest.RAIL,
-                        onClick = {
-                            navController.navigate(Dest.RAIL) {
-                                launchSingleTop = true
-                                popUpTo(Dest.SEARCH) { inclusive = false }
-                            }
-                        },
-                        label = { Text(stringResource(R.string.tab_rail)) },
-                        icon = { Box(Modifier.size(1.dp)) }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Dest.NEARBY,
-                        onClick = {
-                            navController.navigate(Dest.NEARBY) {
-                                launchSingleTop = true
-                                popUpTo(Dest.SEARCH) { inclusive = false }
-                            }
-                        },
-                        label = { Text(stringResource(R.string.tab_nearby)) },
                         icon = { Box(Modifier.size(1.dp)) }
                     )
                     NavigationBarItem(
@@ -134,7 +140,7 @@ fun AppRoot(
                         onClick = {
                             navController.navigate(Dest.SETTINGS) {
                                 launchSingleTop = true
-                                popUpTo(Dest.SEARCH) { inclusive = false }
+                                popUpTo(Dest.HOME) { inclusive = false }
                             }
                         },
                         label = { Text(stringResource(R.string.tab_settings)) },
@@ -147,9 +153,28 @@ fun AppRoot(
 
         NavHost(
             navController = navController,
-            startDestination = Dest.SEARCH,
+            startDestination = Dest.HOME,
             modifier = Modifier.padding(padding)
         ) {
+            composable(Dest.HOME) {
+                HomeScreen(
+                    vm = vm,
+                    onNeedLocation = onNeedLocation,
+                    onOpenStop = { stop ->
+                        vm.openStop(stop, null)
+                        navController.navigate(Dest.ETA)
+                    }
+                )
+            }
+            composable(Dest.FAVORITES) {
+                FavoritesScreen(
+                    vm = vm,
+                    onOpenStop = { stop ->
+                        vm.openStop(stop, null)
+                        navController.navigate(Dest.ETA)
+                    }
+                )
+            }
             composable(Dest.SEARCH) {
                 SearchScreen(
                     vm = vm,
@@ -160,7 +185,9 @@ fun AppRoot(
                     onOpenStop = { stop ->
                         vm.openStop(stop, null)
                         navController.navigate(Dest.ETA)
-                    }
+                    },
+                    onOpenRail = { navController.navigate(Dest.RAIL) },
+                    onOpenNearby = { navController.navigate(Dest.NEARBY) }
                 )
             }
             composable(Dest.RAIL) {
