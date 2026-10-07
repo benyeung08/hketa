@@ -31,27 +31,43 @@ Compose**, calling the official ETA endpoints of Hong Kong transport operators d
 - **MTR heavy rail** — 10 lines / 98 stations (Airport Express, East Rail, Tuen Ma, Tseung Kwan O, Tung Chung, Kwun Tong, Tsuen Wan, Island, South Island, Disneyland Resort)
 - **Light Rail** — 11 regular routes / 68 stops (505, 507, 610, 614, 614P, 615, 615P, 705, 706, 751, 761P)
 - **Rail data bundled** — official lines, stations and coordinates ship inside the app, so they work offline with no indexing wait
-- **Bilingual UI** — switch between 繁體中文 and English from Settings, no reinstall needed
+- **Three UI languages** — switch between 繁體中文, 简体中文 and English from Settings, no reinstall needed
 
 ## Interface language
 
-The UI ships in **Traditional Chinese** and **English**; pick one at the top of the Settings screen:
+The UI ships in **Traditional Chinese**, **Simplified Chinese** and **English**; pick one at the top of
+the Settings screen:
 
-| Option | Behaviour |
-|---|---|
-| Follow system | Matches the device language (default) |
-| 繁體中文 | Force Traditional Chinese |
-| English | Force English |
+| Option | Resource folder | Behaviour |
+|---|---|---|
+| Follow system | — | Matches the device language (default): `zh-CN` → Simplified, `zh-TW`/`zh-HK` → Traditional, other locales → English |
+| 繁體中文 | `values/` | Force Traditional Chinese |
+| 简体中文 | `values-zh-rCN/` | Force Simplified Chinese |
+| English | `values-en/` | Force English |
 
 Implemented with `AppCompatDelegate.setApplicationLocales`:
 
 - **Android 13 (API 33)+** — writes to the system per-app language setting, so it can also be changed from system Settings
 - **Android 12 and below** — persisted by AppCompat itself (the manifest registers `AppLocalesMetadataHolderService` with `autoStoreLocales=true`), so the choice survives restarts
 
-All UI text lives in `res/values/strings.xml` (Traditional Chinese) and `res/values-en/strings.xml`
-(English). Switching languages triggers a configuration change, so Compose recomposes automatically
-with no manual Activity restart. Data that comes **from the official endpoints** — stop names, route
-names and the like — is left in its original form (mostly Traditional Chinese) rather than translated.
+All UI text lives in three resource files:
+
+| File | Language |
+|---|---|
+| `res/values/strings.xml` | Traditional Chinese (also the fallback when nothing matches) |
+| `res/values-zh-rCN/strings.xml` | Simplified Chinese |
+| `res/values-en/strings.xml` | English |
+
+All three share exactly the same 98 keys. Switching languages triggers a configuration change, so
+Compose recomposes automatically with no manual Activity restart.
+
+Arrival remarks (platform, service delayed, via Racecourse, number of cars) are assembled on the fly
+in the data layer. `AppViewModel` loads the templates for the current language and passes them to
+`EtaRepository` (see `data/EtaText.kt`), so a Simplified UI shows 经马场 / 服务延误 rather than the
+Traditional wording.
+
+Data that comes **from the official endpoints** — stop names, route names and the like — is left in
+its original form (mostly Traditional Chinese) rather than translated.
 
 ## Getting the APK (fastest route)
 
@@ -113,14 +129,15 @@ app/src/main/java/com/hketa/app/
 ├─ data/       Models, ApiModels, Http, IndexStore, EtaRepository, RailData, TimeUtil
 │              (assets/rail.json = bundled rail station table)
 ├─ location/   Location wrapper (Fused Location, falls back to LocationManager)
-├─ util/       AppLocale (in-app language switching)
+├─ util/       AppLocale (in-app language switching: Traditional / Simplified / English / system)
 ├─ vm/         AppViewModel (index state, search, route stops, arrivals, nearby stops)
 └─ ui/         AppNav and screens (Search / Rail / Route stops / Arrivals / Nearby / Settings)
 
 res/
-├─ values/strings.xml      Traditional Chinese UI text
-├─ values-en/strings.xml   English UI text
-└─ drawable-*/mipmap-*/    adaptive icon (foreground + background)
+├─ values/strings.xml          Traditional Chinese UI text (fallback)
+├─ values-zh-rCN/strings.xml   Simplified Chinese UI text
+├─ values-en/strings.xml       English UI text
+└─ drawable-*/mipmap-*/        adaptive icon (foreground + background)
 ```
 
 Stack: Kotlin 2.0.21, Jetpack Compose (Material 3), Navigation Compose,
@@ -131,6 +148,7 @@ Play Services Location. minSdk 26 (Android 8.0) / targetSdk 35.
 
 - Not implemented yet: home-screen widget, favourite stops, route map
 - Stop and route names returned by the official endpoints are mostly Traditional Chinese only, so they stay in their original form even when the UI is in English
+- Simplified Chinese lives in `values-zh-rCN`; a device set to another Simplified locale (e.g. `zh-SG`) falls back to the default Traditional resources — pick 简体中文 manually in that case
 - The heavy rail endpoint only covers the 10 lines listed by MTR; Light Rail lists the 11 regular routes (special 9xx services are not listed separately but still show up in arrivals)
 - "Nearby stops" coverage depends on how much has been indexed: rail stations and KMB are complete by default, while Citybus and GMB need a deep index run from Settings
 - NLB / GMB / MTR Bus occasionally change their response fields. Parsing is lenient, but always treat the official documentation as the source of truth.

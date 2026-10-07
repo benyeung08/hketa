@@ -28,25 +28,39 @@ Kotlin + Jetpack Compose，直接對接香港各營辦商嘅公開 ETA 接口，
 - **港鐵重鐵**：10 條線 98 個站（機場快線／東鐵線／屯馬線／將軍澳線／東涌線／觀塘線／荃灣線／港島線／南港島線／迪士尼線）
 - **輕鐵**：11 條常規線 68 個站（505／507／610／614／614P／615／615P／705／706／751／761P）
 - **鐵路站表內置**：官方路線與車站（含座標）打包進 App，離線可用、唔使等索引
-- **中英雙語介面**：設定頁可隨時切換「跟隨系統／繁體中文／English」，唔使重裝
+- **三語介面**：設定頁可隨時切換「跟隨系統／繁體中文／简体中文／English」，唔使重裝
 
 ## 介面語言
 
-App 介面支援 **繁體中文** 同 **English**，喺「設定」頁頂部揀就得：
+App 介面支援 **繁體中文**、**简体中文** 同 **English**，喺「設定」頁頂部揀就得：
 
-| 選項 | 行為 |
-|---|---|
-| 跟隨系統 | 跟住手機系統語言（預設） |
-| 繁體中文 | 固定繁體中文 |
-| English | 固定英文 |
+| 選項 | 資源目錄 | 行為 |
+|---|---|---|
+| 跟隨系統 | — | 跟住手機系統語言（預設）。系統係 zh-CN 就出簡體、zh-TW/HK 出繁體、其他英文語系出英文 |
+| 繁體中文 | `values/` | 固定繁體中文 |
+| 简体中文 | `values-zh-rCN/` | 固定簡體中文 |
+| English | `values-en/` | 固定英文 |
 
 實作上用 `AppCompatDelegate.setApplicationLocales`：
 
 - **Android 13（API 33）以上**：寫入系統嘅「應用程式語言」設定，喺系統設定入面都改到
 - **Android 12 及以下**：由 AppCompat 自己保存（Manifest 已註冊 `AppLocalesMetadataHolderService` + `autoStoreLocales=true`），重啟後依然生效
 
-所有介面文字都放喺 `res/values/strings.xml`（繁中）同 `res/values-en/strings.xml`（英文），
-切換語言時 Compose 會自動 recompose，唔使重啟 Activity。
+所有介面文字都放喺三份資源檔：
+
+| 檔案 | 語言 |
+|---|---|
+| `res/values/strings.xml` | 繁體中文（同時係冇對應語言時嘅預設） |
+| `res/values-zh-rCN/strings.xml` | 简体中文 |
+| `res/values-en/strings.xml` | English |
+
+三份 key 完全對齊（各 98 條）。切換語言時會觸發 configuration change，
+Compose 自動 recompose，唔使重啟 Activity。
+
+到站預報嘅備註（月台、服務延誤、經馬場、幾多卡）係資料層即場拼出嚟嘅，
+由 `AppViewModel` 讀好當前語言嘅模板再傳畀 `EtaRepository`（見 `data/EtaText.kt`），
+所以簡體介面下會顯示「经马场、服务延误」而唔係繁體原文。
+
 車站名、路線名等**來自官方接口嘅資料維持原樣**（官方多數只提供中文），唔會硬翻。
 
 ## 拎 APK（最快方法）
@@ -108,14 +122,15 @@ app/src/main/java/com/hketa/app/
 ├─ data/       Models、ApiModels、Http、IndexStore、EtaRepository、RailData、TimeUtil
 │              （assets/rail.json = 內置鐵路站表）
 ├─ location/   定位封裝（Fused Location，無 GMS 時退回 LocationManager）
-├─ util/       AppLocale（介面語言切換）
+├─ util/       AppLocale（介面語言切換：繁／簡／英／跟隨系統）
 ├─ vm/         AppViewModel（索引狀態、搜尋、沿途車站、預報、附近車站）
 └─ ui/         AppNav 與各頁面（搜尋／鐵路／沿途車站／預報／附近／設定）
 
 res/
-├─ values/strings.xml      繁體中文介面文字
-├─ values-en/strings.xml   英文介面文字
-└─ drawable-*/mipmap-*/    自適應圖示（前景 + 背景）
+├─ values/strings.xml          繁體中文介面文字（預設）
+├─ values-zh-rCN/strings.xml   简体中文介面文字
+├─ values-en/strings.xml       英文介面文字
+└─ drawable-*/mipmap-*/        自適應圖示（前景 + 背景）
 ```
 
 技術棧：Kotlin 2.0.21、Jetpack Compose（Material 3）、Navigation Compose、
@@ -126,6 +141,7 @@ Play Services Location，minSdk 26（Android 8.0）／targetSdk 35。
 
 - 尚未實作：桌面 Widget、收藏車站、路線地圖
 - 官方接口回傳嘅車站名／路線名多數得中文，故英文介面下呢啲資料仍顯示中文原文
+- 簡體中文資源放喺 `values-zh-rCN`；若系統語言係 `zh-SG` 等唔啱 region 嘅簡體語系，會落返預設繁體，呢種情況請手動揀「简体中文」
 - 重鐵接口只支援官方列明嘅 10 條線；輕鐵只列 11 條常規線（特別班次 9xx 唔單獨列出，但仍會喺預報入面出現）
 - 「附近車站」完整度取決於已建立嘅車站索引：鐵路站與九巴最完整，城巴同專線小巴要去「設定」跑深度索引
 - NLB / GMB / 港鐵巴士接口偶有欄位調整，解析已做寬鬆容錯，但仍以官方文件為準
