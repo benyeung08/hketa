@@ -3,6 +3,7 @@ package com.hketa.app.vm
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hketa.app.data.suspendCatching
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.EtaText
 import com.hketa.app.data.FavoriteStop
@@ -20,6 +21,7 @@ import com.hketa.app.data.RouteDef
 import com.hketa.app.data.RouteStopDef
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.GitHubRelease
+import com.hketa.app.util.AppLocale
 import com.hketa.app.data.StopWithSeq
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
@@ -52,6 +54,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         getApplication<Application>().getString(resId, *args)
 
     /** 資料層拼備註（月台／延誤／經馬場／卡數）要用嘅本地化模板 */
+    /** 而家係咪英文介面 */
+    private val enUi: Boolean get() = AppLocale.isEnglish()
+
     private fun etaText(): EtaText = EtaText(
         platform = str(R.string.eta_platform),
         delayed = str(R.string.eta_delayed),
@@ -161,7 +166,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _updateError.value = ""
 
             val current = UpdateChecker.currentVersion(getApplication())
-            runCatching {
+            suspendCatching {
                 val release = UpdateChecker.fetchLatest()
                 when {
                     release == null -> {
@@ -263,7 +268,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         suspend fun step(label: String, block: suspend () -> Unit) {
             _indexStatus.value = label
-            runCatching { block() }
+            // block 本身係 suspend lambda，標準 runCatching 嘅非 suspend lambda 包唔住
+            suspendCatching { block() }
                 .onFailure { _message.value = str(R.string.index_step_failed, label, it.message.orEmpty()) }
         }
 
@@ -285,7 +291,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             coroutineScope {
                 nlbRoutes.map { r ->
                     async {
-                        runCatching { repo.nlbStops(r.routeId) }.getOrDefault(emptyList())
+                        suspendCatching { repo.nlbStops(r.routeId) }.getOrDefault(emptyList())
                             .onEachIndexed { i, s ->
                                 routeStops.add(
                                     RouteStopDef(
@@ -303,8 +309,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         step(str(R.string.index_step_gmb)) {
-            listOf("HKI", "KLN", "NT").forEach { region ->
-                routes.addAll(runCatching { repo.gmbRoutes(region) }.getOrDefault(emptyList()))
+            // 用 for 而唔係 forEach —— forEach 嘅 lambda 唔係 suspend 上下文，
+            // 入面叫 suspendCatching 會編譯失敗
+            for (region in listOf("HKI", "KLN", "NT")) {
+                routes.addAll(suspendCatching { repo.gmbRoutes(region) }.getOrDefault(emptyList()))
             }
         }
 
@@ -333,12 +341,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
             val known = _index.value.stops.map { "${it.op.name}|${it.id}" }.toMutableSet()
-            targets.forEachIndexed { i, r ->
+            // for + withIndex 而唔係 forEachIndexed（後者 lambda 唔係 suspend 上下文）
+            for ((i, r) in targets.withIndex()) {
                 _indexStatus.value = str(R.string.index_deep_ctb_progress, r.route, i + 1, targets.size)
-                runCatching {
+                suspendCatching {
                     val rs = repo.ctbRouteStops(r.route, r.bound)
                     newRouteStops.addAll(rs)
-                    rs.forEach { s ->
+                    for (s in rs) {
                         val key = "CTB|${s.stopId}"
                         if (known.add(key)) {
                             repo.ctbStop(s.stopId)?.let { newStops.add(it) }
@@ -364,9 +373,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
-            targets.take(400).forEachIndexed { i, r ->
+            // for + withIndex 而唔係 forEachIndexed（後者 lambda 唔係 suspend 上下文）
+            for ((i, r) in targets.take(400).withIndex()) {
                 _indexStatus.value = str(R.string.index_deep_gmb_progress, r.route, i + 1, targets.size)
-                runCatching {
+                suspendCatching {
                     val list = repo.gmbRouteStops(r.routeId, "1")
                         .ifEmpty { repo.gmbRouteStops(r.routeId, "2") }
                     newRouteStops.addAll(
@@ -451,7 +461,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun routeOf(op: Operator, line: RailLine): RouteDef = RouteDef(
         op = op,
-        route = line.name,
+        route = if (enUi && line.nameEn.isNotBlank()) line.nameEn else line.name,
         routeId = line.id,
         orig = line.orig,
         dest = line.dest
@@ -465,7 +475,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = null
         viewModelScope.launch {
             _busy.value = true
-            val list: List<StopWithSeq> = runCatching {
+            val list: List<StopWithSeq> = suspendCatching {
                 when (rd.op) {
                     Operator.KMB, Operator.NLB, Operator.MTR_HR, Operator.LRT -> stopsFromIndex(rd)
                     Operator.CTB -> stopsForCtb(rd)
@@ -500,10 +510,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         if (rs.isEmpty()) {
             // 官方 bound 標記（I/O）偶有出入：先試原本方向，搵唔到再試相反方向
-            rs = runCatching { repo.ctbRouteStops(rd.route, rd.bound) }.getOrDefault(emptyList())
+            rs = suspendCatching { repo.ctbRouteStops(rd.route, rd.bound) }.getOrDefault(emptyList())
             if (rs.isEmpty()) {
                 val alt = if (rd.bound.equals("I", true)) "O" else "I"
-                rs = runCatching { repo.ctbRouteStops(rd.route, alt) }.getOrDefault(emptyList())
+                rs = suspendCatching { repo.ctbRouteStops(rd.route, alt) }.getOrDefault(emptyList())
             }
             if (rs.isEmpty()) return emptyList()
 
@@ -514,7 +524,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val toFetch = rs.map { it.stopId }.distinct().filter { known.add("CTB|$it") }
             val fetched = coroutineScope {
                 toFetch.chunked(8).flatMap { batch ->
-                    batch.map { id -> async { runCatching { repo.ctbStop(id) }.getOrNull() } }
+                    batch.map { id -> async { suspendCatching { repo.ctbStop(id) }.getOrNull() } }
                         .awaitAll()
                         .filterNotNull()
                 }
@@ -532,8 +542,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun stopsForGmb(rd: RouteDef): List<StopWithSeq> {
-        val list = runCatching { repo.gmbRouteStops(rd.routeId, "1") }.getOrDefault(emptyList())
-            .ifEmpty { runCatching { repo.gmbRouteStops(rd.routeId, "2") }.getOrDefault(emptyList()) }
+        val list = suspendCatching { repo.gmbRouteStops(rd.routeId, "1") }.getOrDefault(emptyList())
+            .ifEmpty { suspendCatching { repo.gmbRouteStops(rd.routeId, "2") }.getOrDefault(emptyList()) }
         if (list.isEmpty()) return emptyList()
         // 冇站名就用站號兜底，避免整條路線顯示成「暫時冇車站資料」
         val withName = coroutineScope {
@@ -541,7 +551,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 batch.map { s ->
                     async {
                         if (s.name.isNotBlank()) s
-                        else runCatching { repo.gmbStop(s.id) }.getOrNull()
+                        else suspendCatching { repo.gmbStop(s.id) }.getOrNull()
                             ?: s.copy(name = s.id)
                     }
                 }.awaitAll()
@@ -573,7 +583,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadEta(stop: StopDef, route: RouteDef?) {
         viewModelScope.launch {
             _busy.value = true
-            val list = runCatching {
+            val list = suspendCatching {
                 when (stop.op) {
                     Operator.KMB -> repo.kmbEta(stop.id).let { all ->
                         if (route == null || route.op != Operator.KMB) all
@@ -587,7 +597,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         val ctx = getApplication<Application>()
                         val line = route?.routeId
                             ?: RailData.linesOf(ctx, Operator.MTR_HR, stop.id).firstOrNull()?.id
-                            ?: return@runCatching emptyList()
+                            ?: return@suspendCatching emptyList()
                         val (etas, alert) = repo.mtrHeavyRailEta(line, stop.id, etaText()) { code ->
                             RailData.nameOf(ctx, Operator.MTR_HR, code)
                         }
@@ -633,7 +643,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val map = coroutineScope {
                 list.map { fav ->
                     async {
-                        val etas = runCatching { etasForFavorite(fav) }.getOrDefault(emptyList())
+                        val etas = suspendCatching { etasForFavorite(fav) }.getOrDefault(emptyList())
                         fav.key to etas.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
                     }
                 }.awaitAll().toMap()
@@ -722,7 +732,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             .map { it.route }
                             .distinct()
                             .sortedWith(compareBy<String> { it.length }.thenBy { it })
-                        val etas = runCatching {
+                        val etas = suspendCatching {
                             when (st.op) {
                                 // 九巴：一個請求攞晒全站路線預報
                                 Operator.KMB -> repo.kmbEta(st.id)
@@ -736,8 +746,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                         RailData.nameOf(getApplication(), Operator.MTR_HR, it)
                                     }.first
                                 }
-                                // 城巴／嶼巴／小巴要逐條路線查，請求太多 —— 主頁唔預先拉
-                                else -> emptyList()
+                                // 城巴／嶼巴／小巴要逐條路線查 —— 淨係查頭一條，慳請求
+                                Operator.CTB -> {
+                                    val r = routes.firstOrNull()
+                                    if (r == null) emptyList() else repo.ctbEta(st.id, r)
+                                }
+                                Operator.NLB -> {
+                                    val rid = idx.routes
+                                        .firstOrNull { it.op == Operator.NLB && it.route == routes.firstOrNull() }
+                                        ?.routeId
+                                    if (rid.isNullOrBlank()) emptyList() else repo.nlbEta(rid, st.id)
+                                }
+                                Operator.GMB -> {
+                                    val rid = idx.routes
+                                        .firstOrNull { it.op == Operator.GMB && it.route == routes.firstOrNull() }
+                                        ?.routeId
+                                    if (rid.isNullOrBlank()) emptyList() else repo.gmbEta(st.id, rid)
+                                }
+                                Operator.MTR_BUS -> {
+                                    val r = routes.firstOrNull()
+                                    if (r == null) emptyList() else repo.mtrBus(r).second
+                                }
                             }
                         }.getOrDefault(emptyList())
                             .sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
