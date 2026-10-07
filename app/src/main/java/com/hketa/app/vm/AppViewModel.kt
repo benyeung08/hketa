@@ -413,25 +413,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun stopsForCtb(rd: RouteDef): List<StopWithSeq> {
         val idx = _index.value
         var rs = idx.routeStops.filter { it.op == Operator.CTB && it.route == rd.route && it.bound == rd.bound }
+
         if (rs.isEmpty()) {
-            rs = repo.ctbRouteStops(rd.route, rd.bound)
+            // 官方 bound 標記（I/O）偶有出入：先試原本方向，搵唔到再試相反方向
+            rs = runCatching { repo.ctbRouteStops(rd.route, rd.bound) }.getOrDefault(emptyList())
+            if (rs.isEmpty()) {
+                val alt = if (rd.bound.equals("I", true)) "O" else "I"
+                rs = runCatching { repo.ctbRouteStops(rd.route, alt) }.getOrDefault(emptyList())
+            }
+            if (rs.isEmpty()) return emptyList()
+
             mergeAll(emptyList(), rs)
-            val missing = rs.filter { s -> idx.stops.none { it.op == Operator.CTB && it.id == s.stopId } }
-            val newStops = missing.mapNotNull { runCatching { repo.ctbStop(it.stopId) }.getOrNull() }
-            mergeAll(newStops, emptyList())
+
+            // 車站名／座標要逐個請求，串行會拖到幾十秒、容易中途失敗 —— 改成分批並發
+            val known = idx.stops.map { "${it.op.name}|${it.id}" }.toMutableSet()
+            val toFetch = rs.map { it.stopId }.distinct().filter { known.add("CTB|$it") }
+            val fetched = coroutineScope {
+                toFetch.chunked(8).flatMap { batch ->
+                    batch.map { id -> async { runCatching { repo.ctbStop(id) }.getOrNull() } }
+                        .awaitAll()
+                        .filterNotNull()
+                }
+            }
+            if (fetched.isNotEmpty()) mergeAll(fetched, emptyList())
         }
+
         val cur = _index.value
-        return rs.sortedBy { it.seq }.mapNotNull { s ->
-            cur.stops.firstOrNull { it.op == Operator.CTB && it.id == s.stopId }?.let { StopWithSeq(it, s.seq) }
+        // 關鍵：搵唔到站名都要用 stopId 兜底顯示，否則成個列表會被過濾成空、變成「暫時冇車站資料」
+        return rs.sortedBy { it.seq }.map { s ->
+            val stop = cur.stops.firstOrNull { it.op == Operator.CTB && it.id == s.stopId }
+                ?: StopDef(op = Operator.CTB, id = s.stopId, name = s.stopId)
+            StopWithSeq(stop, s.seq)
         }
     }
 
     private suspend fun stopsForGmb(rd: RouteDef): List<StopWithSeq> {
         val list = runCatching { repo.gmbRouteStops(rd.routeId, "1") }.getOrDefault(emptyList())
             .ifEmpty { runCatching { repo.gmbRouteStops(rd.routeId, "2") }.getOrDefault(emptyList()) }
-        val withName = list.map { s ->
-            if (s.name.isNotBlank()) s
-            else runCatching { repo.gmbStop(s.id) }.getOrNull() ?: s
+        if (list.isEmpty()) return emptyList()
+        // 冇站名就用站號兜底，避免整條路線顯示成「暫時冇車站資料」
+        val withName = coroutineScope {
+            list.chunked(8).flatMap { batch ->
+                batch.map { s ->
+                    async {
+                        if (s.name.isNotBlank()) s
+                        else runCatching { repo.gmbStop(s.id) }.getOrNull()
+                            ?: s.copy(name = s.id)
+                    }
+                }.awaitAll()
+            }
         }
         mergeAll(withName, emptyList())
         return withName.mapIndexed { i, s -> StopWithSeq(s, i + 1) }
