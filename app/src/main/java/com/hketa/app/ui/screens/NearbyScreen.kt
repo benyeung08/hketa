@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,7 +91,7 @@ fun NearbyScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Muted("${item.stop.op.label()}　${distanceText(item.distanceMeters, LocalContext.current)}")
+                        Muted("${item.stop.op.labelText()}　${distanceText(item.distanceMeters, LocalContext.current)}")
                         if (item.routes.isNotEmpty()) {
                             Muted(item.routes.take(12).joinToString("　"))
                         }

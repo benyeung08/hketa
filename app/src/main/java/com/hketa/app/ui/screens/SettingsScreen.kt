@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.util.AppLocale
 import com.hketa.app.vm.AppViewModel
 
@@ -128,7 +128,7 @@ fun SettingsScreen(vm: AppViewModel) {
         Text(stringResource(R.string.settings_stats), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         vm.indexStats().forEach { s ->
-            Muted(stringResource(R.string.settings_stats_routes, s.op.label(), s.routes, s.stops))
+            Muted(stringResource(R.string.settings_stats_routes, s.op.labelText(), s.routes, s.stops))
         }
         Muted(stringResource(R.string.settings_routestops, index.routeStops.size))
 

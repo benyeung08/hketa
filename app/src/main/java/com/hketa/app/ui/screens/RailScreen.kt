@@ -25,7 +25,7 @@ import com.hketa.app.data.Operator
 import com.hketa.app.data.RailLine
 import com.hketa.app.data.RouteDef
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,7 +44,7 @@ fun RailScreen(
         groups.forEach { (op, lines) ->
             item {
                 Text(
-                    text = op.label(),
+                    text = op.labelText(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp)

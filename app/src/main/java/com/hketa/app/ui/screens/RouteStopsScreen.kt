@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.label
+import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,7 +47,7 @@ fun RouteStopsScreen(
             fontWeight = FontWeight.Bold
         )
         val destTxt = if (route?.dest.isNullOrBlank()) "" else " " + stringResource(R.string.route_bound_to, route?.dest ?: "")
-        Muted("${route?.op?.label() ?: ""}$destTxt")
+        Muted("${route?.op?.labelText() ?: ""}$destTxt")
 
         Spacer(Modifier.height(12.dp))
 
@@ -64,7 +64,7 @@ fun RouteStopsScreen(
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text("${i + 1}. ${s.stop.name}", style = MaterialTheme.typography.bodyLarge)
-                            Muted("${s.stop.op.label()}　${s.stop.id}")
+                            Muted("${s.stop.op.labelText()}　${s.stop.id}")
                         }
                     }
                 }
