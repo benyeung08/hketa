@@ -10,7 +10,7 @@ import com.hketa.app.data.Operator
  * 語言切換時（configuration change）會自動 recompose 成另一種語言。
  */
 @Composable
-fun Operator.label(): String = stringResource(
+fun Operator.labelText(): String = stringResource(
     when (this) {
         Operator.KMB -> R.string.op_kmb
         Operator.CTB -> R.string.op_ctb
