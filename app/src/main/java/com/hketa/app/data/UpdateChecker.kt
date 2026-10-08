@@ -78,28 +78,36 @@ object UpdateChecker {
     }
 
     /**
-     * 版本號比較，支援 "v1.2.3" / "1.2.3" / "v1.0.0-mobilecode" 等寫法。
-     * 只取每段開頭嘅數字比較（後綴如 -mobilecode 會被忽略）。
+     * 分隔 Release body 入面嘅中英兩半。
+     *
+     * 移植自 code-to-app 嘅做法：Release notes 用一行
+     * `<!-- zh-CN -->` 做分隔（英文喺前，中文喺後）。
+     * 呢個 marker 喺 GitHub 網頁上渲染成空白，所以讀者睇到嘅
+     * 順序係「英文 → 中文」，而 App 會按目前介面語言自動揀其中一半。
+     *
+     * 冇 marker 嘅 Release（舊 notes 或未本地化嘅）就原樣顯示成段 body。
      */
-    fun isNewer(latest: String, current: String): Boolean {
-        fun parts(s: String): List<Int> =
-            s.trim()
-                .removePrefix("v").removePrefix("V")
-                .split(".")
-                .mapNotNull { seg -> seg.takeWhile { it.isDigit() }.toIntOrNull() }
+    private const val ZH_MARKER = "<!-- zh-CN -->"
 
-        val a = parts(latest)
-        val b = parts(current)
-        if (a.isEmpty() || b.isEmpty()) return false
-
-        val n = maxOf(a.size, b.size)
-        for (i in 0 until n) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
+    /** 按目前語言揀 Release body 嘅其中一半；簡體同繁體都當中文 */
+    fun localizeBody(body: String, lang: String): String {
+        val raw = body.trim()
+        val idx = raw.indexOf(ZH_MARKER)
+        if (idx < 0) return raw
+        val english = raw.substring(0, idx).trim()
+        val chinese = raw.substring(idx + ZH_MARKER.length).trim()
+        val isChinese = lang.startsWith("zh", ignoreCase = true)
+        return if (isChinese && chinese.isNotBlank()) chinese
+        else if (english.isNotBlank()) english
+        else raw
     }
+
+    /** 版本號比較（用語義化 Version，支援 pre-release 後綴） */
+    fun isNewer(latest: String, current: String): Boolean =
+        Version.isNewer(latest, current)
+
+    /** 兩個版本係唔係一樣（畀版本歷史標「已安裝」用） */
+    fun sameVersion(a: String, b: String): Boolean = Version.same(a, b)
 
     /** 搵 APK 安裝檔；搵唔到就退返第一個附件 */
     fun apkAsset(release: GitHubRelease): ReleaseAsset? =
