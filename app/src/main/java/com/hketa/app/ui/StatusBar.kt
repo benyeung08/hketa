@@ -42,7 +42,8 @@ import com.hketa.app.vm.AppViewModel
 fun StatusBar(
     vm: AppViewModel,
     onCheckUpdate: () -> Unit,
-    onOpenFavorites: () -> Unit
+    onOpenFavorites: () -> Unit,
+    onOpenHistory: () -> Unit
 ) {
     val lastUpdateAt by vm.lastUpdateAt.collectAsState()
     val countdown by vm.refreshCountdown.collectAsState()
@@ -105,10 +106,9 @@ fun StatusBar(
             )
             StatusIcon(
                 res = R.drawable.ic_status_clock,
-                desc = stringResource(R.string.status_auto_refresh),
+                desc = stringResource(R.string.status_version_history),
                 enabled = true,
-                badgeText = if (autoRefresh && countdown > 0) countdown.toString() else null,
-                onClick = { vm.toggleAutoRefresh() }
+                onClick = onOpenHistory
             )
             StatusIcon(
                 res = R.drawable.ic_status_layers,
@@ -118,10 +118,9 @@ fun StatusBar(
             )
         }
 
-        // lastUpdateAt 只係用嚟觸發重組，實際顯示喺時鐘掣嘅倒數入面
-        if (lastUpdateAt > 0L) {
-            Spacer(Modifier.width(0.dp))
-        }
+        // 自動刷新喺背景跑（倒數唔再顯示喺狀態欄），
+        // lastUpdateAt 用嚟觸發重組、令圖示喺忙碌時正確變灰
+        if (lastUpdateAt > 0L && busy) Unit
     }
 }
 
