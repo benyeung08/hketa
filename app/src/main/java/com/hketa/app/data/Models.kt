@@ -80,6 +80,9 @@ data class NearbyStop(val stop: StopDef, val distanceMeters: Int, val routes: Li
 /** 一間機構的索引完成度 */
 data class IndexStat(val op: Operator, val routes: Int, val stops: Int)
 
+/** 自動定位進行到邊一步 */
+enum class LocatePhase { IDLE, LOCATING, OK, FAILED, NO_PERMISSION }
+
 /** 「搜尋車站」嘅一筆結果：一個車站 + 該站停靠嘅路線號 */
 data class StopHit(
     val stop: StopDef = StopDef(),
