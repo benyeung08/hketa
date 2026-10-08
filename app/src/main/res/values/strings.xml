@@ -35,10 +35,19 @@
     <string name="title_settings">設定</string>
 
     <!-- 搜尋 -->
-    <string name="search_hint">路線號或車站名，如 1A、K51、屯馬線、沙田</string>
+    <string name="search_hint">路線號，如 1A、6、K51</string>
+
+    <!-- 獨立搜尋車站 -->
+    <string name="search_tab_routes">路線</string>
+    <string name="search_tab_stops">車站</string>
+    <string name="search_stops_hint">輸入車站名或站號（如 沙田、SHA TIN、KT492）</string>
+    <string name="search_stops_empty">搵唔到呢個車站，試下只輸入部分站名，或者去「ETA 資料修復」重新下載</string>
+    <string name="search_stops_routes">停靠：%1$s</string>
+    <string name="search_stops_none">暫時冇路線資料</string>
+    <string name="search_stops_more">…仲有 %1$d 條</string>
     <string name="search_group_stops">車站</string>
     <string name="search_group_routes">路線</string>
-    <string name="search_empty">搵唔到，試下只輸入數字（例如 6 而唔係 6A），或直接去「鐵路」分頁。</string>
+    <string name="search_empty">搵唔到路線，試下只輸入數字（例如 6 而唔係 6A）。想搵車站請用「主頁」或「附近」。</string>
     <string name="route_bound_to">往 %1$s</string>
 
     <!-- 沿途車站 -->
