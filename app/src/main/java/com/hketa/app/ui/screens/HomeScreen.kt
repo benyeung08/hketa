@@ -44,6 +44,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import com.hketa.app.util.AppLocale
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.sp
+import com.hketa.app.data.PresetLocation
+import com.hketa.app.data.HK_PRESET_LOCATIONS
 import com.hketa.app.data.LocatePhase
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.HomeItem
@@ -112,6 +121,29 @@ fun HomeScreen(
                 }
             }
         )
+
+        // 手動選點：唔想授權定位／定位失敗時嘅兜底
+        val manualLoc by vm.manualLocation.collectAsState()
+        var showPicker by remember { mutableStateOf(false) }
+        if (locatePhase == LocatePhase.NO_PERMISSION || manualLoc != null) {
+            Spacer(Modifier.height(8.dp))
+            ManualLocationBar(
+                selected = manualLoc,
+                expanded = showPicker,
+                lang = AppLocale.current(),
+                onToggleExpand = { showPicker = !showPicker },
+                onPick = { loc ->
+                    vm.setManualLocation(loc)
+                    showPicker = false
+                    vm.startAutoLocate(context) { LocationProvider.hasPermission(context) }
+                    trigger++
+                },
+                onClear = {
+                    vm.setManualLocation(null)
+                    showPicker = false
+                }
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 
@@ -295,6 +327,93 @@ private fun AutoLocateBar(
             )
             TextButton(onClick = onRefreshNow) {
                 Text(stringResource(R.string.home_refresh))
+            }
+        }
+    }
+}
+
+/**
+ * 手動選點：用戶唔想授權定位（或者定位失敗）嗰陣，
+ * 自己揀一個區／交通樞紐，主頁照樣用嗰個座標搵附近車站。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ManualLocationBar(
+    selected: PresetLocation?,
+    expanded: Boolean,
+    lang: String,
+    onToggleExpand: () -> Unit,
+    onPick: (PresetLocation) -> Unit,
+    onClear: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpand),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_status_layers),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.manual_location_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (expanded) "▾" else "▸",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 16.sp
+                )
+            }
+
+            val label = selected?.display(lang)
+            if (label != null) {
+                Spacer(Modifier.height(4.dp))
+                Muted(stringResource(R.string.manual_location_current, label))
+            }
+
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    HK_PRESET_LOCATIONS.forEach { loc ->
+                        val isSel = selected?.lat == loc.lat && selected?.lon == loc.lon
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.clickable { onPick(loc) }
+                        ) {
+                            Text(
+                                text = loc.display(lang),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isSel) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+                if (selected != null) {
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = onClear) {
+                        Text(stringResource(R.string.manual_location_clear))
+                    }
+                }
             }
         }
     }
