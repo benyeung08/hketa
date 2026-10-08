@@ -255,4 +255,22 @@
     <string name="status_copy_version">複製版本號</string>
     <string name="status_version_copied">版本號已複製</string>
 
+
+    <!-- 手動選點 -->
+    <string name="manual_location_title">手動選點（唔用定位）</string>
+    <string name="manual_location_current">而家用緊：%1$s</string>
+    <string name="manual_location_clear">清除（改返用定位）</string>
+
+
+    <string name="index_deep_already_done">已經全部修復完成，唔使再抓</string>
+
+
+    <!-- 輕鐵特別班次 -->
+    <string name="rail_special_title">輕鐵特別班次</string>
+    <string name="rail_special_hint">9xx 之類嘅特別班次唔喺常規路線入面。官方冇提供清單，但可以掃描各站預報動態搵返出嚟。</string>
+    <string name="rail_special_scan">掃描特別班次</string>
+    <string name="rail_special_scanning">掃描中…</string>
+    <string name="rail_special_stops">%1$d 個站有呢個班次</string>
+    <string name="rail_special_none">暫時搵唔到特別班次</string>
+
 </resources>
