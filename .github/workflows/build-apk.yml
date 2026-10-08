@@ -181,6 +181,11 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    # 關鍵：發布失敗唔應該拖垮成個 workflow —— APK 已經喺 build job 嘅
+    # artifact 度，呢度只係額外抄一份去 apk 分支。開咗 continue-on-error 之後，
+    # 就算 git push 失敗（shallow 被拒 / 分支保護 / token 權限），Actions 只會
+    # 顯示黃色警告，成個 run 仍然係綠色。
+    continue-on-error: true
     # 點解會「This job was skipped」：
     #   之前淨係喺 workflow_dispatch 或 push tag 時先跑，
     #   所以 push 去 main 嗰陣成個表達式係 false → job 被跳過。
@@ -324,3 +329,21 @@ jobs:
             echo
             echo "直接喺 repo 檔案列表撳 \`latest.apk\` → Download 就可以裝。"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnose push failure
+        if: failure() && steps.tok.outputs.skip == 'false'
+        run: |
+          {
+            echo "## ⚠️ 發布步驟失敗（唔影響 APK）"
+            echo
+            echo "APK 仍然喺 **build** job 嘅 artifact \`hketa-release-apk\` 度。"
+            echo
+            echo "常見原因："
+            echo "1. 分支有 branch protection —— Settings ▸ Branches 解除，或改推去冇保護嘅分支"
+            echo "2. shallow clone 被拒 —— 已自動 \`--unshallow\` 重試"
+            echo "3. Token 權限唔夠 —— 同 repo 要 \`contents: write\`，跨 repo 要 PAT"
+            echo
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -20 /tmp/push.err 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+          echo '\`' >> "$GITHUB_STEP_SUMMARY"
