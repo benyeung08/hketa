@@ -37,6 +37,31 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.5",
+            date = "2026-10-08",
+            titleZhHant = "Widget 支援全部營辦商 + 自動背景修復",
+            titleZhHans = "Widget 支持全部运营商 + 自动背景修复",
+            titleEn = "Widget supports every operator + automatic background repair",
+            itemsZhHant = listOf(
+                "Widget 支援全部營辦商：之前唔係因為「要逐條路線查」，而係收藏嗰陣冇記低路線。而家收藏會記低路線，Widget 淨係查嗰一條（1 個請求）",
+                "城巴／小巴自動背景修復：索引一建好就自動補車站，唔使再人手撳「修復城巴／修復小巴」",
+                "輕鐵特別班次結果存落本地快取，掃一次之後開鐵路頁即刻顯示",
+                "地圖改咗優先讀快取，睇過嘅路線離線都出到圖"
+            ),
+            itemsZhHans = listOf(
+                "Widget 支持全部运营商：之前不是因为「要逐条路线查」，而是收藏时没记录路线。现在收藏会记录路线，Widget 只查那一条（1 个请求）",
+                "城巴／小巴自动背景修复：索引一建好就自动补车站，不用再手动点「修复城巴／修复小巴」",
+                "轻铁特别班次结果存到本地缓存，扫一次之后开铁路页立即显示",
+                "地图改成优先读缓存，看过的路线离线也能出图"
+            ),
+            itemsEn = listOf(
+                "Widget now supports every operator: the blocker wasn't \"one request per route\" — bookmarks simply never stored a route. They do now, so the widget queries just that one route (a single request)",
+                "Citybus / GMB repair runs automatically in the background once the index is built — no more manual \"Repair Citybus / Repair GMB\"",
+                "Light Rail special-trip scan results are cached locally, so the Rail tab shows them immediately after one scan",
+                "The map now prefers cache, so routes you've already viewed render offline"
+            )
+        ),
+        Entry(
             version = "1.0.4",
             date = "2026-10-08",
             titleZhHant = "附近車站改為「一條班次一張卡」，撳落去睇沿途車站",
