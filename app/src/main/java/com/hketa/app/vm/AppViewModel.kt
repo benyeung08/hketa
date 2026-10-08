@@ -3,6 +3,7 @@ package com.hketa.app.vm
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hketa.app.data.StopHit
 import com.hketa.app.data.suspendCatching
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.EtaText
@@ -89,8 +90,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _results = MutableStateFlow<List<RouteDef>>(emptyList())
     val results: StateFlow<List<RouteDef>> = _results.asStateFlow()
 
-    private val _stopResults = MutableStateFlow<List<StopDef>>(emptyList())
-    val stopResults: StateFlow<List<StopDef>> = _stopResults.asStateFlow()
+    // ---- 獨立嘅「搜尋車站」----
+    private val _stopQuery = MutableStateFlow("")
+    val stopQuery: StateFlow<String> = _stopQuery.asStateFlow()
+
+    private val _stopResults = MutableStateFlow<List<StopHit>>(emptyList())
+    val stopResults: StateFlow<List<StopHit>> = _stopResults.asStateFlow()
+
 
     private val _selectedRoute = MutableStateFlow<RouteDef?>(null)
     val selectedRoute: StateFlow<RouteDef?> = _selectedRoute.asStateFlow()
@@ -431,7 +437,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = q.trim()
         if (key.isBlank()) {
             _results.value = emptyList()
-            _stopResults.value = emptyList()
             return
         }
         val upper = key.uppercase()
@@ -454,16 +459,60 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } else fromIndex
 
         _results.value = withMtrBus
+    }
 
-        // 車站搜尋：鐵路站優先，其次巴士站
-        val stops = _index.value.stops
-            .filter { it.name.contains(key, ignoreCase = true) || it.id.equals(upper, true) }
-            .sortedWith(
-                compareBy<StopDef> { it.op.ordinal }
-                    .thenBy { it.name.length }
-                    .thenBy { it.name }
-            ).take(60)
-        _stopResults.value = stops
+    /**
+     * 獨立嘅車站搜尋：淨係搵車站，唔撈路線。
+     * 同時計出該站停靠嘅路線號，撳入去可以直接睇到站預報。
+     */
+    fun setStopQuery(q: String) {
+        _stopQuery.value = q
+        val key = q.trim()
+        if (key.isBlank()) {
+            _stopResults.value = emptyList()
+            return
+        }
+        val upper = key.uppercase()
+        val idx = _index.value
+
+        // 路線號 → 車站 ID 嘅反向表，用嚟計每站停靠嘅路線
+        val routesByStop = idx.routeStops
+            .groupBy { "${it.op.name}|${it.stopId}" }
+            .mapValues { e -> e.value.map { it.route }.distinct() }
+
+        val hits = idx.stops
+            .asSequence()
+            .filter {
+                it.name.contains(key, true) ||
+                    it.nameEn.contains(upper, true) ||
+                    it.id.uppercase().contains(upper)
+            }
+            // 站名開頭命中排最前，其次站名包含，最後淨係站號命中
+            .map { st ->
+                val rank = when {
+                    st.name.startsWith(key, true) -> 0
+                    st.name.contains(key, true) -> 1
+                    st.nameEn.startsWith(upper, true) -> 2
+                    st.nameEn.contains(upper, true) -> 3
+                    else -> 4
+                }
+                rank to st
+            }
+            .sortedWith(compareBy<Pair<Int, StopDef>> { it.first }
+                .thenBy { it.second.name.length }
+                .thenBy { it.second.name })
+            .take(80)
+            .map { (_, st) ->
+                StopHit(
+                    stop = st,
+                    routes = routesByStop["${st.op.name}|${st.id}"]
+                        .orEmpty()
+                        .sortedWith(compareBy<String> { it.length }.thenBy { it })
+                )
+            }
+            .toList()
+
+        _stopResults.value = hits
     }
 
     /** 鐵路線分組（畀「鐵路」分頁用）：港鐵重鐵 + 輕鐵 */
