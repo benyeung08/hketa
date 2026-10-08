@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 data class RailStop(
     val id: String = "",
     val name: String = "",
+    val nameEn: String = "",  // 官方英文站名（如 Hong Kong / Tuen Mun Ferry Pier）
     val lat: Double = 0.0,
     val lon: Double = 0.0
 )
@@ -57,15 +58,38 @@ object RailData {
     fun allLines(context: android.content.Context): List<RailLine> =
         heavyRail(context) + lightRail(context)
 
-    /** 站碼（重鐵）或站號（輕鐵）→ 中文站名 */
-    fun nameOf(context: android.content.Context, op: Operator, id: String): String {
+    /**
+     * 站碼（重鐵）或站號（輕鐵）→ 站名。
+     * @param english true 時優先返官方英文站名，冇就退返中文
+     */
+    fun nameOf(
+        context: android.content.Context,
+        op: Operator,
+        id: String,
+        english: Boolean = false
+    ): String {
         val lines = when (op) {
             Operator.MTR_HR -> heavyRail(context)
             Operator.LRT -> lightRail(context)
             else -> emptyList()
         }
-        for (l in lines) for (s in l.stops) if (s.id == id) return s.name
+        for (l in lines) for (s in l.stops) {
+            if (s.id == id) {
+                return if (english && s.nameEn.isNotBlank()) s.nameEn else s.name
+            }
+        }
         return id
+    }
+
+    /** 查站嘅官方英文名；冇就返空字串 */
+    fun stationEn(context: android.content.Context, op: Operator, id: String): String {
+        val lines = when (op) {
+            Operator.MTR_HR -> heavyRail(context)
+            Operator.LRT -> lightRail(context)
+            else -> emptyList()
+        }
+        for (l in lines) for (s in l.stops) if (s.id == id) return s.nameEn
+        return ""
     }
 
     /** 站碼 → 所屬線（重鐵一站可能跨線，回傳全部） */

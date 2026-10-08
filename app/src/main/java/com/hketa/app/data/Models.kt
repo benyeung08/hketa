@@ -102,3 +102,56 @@ data class HomeItem(
     /** 最近一班嘅分鐘數（冇就 null） */
     val nextMinutes: Int? get() = etas.firstOrNull()?.minutes
 }
+
+/**
+ * 手動選點用嘅預設位置（香港各區中心／交通樞紐）。
+ *
+ * 用途：用戶唔想授權定位（或者定位失敗）嗰陣，可以自己揀一個地點，
+ * 主頁照樣用呢個座標去搵附近車站，唔會淨係顯示「未授權定位」。
+ */
+data class PresetLocation(
+    val zhHant: String = "",
+    val zhHans: String = "",
+    val en: String = "",
+    val lat: Double = 0.0,
+    val lon: Double = 0.0
+) {
+    /** 按目前語言揀顯示名 */
+    fun display(lang: String): String = when {
+        lang.equals("en", ignoreCase = true) -> en
+        lang.contains("CN", ignoreCase = true) || lang.contains("Hans", ignoreCase = true) -> zhHans
+        else -> zhHant
+    }
+}
+
+/** 香港常用地點（區中心／主要交通樞紐），畀「手動選點」用 */
+val HK_PRESET_LOCATIONS: List<PresetLocation> = listOf(
+    PresetLocation("中環", "中环", "Central", 22.2819, 114.1585),
+    PresetLocation("銅鑼灣", "铜锣湾", "Causeway Bay", 22.2805, 114.1850),
+    PresetLocation("旺角", "旺角", "Mong Kok", 22.3190, 114.1690),
+    PresetLocation("觀塘", "观塘", "Kwun Tong", 22.3120, 114.2250),
+    PresetLocation("將軍澳", "将军澳", "Tseung Kwan O", 22.3070, 114.2600),
+    PresetLocation("沙田", "沙田", "Sha Tin", 22.3810, 114.1870),
+    PresetLocation("大埔", "大埔", "Tai Po", 22.4510, 114.1700),
+    PresetLocation("上水", "上水", "Sheung Shui", 22.5040, 114.1280),
+    PresetLocation("荃灣", "荃湾", "Tsuen Wan", 22.3730, 114.1110),
+    PresetLocation("屯門", "屯门", "Tuen Mun", 22.3910, 113.9770),
+    PresetLocation("元朗", "元朗", "Yuen Long", 22.4430, 114.0220),
+    PresetLocation("天水圍", "天水围", "Tin Shui Wai", 22.4610, 114.0030),
+    PresetLocation("東涌", "东涌", "Tung Chung", 22.2890, 113.9430),
+    PresetLocation("香港國際機場", "香港国际机场", "Hong Kong Int'l Airport", 22.3080, 113.9180),
+    PresetLocation("香港仔", "香港仔", "Aberdeen", 22.2480, 114.1550),
+    PresetLocation("九龍灣", "九龙湾", "Kowloon Bay", 22.3230, 114.2100)
+)
+
+/**
+ * 輕鐵特別班次（例如 9xx 系列）。
+ *
+ * 呢啲班次唔喺常規 11 條線入面，所以路線列表搵唔到；
+ * 但官方預報接口會返，所以可以掃描各站預報動態搵返出嚟。
+ */
+data class SpecialRouteInfo(
+    val route: String = "",
+    val stopIds: List<String> = emptyList(),
+    val stopNames: List<String> = emptyList()
+)

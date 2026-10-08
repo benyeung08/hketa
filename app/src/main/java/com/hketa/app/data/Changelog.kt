@@ -37,6 +37,37 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.3",
+            date = "2026-10-08",
+            titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、手動選點",
+            titleZhHans = "已知限制大清扫：真实地图、铁路英文名、手动选点",
+            titleEn = "Known-limitations cleanup: real map, rail English names, manual location",
+            itemsZhHant = listOf(
+                "路線地圖改用真實地圖：Leaflet + CARTO 深色瓦片，有底圖有街道、可縮放撳站名，唔使 API key；離線自動退回示意圖",
+                "鐵路站名加咗官方英文名：重鐵 98 個 + 輕鐵 68 個全部齊，英文介面顯示官方站名（唔係自行翻譯）",
+                "新增手動選點：唔想授權定位都可以自己揀區／交通樞紐（16 個預設），主頁照樣搵到附近車站",
+                "輕鐵特別班次（9xx）：鐵路頁加咗「掃描特別班次」，掃各站預報動態搵返出嚟，唔使硬編碼",
+                "城巴／小巴深度修復改咗分批並發 + 增量，時間同請求數大幅減少，唔再一定需要 Wi-Fi",
+                "鐵路頁線名喺英文介面下顯示官方英文名（如 Tuen Ma Line）"
+            ),
+            itemsZhHans = listOf(
+                "路线地图改用真实地图：Leaflet + CARTO 深色瓦片，有底图有街道、可缩放点站名，不需 API key；离线自动退回示意图",
+                "铁路站名加了官方英文名：重铁 98 个 + 轻铁 68 个全部齐，英文界面显示官方站名（不是自行翻译）",
+                "新增手动选点：不想授权定位也能自己选区／交通枢纽（16 个预设），主页照样找得到附近车站",
+                "轻铁特别班次（9xx）：铁路页加了「扫描特别班次」，扫各站预报动态找出来，不需硬编码",
+                "城巴／小巴深度修复改成分批并发 + 增量，时间和请求数大幅减少，不再一定需要 Wi-Fi",
+                "铁路页线名在英文界面下显示官方英文名（如 Tuen Ma Line）"
+            ),
+            itemsEn = listOf(
+                "Route map now shows a real map: Leaflet + CARTO dark tiles with basemap, streets, zoom and tappable stop names — no API key. Falls back to the schematic view offline",
+                "Official English station names added: all 98 heavy-rail and 68 Light Rail stops, shown in the English interface (official names, not translations)",
+                "New manual location picker: if you'd rather not grant GPS, pick a district or hub (16 presets) and Home still finds nearby stops",
+                "Light Rail special trips (9xx): the Rail tab can now scan stop arrivals to discover them dynamically — no hardcoded list",
+                "Citybus / GMB deep repair is now batched-concurrent and incremental, so it's much faster and no longer requires Wi-Fi",
+                "Rail line names show their official English names (e.g. Tuen Ma Line) in the English interface"
+            )
+        ),
+        Entry(
             version = "1.0.2",
             date = "2026-10-08",
             titleZhHant = "主頁自動定位 + 更新介面改版",
