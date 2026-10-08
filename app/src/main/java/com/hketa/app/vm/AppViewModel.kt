@@ -49,6 +49,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         /** 到站預報自動刷新間隔（秒）—— 同底部狀態欄嘅倒數一致 */
         const val ETA_AUTO_REFRESH_SEC = 20
 
+        /** 主頁自動重新定位／重整間隔（秒） */
+        const val HOME_AUTO_LOCATE_SEC = 60
+
         private const val INDEX_VERSION = 2
         private const val UPDATE_THROTTLE_MS = 30 * 60 * 1000L
         private const val HOME_RADIUS_M = 800.0
@@ -98,6 +101,62 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- 索引診斷：記錄各營辦商喺建立索引時遇到嘅狀況 ----
     private val _indexErrors = MutableStateFlow<List<Pair<Operator, String>>>(emptyList())
     val indexErrors: StateFlow<List<Pair<Operator, String>>> = _indexErrors.asStateFlow()
+
+    // ---- 自動定位 ----
+    private val _autoLocate = MutableStateFlow(true)
+    val autoLocate: StateFlow<Boolean> = _autoLocate.asStateFlow()
+
+    /** 自動定位目前進行到邊一步（畀 UI 顯示「定位中／搵到 N 個站」） */
+    private val _locatePhase = MutableStateFlow(LocatePhase.IDLE)
+    val locatePhase: StateFlow<LocatePhase> = _locatePhase.asStateFlow()
+
+    /** 上次成功定位嘅時間（epoch millis） */
+    private val _lastLocateAt = MutableStateFlow(0L)
+    val lastLocateAt: StateFlow<Long> = _lastLocateAt.asStateFlow()
+
+    private var locateJob: Job? = null
+
+    fun setAutoLocate(on: Boolean) {
+        _autoLocate.value = on
+        if (!on) {
+            locateJob?.cancel()
+            locateJob = null
+            _locatePhase.value = LocatePhase.IDLE
+        }
+    }
+
+    /**
+     * 啟動自動定位：每隔 HOME_AUTO_LOCATE_SEC 秒重新定位一次並重整主頁。
+     * 淨係喺「自動定位」開咗、且已經授權嘅情況先會真正發出定位請求。
+     */
+    fun startAutoLocate(context: android.content.Context, granted: () -> Boolean) {
+        locateJob?.cancel()
+        locateJob = viewModelScope.launch {
+            while (_autoLocate.value) {
+                if (granted()) {
+                    _locatePhase.value = LocatePhase.LOCATING
+                    val ok = suspendCatching { loadHomeInternal(context) }.getOrDefault(false)
+                    _locatePhase.value = if (ok) LocatePhase.OK else LocatePhase.FAILED
+                    if (ok) _lastLocateAt.value = System.currentTimeMillis()
+                } else {
+                    _locatePhase.value = LocatePhase.NO_PERMISSION
+                }
+                delay(HOME_AUTO_LOCATE_SEC * 1000L)
+            }
+        }
+    }
+
+    /** 原有嘅 loadHome 保留（手動／首次用），內部邏輯抽咗出嚟共用 */
+    private suspend fun loadHomeInternal(context: android.content.Context): Boolean {
+        ensureFavorites()
+        _favorites.value = favoritesStore.all()
+        val fix = LocationProvider.current(context)
+        if (fix == null) {
+            _homeItems.value = emptyList()
+            return false
+        }
+        return suspendCatching { buildHomeItems(fix) }.getOrDefault(false)
+    }
 
     // ---- 版本歷史 ----
     private val _historyLoading = MutableStateFlow(false)
@@ -904,18 +963,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun loadHome(context: android.content.Context) {
         viewModelScope.launch {
-            ensureFavorites()
-            _favorites.value = favoritesStore.all()
             _homeLoading.value = true
+            val ok = suspendCatching { loadHomeInternal(context) }.getOrDefault(false)
+            _homeLoading.value = false
+            if (!ok) _message.value = str(R.string.home_need_location)
+            else if (_homeItems.value.isEmpty()) _message.value = str(R.string.home_empty)
+        }
+    }
 
-            val fix = LocationProvider.current(context)
-            if (fix == null) {
-                _homeItems.value = emptyList()
-                _homeLoading.value = false
-                _message.value = str(R.string.home_need_location)
-                return@launch
-            }
-            _nearbyOrigin.value = "%.5f, %.5f（${fix.source}）".format(fix.lat, fix.lon)
+    /** 核心：定位 → 搵附近車站 → 逐個站拉到站預報；成功返 true */
+    private suspend fun buildHomeItems(fix: LocationProvider.Fix): Boolean {
+        _nearbyOrigin.value = "%.5f, %.5f（${fix.source}）".format(fix.lat, fix.lon)
 
             val idx = _index.value
             val stops = idx.stops
@@ -980,10 +1038,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }.awaitAll()
             }
 
-            _homeItems.value = items
-            _homeLoading.value = false
-            if (items.isEmpty()) _message.value = str(R.string.home_empty)
-        }
+        _homeItems.value = items
+        return items.isNotEmpty()
     }
 
     // ============ 附近車站 ============
