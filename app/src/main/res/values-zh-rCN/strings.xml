@@ -148,6 +148,18 @@
     <string name="update_view_release">查看 Release</string>
     <string name="update_notes">更新内容</string>
     <string name="update_size">大小约 %1$.1f MB</string>
+
+    <!-- 更新界面（移植自 code-to-app） -->
+    <string name="update_title">检查更新</string>
+    <string name="update_new_version">新版本：v%1$s</string>
+    <string name="update_current_version">当前版本：v%1$s</string>
+    <string name="update_cancel">取消</string>
+    <string name="update_retry">重试</string>
+    <string name="update_close">关闭</string>
+    <string name="update_install_ready">下载完成，可以安装</string>
+    <string name="update_ready_hint">点「安装」开始更新</string>
+    <string name="update_downloading">下载中…</string>
+    <string name="update_open_browser">用浏览器下载</string>
     <string name="settings_logo_desc">HKETA</string>
 
     <string name="route_bound_from">从 %1$s</string>
@@ -183,6 +195,10 @@
     <string name="history_online">线上（GitHub Releases）</string>
     <string name="history_local">本地更新记录</string>
     <string name="history_installed">已安装</string>
+
+    <string name="history_loading">载入版本历史…</string>
+    <string name="history_failed">载入版本历史失败</string>
+    <string name="history_empty">还没有任何 Release</string>
     <string name="history_close">关闭</string>
 
     <string name="status_refresh">即时刷新</string>
