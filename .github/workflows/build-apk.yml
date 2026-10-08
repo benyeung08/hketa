@@ -168,21 +168,31 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================================
-  # 把 APK 提交到另一個 repo（例如 benyeung08/code-to-app），
-  # 令 APK 可以直接喺 repo 檔案列表度下載（同 ci-bot 上傳嘅做法一樣）。
+  # 把 APK 提交到 repo 嘅 apk 分支 / builds 目錄，
+  # 令 APK 可以直接喺 repo 檔案列表度撳 latest.apk 下載
+  # （同 ci-bot 上傳嘅做法一樣）。
   #
-  # 注意：預設嘅 GITHUB_TOKEN 只能寫「當前」repo，跨 repo 推送一定要 PAT。
-  #       去 Settings ▸ Developer settings ▸ Personal access tokens 開一個
+  # 默認係「本 repo」，內置 GITHUB_TOKEN 就夠，唔使另外設定 PAT。
+  #       只有想推去「另一個」repo 時先需要 PUBLISH_TOKEN：
+  #       Settings ▸ Developer settings ▸ Personal access tokens 開一個
   #       classic token（scope 揀 repo），再加落本 repo 嘅
-  #       Settings ▸ Secrets ▸ Actions，命名做 PUBLISH_TOKEN。
-  #       冇設定嘅話呢個 job 會自動跳過，唔會令成個 workflow 失敗。
+  #       Settings ▸ Secrets ▸ Actions。
   # =====================================================================
   publish:
     needs: build
     runs-on: ubuntu-latest
+    # 點解會「This job was skipped」：
+    #   之前淨係喺 workflow_dispatch 或 push tag 時先跑，
+    #   所以 push 去 main 嗰陣成個表達式係 false → job 被跳過。
+    #   而家三種情況都會發布：
+    #     ① push 去 main
+    #     ② push v* tag
+    #     ③ 手動 Run workflow 且 inputs.publish 係 true
+    #   註：唔加 always() 係刻意嘅 —— build 失敗時就唔應該發布，
+    #   needs 關係會令呢個 job 自動取消，唔會浪費時間。
     if: >-
-      ${{ github.event_name == 'workflow_dispatch' && inputs.publish
-          || startsWith(github.ref, 'refs/tags/v') }}
+      ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+          || github.event_name == 'workflow_dispatch' && inputs.publish }}
 
     steps:
       - name: Download built APK
