@@ -31,12 +31,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hketa.app.location.LocationProvider
 import com.hketa.app.R
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
+import com.hketa.app.data.LocatePhase
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.HomeItem
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
+import com.hketa.app.ui.titleWithCode
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
@@ -58,7 +68,21 @@ fun HomeScreen(
     val origin by vm.nearbyOrigin.collectAsState()
     val favorites by vm.favorites.collectAsState()
 
+    val autoLocate by vm.autoLocate.collectAsState()
+    val locatePhase by vm.locatePhase.collectAsState()
+
     var trigger by remember { mutableIntStateOf(0) }
+
+    // 自動：一入主頁就請求定位並開始定時重整（唔使撳掣）
+    LaunchedEffect(Unit) {
+        onNeedLocation { granted ->
+            if (granted) {
+                vm.startAutoLocate(context) {
+                    LocationProvider.hasPermission(context)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(trigger) {
         if (trigger > 0) vm.loadHome(context)
@@ -70,14 +94,20 @@ fun HomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(12.dp)
     ) {
-        Button(
-            onClick = {
-                onNeedLocation { granted -> if (granted) trigger++ }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.home_refresh))
-        }
+        // 自動定位狀態（唔使撳掣，入頁即跑）
+        AutoLocateBar(
+            autoLocate = autoLocate,
+            phase = locatePhase,
+            onToggle = { vm.setAutoLocate(!autoLocate) },
+            onRefreshNow = {
+                onNeedLocation { granted ->
+                    if (granted) {
+                        vm.startAutoLocate(context) { LocationProvider.hasPermission(context) }
+                        trigger++
+                    }
+                }
+            }
+        )
 
         Spacer(Modifier.height(8.dp))
 
@@ -124,7 +154,7 @@ private fun HomeStopCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${item.stop.displayName()}（${item.stop.id}）",
+                        text = item.stop.titleWithCode(),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -201,3 +231,67 @@ private fun minutesText(m: Int?): String = when {
 
 private fun distanceText(m: Int): String =
     if (m < 1000) "${m} m" else "%.1f km".format(m / 1000.0)
+
+/**
+ * 自動定位狀態列：
+ *   ● 自動定位開／關（撳圓點切換）
+ *   定位中… / 已定位 · N 個站 / 搵唔到定位 / 未授權
+ *   右邊一個「即刻重整」掣
+ */
+@Composable
+private fun AutoLocateBar(
+    autoLocate: Boolean,
+    phase: LocatePhase,
+    onToggle: () -> Unit,
+    onRefreshNow: () -> Unit
+) {
+    val (dotColor, statusText) = when {
+        !autoLocate -> MaterialTheme.colorScheme.outline to stringResource(R.string.auto_locate_off)
+        phase == LocatePhase.LOCATING ->
+            MaterialTheme.colorScheme.primary to stringResource(R.string.auto_locating)
+        phase == LocatePhase.OK ->
+            Color(0xFF43A047) to stringResource(R.string.auto_locate_ok)
+        phase == LocatePhase.NO_PERMISSION ->
+            Color(0xFFFFA000) to stringResource(R.string.auto_locate_no_perm)
+        phase == LocatePhase.FAILED ->
+            MaterialTheme.colorScheme.error to stringResource(R.string.auto_locate_failed)
+        else -> MaterialTheme.colorScheme.outline to stringResource(R.string.auto_locate_idle)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 撳圓點 = 開關自動定位
+            Box(
+                Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+                    .clickable(onClick = onToggle)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.auto_locate_title),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable(onClick = onToggle)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onRefreshNow) {
+                Text(stringResource(R.string.home_refresh))
+            }
+        }
+    }
+}
