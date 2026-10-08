@@ -62,34 +62,216 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Android SDK 37 components
+      # Android 17 (API 37) 需要 platforms;android-37 + build-tools;36.0.0。
+      # runner 預裝嘅 cmdline-tools 通常太舊，**根本唔知有 android-37 呢個包**，
+      # 所以要先升 cmdline-tools；升完都冇就**自動降級**到最高可用嘅 platform，
+      # 等 build 照出到 APK（黃色警告），好過直接紅。
+      # 預檢：喺開 build 之前逐項核對，缺乜講乜。
+      # 之前幾次 CI 紅，都係「檔案未上傳成功」或「舊檔殘留」造成，
+      # 但 Gradle 嘅報錯好難直接對返邊個檔案 —— 呢步會一次過講清楚。
+      - name: Preflight - verify required files
+        run: |
+          set -u
+          fail=0
+          need() {
+            if [ ! -f "$1" ]; then
+              echo "::error::缺少檔案 $1"
+              fail=1
+            else
+              echo "  ok  $1"
+            fi
+          }
+          absent() {
+            if [ -f "$1" ]; then
+              echo "::error::殘留舊檔（應該刪） $1"
+              fail=1
+            else
+              echo "  ok  無殘留 $1"
+            fi
+          }
+
+          echo "--- 必需嘅源碼 ---"
+          need app/build.gradle.kts
+          need build.gradle.kts
+          need settings.gradle.kts
+          need app/src/main/AndroidManifest.xml
+          need app/src/main/java/com/hketa/app/data/Changelog.kt
+          need app/src/main/java/com/hketa/app/ui/screens/AboutScreen.kt
+
+          echo "--- widget 資源（AndroidManifest 會引用）---"
+          need app/src/main/res/xml/hketa_widget_info.xml
+          need app/src/main/res/layout/widget_hketa.xml
+          need app/src/main/res/layout/widget_row.xml
+          need app/src/main/res/drawable/widget_bg.xml
+          need app/src/main/res/drawable/ic_settings.xml
+
+          echo "--- 唔應該存在嘅舊檔 ---"
+          absent app/src/main/java/com/hketa/app/vm/Changelog.kt
+          for f in EtaScreen FavoritesScreen HomeScreen SearchScreen SettingsScreen \
+                   RailScreen NearbyScreen RouteStopsScreen AboutScreen; do
+            absent "app/src/main/java/com/hketa/app/data/$f.kt"
+            absent "app/src/main/java/com/hketa/app/vm/$f.kt"
+          done
+
+          echo "--- 有冇同名 .kt（會 Redeclaration）---"
+          dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
+          if [ -n "$dup" ]; then
+            echo "::error::有同名 .kt 檔：$dup"
+            fail=1
+          else
+            echo "  ok  無同名 .kt"
+          fi
+
+          echo "--- 三語 strings 係咪對齊 ---"
+          for d in values values-zh-rCN values-en; do
+            n=$(grep -c '<string name=' "app/src/main/res/$d/strings.xml" || echo 0)
+            echo "  $d: $n"
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::預檢失敗 —— 上面列出嘅檔案要先處理"
+            exit 1
+          fi
+          echo "預檢全部通過 ✔"
+
+      - name: Install Android SDK components
+        env:
+          WANT_PLATFORM: "37"
+          WANT_BUILD_TOOLS: "36.0.0"
         run: |
           set -x
           ls "$ANDROID_HOME" || true
-          # Android 17 (API 37)：platform 37 + Build Tools 36.0.0
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platforms;android-37" "build-tools;36.0.0" || true
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+
+          # ① 升 cmdline-tools（舊 sdkmanager 認唔到新 platform）
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "cmdline-tools;latest" || true
+          # 新裝嘅命令行工具自己帶一份 sdkmanager，優先佢
+          LATEST_CLT=$(ls -d "$ANDROID_HOME"/cmdline-tools/latest/bin 2>/dev/null | head -1)
+          SM=sdkmanager
+          if [ -n "$LATEST_CLT" ] && [ -x "$LATEST_CLT/sdkmanager" ]; then
+            SM="$LATEST_CLT/sdkmanager"
+          fi
+          echo "using sdkmanager: $SM"
+          echo "SM=$SM" >> "$GITHUB_ENV"
+
+          yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+
+          # ② 試裝目標 platform + build-tools
+          yes | "$SM" --sdk_root="$ANDROID_HOME" \
+            --install "platforms;android-$WANT_PLATFORM" "build-tools;$WANT_BUILD_TOOLS" || true
+
           echo "--- installed platforms ---"
           ls "$ANDROID_HOME/platforms" || true
-          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            echo "::error::platforms;android-37 not found, cannot compileSdk 37"
-            exit 1
-          fi
           echo "--- installed build-tools ---"
           ls "$ANDROID_HOME/build-tools" || true
 
+          # ③ 搵最高可用嘅 platform（已裝嗰啲入面揀）
+          highest_available() {
+            ls "$ANDROID_HOME/platforms" 2>/dev/null \
+              | grep -oE '^android-[0-9]+$' \
+              | grep -oE '[0-9]+' | sort -n | tail -1
+          }
+          PLAT=""
+          if [ -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
+            PLAT="$WANT_PLATFORM"
+          else
+            PLAT=$(highest_available)
+            if [ -n "$PLAT" ]; then
+              echo "::warning::platforms;android-$WANT_PLATFORM unavailable - falling back to android-$PLAT"
+            fi
+          fi
+          if [ -z "$PLAT" ]; then
+            # 連一個 platform 都冇 —— 印出 sdkmanager 見到啲乜，方便診斷
+            echo "::error::no Android platform installed, cannot build"
+            echo "--- sdkmanager --list (platforms) ---"
+            "$SM" --sdk_root="$ANDROID_HOME" --list 2>/dev/null | grep -E 'platforms;android-' | head -20 || true
+            exit 1
+          fi
+          echo "PLATFORM=$PLAT" >> "$GITHUB_ENV"
+          echo "使用 platform: android-$PLAT"
+
+          # ④ build-tools：AGP 9.1.1 預設要 36.0.0；冇就降到最高可用嗰份
+          BT=""
+          if [ -d "$ANDROID_HOME/build-tools/$WANT_BUILD_TOOLS" ]; then
+            BT="$WANT_BUILD_TOOLS"
+          else
+            # 試埋幾個常見版本
+            for cand in "36.0.0" "35.0.1" "35.0.0" "34.0.0"; do
+              yes | "$SM" --sdk_root="$ANDROID_HOME" --install "build-tools;$cand" > /dev/null 2>&1 || true
+              if [ -d "$ANDROID_HOME/build-tools/$cand" ]; then BT="$cand"; break; fi
+            done
+            if [ -z "$BT" ]; then
+              BT=$(ls "$ANDROID_HOME/build-tools" 2>/dev/null | sort -V | tail -1)
+            fi
+            [ -n "$BT" ] && echo "::warning::build-tools;$WANT_BUILD_TOOLS unavailable - using $BT"
+          fi
+          if [ -z "$BT" ]; then
+            echo "::error::no build-tools available, cannot build"
+            exit 1
+          fi
+          echo "BUILD_TOOLS=$BT" >> "$GITHUB_ENV"
+          echo "使用 build-tools: $BT"
+
+      # 如果裝唔到 android-37，就自動把 compileSdk / targetSdk 降到最高可用嗰個，
+      # 等 APK 照出得到（降級會寫明喺摘要度）。
+      - name: Align SDK versions with what is installed
+        run: |
+          set -e
+          PLAT="${PLATFORM:-37}"
+          cur_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          cur_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          echo "build.gradle.kts: compileSdk=$cur_compile targetSdk=$cur_target ; runner platform=$PLAT"
+          if [ "$PLAT" != "$cur_compile" ]; then
+            echo "::warning::降級 compileSdk $cur_compile -> $PLAT（runner 冇 android-$cur_compile）"
+            sed -i "s/^[[:space:]]*compileSdk[[:space:]]*=[[:space:]]*[0-9]*/    compileSdk = $PLAT/" app/build.gradle.kts
+          fi
+          if [ "$cur_target" -gt "$PLAT" ]; then
+            echo "::warning::降級 targetSdk $cur_target -> $PLAT"
+            sed -i "s/^[[:space:]]*targetSdk[[:space:]]*=[[:space:]]*[0-9]*/        targetSdk = $PLAT/" app/build.gradle.kts
+          fi
+          # build-tools：AGP 會自動揀，但如果降咗級就明確指定，免得佢搵唔到又想上網下載
+          BT="${BUILD_TOOLS:-36.0.0}"
+          cur_bt=$(grep -m1 'buildToolsVersion' app/build.gradle.kts | grep -oE '[0-9]+(\.[0-9]+)*' | head -1)
+          if [ "$BT" != "36.0.0" ]; then
+            if [ -n "$cur_bt" ]; then
+              sed -i "s/buildToolsVersion[[:space:]]*=[[:space:]]*\"[0-9.]*\"/buildToolsVersion = \"$BT\"/" app/build.gradle.kts
+            else
+              sed -i "s/^[[:space:]]*compileSdk[[:space:]]*=[[:space:]]*[0-9]*/    compileSdk = $PLAT\n    buildToolsVersion = \"$BT\"/" app/build.gradle.kts
+            fi
+            echo "::warning::指定 buildToolsVersion = $BT"
+          fi
+          echo "--- final ---"
+          grep -nE 'compileSdk|buildToolsVersion|minSdk|targetSdk' app/build.gradle.kts
+
+      # AGP 9.1.1（compileSdk 37 嘅硬門檻）要求最低 Gradle 9.3.1。
+      # runner 預裝嘅 Gradle 可能係 8.9 —— 淨係靠 PATH 唔穩陣，所以：
+      #   ① 裝落 /opt/gradle-9.3.1
+      #   ② 用**絕對路徑**叫 gradle，唔經 PATH
+      #   ③ 開 build 前硬驗版本，唔啱即刻紅（唔好等 AGP 報 cryptic 嘅 version-check 錯）
       - name: Install Gradle 9.3.1
         run: |
-          # AGP 9.1.1 要求最低 Gradle 9.3.1
-          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
-          sudo unzip -q -o /tmp/gradle.zip -d /opt
-          sudo chmod +x /opt/gradle-9.3.1/bin/gradle
-          echo "/opt/gradle-9.3.1/bin" >> "$GITHUB_PATH"
+          set -e
+          if [ ! -x /opt/gradle-9.3.1/bin/gradle ]; then
+            curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+            sudo unzip -q -o /tmp/gradle.zip -d /opt
+            sudo chmod +x /opt/gradle-9.3.1/bin/gradle
+          fi
+          echo "GRADLE_BIN=/opt/gradle-9.3.1/bin/gradle" >> "$GITHUB_ENV"
 
-      - name: Show tool versions
+      - name: Verify Gradle version
         run: |
+          set -e
+          echo "GRADLE_BIN = ${GRADLE_BIN}"
           java -version
-          gradle --version | head -12
+          "$GRADLE_BIN" --version | head -12
+          v=$("$GRADLE_BIN" --version | grep -m1 '^Gradle' | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          echo "detected gradle = $v"
+          major=$(echo "$v" | cut -d. -f1)
+          minor=$(echo "$v" | cut -d. -f2)
+          if [ "$major" -lt 9 ] || { [ "$major" -eq 9 ] && [ "$minor" -lt 3 ]; }; then
+            echo "::error::Gradle $v is too old - AGP 9.1.1 needs >= 9.3.1 (compileSdk 37)"
+            exit 1
+          fi
+          echo "gradle OK (>= 9.3.1)"
 
       # 固定簽名：GitHub runner 每次都係全新機器，若然用系統自動產生嘅 debug key，
       # 每次簽名都唔同，用戶裝新版會彈「套件與現有的套件發生衝突」。
@@ -116,7 +298,8 @@ jobs:
       - name: Build Release APK
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+          # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
+          "$GRADLE_BIN" :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
 
       - name: Show build outputs
         run: |
