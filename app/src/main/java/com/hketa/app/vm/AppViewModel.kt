@@ -205,10 +205,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         val out = mutableListOf<StopDef>()
         RailData.heavyRail(ctx).forEach { l ->
-            l.stops.forEach { s -> out.add(StopDef(Operator.MTR_HR, s.id, s.name, s.lat, s.lon)) }
+            l.stops.forEach { s -> out.add(StopDef(op = Operator.MTR_HR, id = s.id, name = s.name, lat = s.lat, lon = s.lon)) }
         }
         RailData.lightRail(ctx).forEach { l ->
-            l.stops.forEach { s -> out.add(StopDef(Operator.LRT, s.id, s.name, s.lat, s.lon)) }
+            l.stops.forEach { s -> out.add(StopDef(op = Operator.LRT, id = s.id, name = s.name, lat = s.lat, lon = s.lon)) }
         }
         return out.distinctBy { "${it.op.name}|${it.id}" }
     }
