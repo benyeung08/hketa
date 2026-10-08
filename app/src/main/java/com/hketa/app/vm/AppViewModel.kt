@@ -25,6 +25,7 @@ import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.LocatePhase
 import com.hketa.app.data.PresetLocation
 import com.hketa.app.data.SpecialRouteInfo
+import com.hketa.app.data.SpecialRoutesStore
 import com.hketa.app.util.AppLocale
 import com.hketa.app.data.StopWithSeq
 import com.hketa.app.data.UpdateChecker
@@ -559,6 +560,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.save(data)
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
         _busy.value = false
+
+        // 索引建好就順手補城巴／小巴車站（增量 + 並發，背景做，唔彈訊息）。
+        // 以前要用戶自己撳「修復城巴／修復小巴」，唔撳附近車站就永遠淨係得九巴。
+        maybeAutoRepair()
     }
 
     /** 城巴沒有全量車站接口，逐條路線補齊車站與座標 */
@@ -567,7 +572,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * @param incremental true = 增量，跳過已經有車站資料嘅路線（預設）
      */
     fun deepIndexCtb(incremental: Boolean = true) {
-        viewModelScope.launch {
+        viewModelScope.launch { deepIndexCtbInternal(incremental) }
+    }
+
+    /** 內部版：可以俾 [maybeAutoRepair] 喺背景直接叫，唔使再包一層 launch */
+    private suspend fun deepIndexCtbInternal(incremental: Boolean = true) {
+        coroutineScope {
             val all = _index.value.routes.filter { it.op == Operator.CTB }
             val done = _index.value.routeStops
                 .filter { it.op == Operator.CTB }.map { it.route }.toSet()
@@ -575,7 +585,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             if (targets.isEmpty()) {
                 _message.value = str(R.string.index_deep_already_done)
-                return@launch
+                return@coroutineScope
             }
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
@@ -628,7 +638,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * @param incremental true = 增量，跳過已經有車站資料嘅路線（預設）
      */
     fun deepIndexGmb(incremental: Boolean = true) {
-        viewModelScope.launch {
+        viewModelScope.launch { deepIndexGmbInternal(incremental) }
+    }
+
+    /** 內部版：可以俾 [maybeAutoRepair] 喺背景直接叫，唔使再包一層 launch */
+    private suspend fun deepIndexGmbInternal(incremental: Boolean = true) {
+        coroutineScope {
             val all = _index.value.routes.filter { it.op == Operator.GMB }
             val done = _index.value.routeStops
                 .filter { it.op == Operator.GMB }.map { it.routeId }.toSet()
@@ -636,7 +651,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             if (targets.isEmpty()) {
                 _message.value = str(R.string.index_deep_already_done)
-                return@launch
+                return@coroutineScope
             }
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
@@ -694,6 +709,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _scanningSpecial = MutableStateFlow(false)
     val scanningSpecial: StateFlow<Boolean> = _scanningSpecial.asStateFlow()
 
+    private var specialStore: SpecialRoutesStore? = null
+
+    /**
+     * 鐵路頁開嗰陣載入上次嘅掃描結果。
+     * 官方冇特別班次清單，掃一次要幾十個請求，所以結果存落本地，
+     * 開頁即刻有得睇，想更新先撳掣再掃。
+     */
+    fun loadSpecialRoutes(context: android.content.Context) {
+        if (specialStore == null) specialStore = SpecialRoutesStore(context)
+        val cached = specialStore?.load().orEmpty()
+        if (_specialRoutes.value.isEmpty() && cached.isNotEmpty()) {
+            _specialRoutes.value = cached
+        }
+    }
+
     /**
      * 掃描輕鐵特別班次（如 9xx）。
      *
@@ -745,7 +775,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .sortedWith(compareBy<SpecialRouteInfo> { it.route.length }.thenBy { it.route })
 
+            // 存落本地，下次開鐵路頁即刻顯示（唔使每次都掃）
+            runCatching {
+                val ctx: android.app.Application = getApplication()
+                val store = specialStore
+                    ?: SpecialRoutesStore(ctx).also { specialStore = it }
+                store.save(_specialRoutes.value)
+            }
             _scanningSpecial.value = false
+        }
+    }
+
+    // ============ 自動背景修復 ============
+
+    private val _autoRepairDone = MutableStateFlow(false)
+    val autoRepairDone: StateFlow<Boolean> = _autoRepairDone.asStateFlow()
+
+    /**
+     * 索引建立完之後，自動喺背景補城巴／小巴嘅車站。
+     *
+     * 以前要用戶自己撳「修復城巴／修復小巴」，唔撳就永遠係 0 個站、
+     * 附近車站淨係得九巴。而家索引一建好就自動補（增量 + 並發，好快），
+     * 做過一次就記低，唔會每次開 App 都重做。
+     */
+    fun maybeAutoRepair() {
+        if (_autoRepairDone.value || _busy.value) return
+        val idx = _index.value
+        val ctbMissing = idx.routes.any { it.op == Operator.CTB } &&
+            idx.stops.none { it.op == Operator.CTB }
+        val gmbMissing = idx.routes.any { it.op == Operator.GMB } &&
+            idx.stops.none { it.op == Operator.GMB }
+        if (!ctbMissing && !gmbMissing) {
+            _autoRepairDone.value = true
+            return
+        }
+        _autoRepairDone.value = true
+        viewModelScope.launch {
+            // 唔設 busy、唔彈訊息 —— 靜靜地喺背景做，唔阻住用戶揾車
+            if (ctbMissing) deepIndexCtbInternal()
+            if (gmbMissing) deepIndexGmbInternal()
         }
     }
 
@@ -852,6 +920,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             Operator.MTR_HR to RailData.heavyRail(ctx),
             Operator.LRT to RailData.lightRail(ctx)
         )
+    }
+
+    /**
+     * 由一條到站預報（[EtaEntry]）反查對應嘅 [RouteDef]。
+     *
+     * 主頁改成「一條班次一張卡」之後，撳卡要跳去嗰條路線嘅沿途車站，
+     * 所以要由「路線號」反查索引入面完整嘅 RouteDef（bound / serviceType / routeId）。
+     * 同一個路線號可能有多個方向，優先揀總站名同預報目的地對得上嗰個。
+     */
+    fun routeOfEta(e: EtaEntry): RouteDef {
+        val idx = _index.value
+        val same = idx.routes.filter { it.op == e.op && it.route == e.route }
+        if (same.isEmpty()) {
+            // 索引冇（例如鐵路）→ 兜底，淨靠路線號同目的地開一條
+            return RouteDef(op = e.op, route = e.route, dest = e.dest)
+        }
+        // 優先用總站名匹配預報嘅目的地
+        return same.firstOrNull { it.dest == e.dest }
+            ?: same.firstOrNull { e.dest.isNotBlank() && (it.dest.contains(e.dest) || e.dest.contains(it.dest)) }
+            ?: same.first()
     }
 
     fun routeOf(op: Operator, line: RailLine): RouteDef = RouteDef(
