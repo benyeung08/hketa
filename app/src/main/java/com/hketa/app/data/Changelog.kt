@@ -37,6 +37,37 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.1",
+            date = "2026-10-08",
+            titleZhHant = "到站預報頁改版 + 站號顯示修正",
+            titleZhHans = "到站预报页改版 + 站号显示修正",
+            titleEn = "Arrivals page redesigned + stop-code fixes",
+            itemsZhHant = listOf(
+                "到站預報頁改為卡片式：站名大字、站號獨立一行、營辦商分行，路線號做成膠囊標籤",
+                "修好站號位顯示 routeId：長度超過 12 位一律唔顯示，唔會再出現兩組括號同一串數字",
+                "查詢層加保護：站號異常時自動改用索引入面同名同營辦商嘅站，避免查唔到班次",
+                "主頁 / 收藏 / 車站搜尋統一用新嘅站名顯示，唔會重複括號",
+                "修好版本歷史對話框喺簡體同英文介面下嘅顯示問題",
+                "修好 Compose 編譯問題（titleWithCode 缺 @Composable 標註）"
+            ),
+            itemsZhHans = listOf(
+                "到站预报页改为卡片式：站名大字、站号独立一行、营运商分行，路线号做成胶囊标签",
+                "修好站号位显示 routeId：长度超过 12 位一律不显示，不会再出现两组括号同一串数字",
+                "查询层加保护：站号异常时自动改用索引里同名同营运商的站，避免查不到班次",
+                "主页 / 收藏 / 车站搜索统一用新的站名显示，不会重复括号",
+                "修好版本历史对话框在简体与英文界面下的显示问题",
+                "修好 Compose 编译问题（titleWithCode 缺 @Composable 标注）"
+            ),
+            itemsEn = listOf(
+                "Arrivals page redesigned as a card: large stop name, stop code on its own line, operator on a separate line, route shown as a pill badge",
+                "Fixed the stop-code slot showing a routeId: anything over 12 chars is hidden, so no more double parentheses and a string of digits",
+                "Query-layer guard: when the stop code looks wrong, fall back to the same-named stop in the index so arrivals still resolve",
+                "Home / Favourites / stop search now share one stop-name formatter — no repeated parentheses",
+                "Fixed the version-history dialog under Simplified Chinese and English",
+                "Fixed a Compose issue (titleWithCode was missing the @Composable annotation)"
+            )
+        ),
+        Entry(
             version = "1.0.0",
             date = "2026-10-08",
             titleZhHant = "第一個正式版本：原生化完成 + 路線鍵盤",
