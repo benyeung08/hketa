@@ -22,6 +22,7 @@ import com.hketa.app.data.RouteDef
 import com.hketa.app.data.RouteStopDef
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.GitHubRelease
+import com.hketa.app.data.LocatePhase
 import com.hketa.app.util.AppLocale
 import com.hketa.app.data.StopWithSeq
 import com.hketa.app.data.UpdateChecker
