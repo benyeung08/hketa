@@ -63,6 +63,7 @@ data class CtbRouteStop(
 data class CtbStop(
     val stop: String = "",
     val name_tc: String = "",
+    val name_en: String = "",
     val lat: String = "",
     val long: String = ""
 )

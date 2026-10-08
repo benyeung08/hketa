@@ -2,6 +2,7 @@ package com.hketa.app.data
 
 import android.content.Context
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** 一筆收藏：車站 + 可選嘅指定路線（唔揀路線就顯示嗰個站全部路線） */
@@ -10,6 +11,7 @@ data class FavoriteStop(
     val op: Operator = Operator.KMB,
     val id: String = "",
     val name: String = "",
+    val nameEn: String = "",
     val lat: Double = 0.0,
     val lon: Double = 0.0,
     val route: String = "",       // 空 = 全部路線
@@ -76,6 +78,7 @@ class FavoritesStore(context: Context) {
             op = stop.op,
             id = stop.id,
             name = stop.name,
+            nameEn = stop.nameEn,
             lat = stop.lat,
             lon = stop.lon,
             route = route?.route.orEmpty(),
