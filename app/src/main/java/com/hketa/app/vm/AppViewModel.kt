@@ -95,6 +95,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _results = MutableStateFlow<List<RouteDef>>(emptyList())
     val results: StateFlow<List<RouteDef>> = _results.asStateFlow()
 
+    // ---- 索引診斷：記錄各營辦商喺建立索引時遇到嘅狀況 ----
+    private val _indexErrors = MutableStateFlow<List<Pair<Operator, String>>>(emptyList())
+    val indexErrors: StateFlow<List<Pair<Operator, String>>> = _indexErrors.asStateFlow()
+
+    // ---- 版本歷史 ----
+    private val _historyLoading = MutableStateFlow(false)
+    val historyLoading: StateFlow<Boolean> = _historyLoading.asStateFlow()
+
+    private val _historyReleases =
+        MutableStateFlow<List<com.hketa.app.data.GitHubRelease>>(emptyList())
+    val historyReleases: StateFlow<List<com.hketa.app.data.GitHubRelease>> =
+        _historyReleases.asStateFlow()
+
+    /** 目前安裝版本名（畀版本歷史對話框用） */
+    private val _currentVersion = MutableStateFlow("")
+    val currentVersion: StateFlow<String> = _currentVersion.asStateFlow()
+
+    /** 開啟版本歷史：即刻顯示本地 changelog，同時背景去 GitHub 拉 Release */
+    fun loadVersionHistory() {
+        _currentVersion.value = UpdateChecker.currentVersion(getApplication())
+        if (_historyReleases.value.isNotEmpty()) return   // 已經拉過就唔重複
+        viewModelScope.launch {
+            _historyLoading.value = true
+            val list = suspendCatching { UpdateChecker.fetchHistory() }.getOrDefault(emptyList())
+            _historyReleases.value = list
+            _historyLoading.value = false
+        }
+    }
+
     // ---- 底部狀態欄 ----
     /** 上次成功更新資料嘅時間（epoch millis），0 = 未更新過 */
     private val _lastUpdateAt = MutableStateFlow(0L)
@@ -354,6 +383,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun buildIndex() {
+        _indexErrors.value = emptyList()
         _busy.value = true
         _message.value = null
 
@@ -377,7 +407,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         step(str(R.string.index_step_ctb)) {
-            routes.addAll(repo.ctbRoutes())
+            val ctb = suspendCatching { repo.ctbRoutes() }.getOrDefault(emptyList())
+            routes.addAll(ctb)
+            // 城巴官方冇全量車站接口，索引階段一定係 0 個站。
+            // 喺統計度標明「需要修復」，等用戶知道要去撳「修復城巴」，
+            // 而唔係以為資料出錯。
+            if (ctb.isNotEmpty()) {
+                _indexErrors.value = _indexErrors.value +
+                    (Operator.CTB to str(R.string.index_err_ctb_stops))
+            }
         }
 
         step(str(R.string.index_step_nlb)) {
@@ -406,8 +444,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         step(str(R.string.index_step_gmb)) {
             // 用 for 而唔係 forEach —— forEach 嘅 lambda 唔係 suspend 上下文，
             // 入面叫 suspendCatching 會編譯失敗
+            var got = 0
             for (region in listOf("HKI", "KLN", "NT")) {
-                routes.addAll(suspendCatching { repo.gmbRoutes(region) }.getOrDefault(emptyList()))
+                val list = suspendCatching { repo.gmbRoutes(region) }.getOrDefault(emptyList())
+                routes.addAll(list)
+                got += list.size
+            }
+            // 三個 region 都冇結果 → 試官方嘅全量路徑 /route（唔帶 region）
+            if (got == 0) {
+                val all = suspendCatching { repo.gmbRoutes("") }.getOrDefault(emptyList())
+                routes.addAll(all)
+                got += all.size
+            }
+            if (got == 0) {
+                _indexErrors.value = _indexErrors.value +
+                    (Operator.GMB to str(R.string.index_err_gmb))
             }
         }
 
