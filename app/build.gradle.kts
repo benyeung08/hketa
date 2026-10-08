@@ -21,21 +21,28 @@ val hasCustomSigning = customStoreFile?.isFile == true &&
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // 唔好加 org.jetbrains.kotlin.android —— AGP 9 已經內置 Kotlin 編譯，
+    // 加咗會報 "Cannot add extension with name 'kotlin'"
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
     namespace = "com.hketa.app"
-    compileSdk = 35
+    // Android 17（Cinnamon Bun）＝ API 37 ＝ 支援範圍上線。
+    // compileSdk 37 嘅硬門檻：AGP ≥ 9.1.1 + Gradle ≥ 9.3.1 + Build Tools 36.0.0
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.hketa.app"
+        // 26（Android 8.0 Oreo）= 支援範圍下線，對應「Android 8」。
+        // 呢個亦係原本嘅設定：API 26 起系統自帶 java.time，
+        // 唔使開 desugaring，亦避開 Play Services Location 嘅 minSdk 23 限制。
         minSdk = 26
-        targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        // 面向 Android 17：Google Play 由 2027 年 8 月起要求 target API 37
+        targetSdk = 37
+        versionCode = 4
+        versionName = "1.0.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -91,11 +98,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // 唔使開 coreLibraryDesugaring：minSdk 26（Android 8.0）起
+        // 系統本身已經有 java.time（TimeUtil 用到嘅 OffsetDateTime / LocalTime），
+        // 開咗反而白白加大 APK。
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    // 唔使再寫 kotlinOptions { jvmTarget } —— AGP 9 內置嘅 Kotlin 會自動跟
+    // compileOptions 嘅 Java 版本對齊 jvmTarget。
 
     packaging {
         resources {
