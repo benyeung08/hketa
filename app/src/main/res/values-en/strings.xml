@@ -148,6 +148,18 @@
     <string name="update_view_release">View release</string>
     <string name="update_notes">What\'s new</string>
     <string name="update_size">About %1$.1f MB</string>
+
+    <!-- Update UI (ported from code-to-app) -->
+    <string name="update_title">Check for updates</string>
+    <string name="update_new_version">New version: v%1$s</string>
+    <string name="update_current_version">Current version: v%1$s</string>
+    <string name="update_cancel">Cancel</string>
+    <string name="update_retry">Retry</string>
+    <string name="update_close">Close</string>
+    <string name="update_install_ready">Download complete — ready to install</string>
+    <string name="update_ready_hint">Tap "Install" to start updating</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_open_browser">Download via browser</string>
     <string name="settings_logo_desc">HKETA</string>
 
     <string name="route_bound_from">from %1$s</string>
@@ -183,6 +195,10 @@
     <string name="history_online">Online (GitHub Releases)</string>
     <string name="history_local">Local changelog</string>
     <string name="history_installed">Installed</string>
+
+    <string name="history_loading">Loading version history…</string>
+    <string name="history_failed">Failed to load version history</string>
+    <string name="history_empty">No releases yet</string>
     <string name="history_close">Close</string>
 
     <string name="status_refresh">Refresh now</string>
