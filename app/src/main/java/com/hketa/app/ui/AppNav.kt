@@ -40,6 +40,7 @@ import com.hketa.app.ui.StatusBar
 import com.hketa.app.ui.UpdateDialog
 import com.hketa.app.ui.VersionHistorySheet
 import com.hketa.app.util.AppLocale
+import com.hketa.app.ui.screens.AboutScreen
 import com.hketa.app.ui.screens.SettingsScreen
 import com.hketa.app.vm.AppViewModel
 
@@ -52,6 +53,7 @@ object Dest {
     const val NEARBY = "nearby"
     const val FAVORITES = "favorites"
     const val SETTINGS = "settings"
+    const val ABOUT = "about"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,6 +235,11 @@ fun AppRoot(
                     onOpenStop = { stop ->
                         vm.openStop(stop, null)
                         navController.navigate(Dest.ETA)
+                    },
+                    // 撳一條班次 → 打開嗰條路線嘅沿途車站
+                    onOpenRoute = { rd ->
+                        vm.openRoute(rd)
+                        navController.navigate(Dest.ROUTE) { launchSingleTop = true }
                     }
                 )
             }
@@ -295,19 +302,40 @@ fun AppRoot(
                     }
                 )
             }
+            composable(Dest.ABOUT) {
+                AboutScreen(
+                    vm = vm,
+                    onOpenSettings = {
+                        navController.navigate(Dest.SETTINGS) { launchSingleTop = true }
+                    },
+                    onCheckUpdate = {
+                        vm.checkUpdate(true)
+                        showUpdate = true
+                    }
+                )
+            }
             composable(Dest.SETTINGS) {
-                SettingsScreen(vm = vm)
+                SettingsScreen(
+                    vm = vm,
+                    onOpenAbout = { navController.navigate(Dest.ABOUT) }
+                )
             }
         }
     }
 }
 
 @Composable
-fun Muted(text: String, modifier: Modifier = Modifier) {
+fun Muted(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE
+) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = maxLines,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         modifier = modifier
     )
 }
