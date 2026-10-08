@@ -38,6 +38,32 @@ fun StopDef.displayName(): String {
     return if (en && nameEn.isNotBlank()) nameEn else name
 }
 
+/**
+ * 顯示用嘅「站號」。
+ *
+ * 有啲路徑（例如由路線–站對應兜底出嚟嘅站）會把 routeId（如 296E43213D6DB624）
+ * 當咗做 stop id。呢啲唔係站號，顯示出嚟只會令畫面出現「一串數字」，
+ * 而且攞去查 ETA 一定失敗。所以：
+ *   - 長度 > 12（九巴站號最長約 8 位，如 SS667／HA03T）→ 當唔係站號，唔顯示
+ *   - 其原樣顯示
+ */
+fun StopDef.codeLabel(): String {
+    val c = id.trim()
+    if (c.isBlank()) return ""
+    if (c.length > 12) return ""          // 明顯係 routeId，唔係站號
+    return c
+}
+
+/** 站名（連站號一次過），唔會重複出現括號站號 */
+fun StopDef.titleWithCode(): String {
+    val name0 = displayName()
+    val code = codeLabel()
+    if (code.isBlank()) return name0
+    // 站名本身已經帶咗站號（…(SS667)）就唔好再拼一次
+    val already = name0.contains("($code)") || name0.contains("（$code）")
+    return if (already) name0 else "$name0（$code）"
+}
+
 /** 非 Composable 場合（Widget、ViewModel）用嘅版本 */
 fun StopDef.displayName(en: Boolean): String =
     if (en && nameEn.isNotBlank()) nameEn else name
@@ -51,6 +77,16 @@ fun RailLine.displayName(): String =
 @Composable
 fun RailLine.displayTermini(): String =
     if (orig.isBlank() && dest.isBlank()) "" else "$orig ⇄ $dest"
+
+/** 收藏站顯示：站名（站號），站號異常（routeId）時唔顯示 */
+@Composable
+fun FavoriteStop.titleWithCode(): String {
+    val n = displayName()
+    val c = if (id.length > 12) "" else id
+    if (c.isBlank()) return n
+    val already = n.contains("($c)") || n.contains("（$c）")
+    return if (already) n else "$n（$c）"
+}
 
 /** 收藏車站嘅顯示名（英文介面用官方英文站名） */
 @Composable
