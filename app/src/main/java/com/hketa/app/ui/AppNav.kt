@@ -17,8 +17,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
@@ -34,6 +37,9 @@ import com.hketa.app.ui.screens.RouteStopsScreen
 import com.hketa.app.ui.screens.SearchScreen
 import com.hketa.app.R
 import com.hketa.app.ui.StatusBar
+import com.hketa.app.ui.UpdateDialog
+import com.hketa.app.ui.VersionHistorySheet
+import com.hketa.app.util.AppLocale
 import com.hketa.app.ui.screens.SettingsScreen
 import com.hketa.app.vm.AppViewModel
 
@@ -69,6 +75,51 @@ fun AppRoot(
 
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Dest.SEARCH
+
+    val context = LocalContext.current
+    var showHistory by remember { mutableStateOf(false) }
+    var showUpdate by remember { mutableStateOf(false) }
+
+    // 版本歷史（移植自 code-to-app）：線上 Releases + 本地內置 changelog
+    if (showHistory) {
+        VersionHistorySheet(
+            releases = vm.historyReleases.collectAsState().value,
+            loading = vm.historyLoading.collectAsState().value,
+            error = null,
+            currentVersion = vm.currentVersion.collectAsState().value,
+            localEntries = com.hketa.app.data.Changelog.forLang(AppLocale.current()),
+            onDownload = { release ->
+                val url = release.assets.firstOrNull {
+                    it.browser_download_url.endsWith(".apk", ignoreCase = true)
+                }?.browser_download_url
+                if (!url.isNullOrBlank()) openUrl(context, url)
+            },
+            onDismiss = { showHistory = false }
+        )
+    }
+
+    // 檢查更新結果對話框
+    if (showUpdate) {
+        UpdateDialog(
+            state = vm.updateState.collectAsState().value,
+            latestVersion = vm.updateInfo.collectAsState().value?.tag_name.orEmpty(),
+            currentVersion = vm.currentVersion.collectAsState().value,
+            sizeMb = com.hketa.app.data.UpdateChecker.sizeMb(
+                vm.updateInfo.collectAsState().value?.let {
+                    com.hketa.app.data.UpdateChecker.apkAsset(it)
+                }
+            ),
+            notes = vm.updateInfo.collectAsState().value?.body.orEmpty(),
+            errorMessage = vm.message.collectAsState().value.orEmpty(),
+            onDownload = {
+                val url = vm.updateInfo.value?.let {
+                    com.hketa.app.data.UpdateChecker.apkAsset(it)?.browser_download_url
+                }
+                if (!url.isNullOrBlank()) openUrl(context, url)
+            },
+            onDismiss = { showUpdate = false }
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -107,16 +158,17 @@ fun AppRoot(
                     vm = vm,
                     onCheckUpdate = {
                         vm.checkUpdate(true)
-                        navController.navigate(Dest.SETTINGS) {
-                            launchSingleTop = true
-                            popUpTo(Dest.HOME) { inclusive = false }
-                        }
+                        showUpdate = true
                     },
                     onOpenFavorites = {
                         navController.navigate(Dest.FAVORITES) {
                             launchSingleTop = true
                             popUpTo(Dest.HOME) { inclusive = false }
                         }
+                    },
+                    onOpenHistory = {
+                        vm.loadVersionHistory()
+                        showHistory = true
                     }
                 )
                 NavigationBar {
@@ -258,4 +310,15 @@ fun Muted(text: String, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
     )
+}
+
+/** 用瀏覽器開 APK 下載連結（GitHub release asset） */
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        val intent = android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse(url)
+        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
 }
