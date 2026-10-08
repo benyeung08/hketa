@@ -158,6 +158,12 @@
     <!-- 索引狀態 -->
 
     <!-- ETA 資料修復 -->
+
+    <!-- 底部狀態欄 -->
+    <string name="status_refresh">即時重新整理</string>
+    <string name="status_auto_refresh">自動刷新（撳可以開關）</string>
+    <string name="status_check_update">檢查版本更新</string>
+
     <string name="settings_eta_repair">ETA 資料修復</string>
     <string name="eta_repair_main">修復並重新下載</string>
     <string name="eta_repair_ctb">修復城巴</string>
