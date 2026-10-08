@@ -62,30 +62,52 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Android SDK 35 components
+      - name: Install Android SDK 37 components
         run: |
           set -x
           ls "$ANDROID_HOME" || true
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platforms;android-35" "build-tools;35.0.0" || true
+          # Android 17 (API 37)：platform 37 + Build Tools 36.0.0
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platforms;android-37" "build-tools;36.0.0" || true
           yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
           echo "--- installed platforms ---"
           ls "$ANDROID_HOME/platforms" || true
-          if [ ! -d "$ANDROID_HOME/platforms/android-35" ]; then
-            echo "::error::platforms;android-35 not found, cannot compileSdk 35"
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            echo "::error::platforms;android-37 not found, cannot compileSdk 37"
             exit 1
           fi
+          echo "--- installed build-tools ---"
+          ls "$ANDROID_HOME/build-tools" || true
 
-      - name: Install Gradle 8.9
+      # AGP 9.1.1（compileSdk 37 嘅硬門檻）要求最低 Gradle 9.3.1。
+      # runner 預裝嘅 Gradle 可能係 8.9 —— 淨係靠 PATH 唔穩陣，所以：
+      #   ① 裝落 /opt/gradle-9.3.1
+      #   ② 用**絕對路徑**叫 gradle，唔經 PATH
+      #   ③ 開 build 前硬驗版本，唔啱即刻紅（唔好等 AGP 報 cryptic 嘅 version-check 錯）
+      - name: Install Gradle 9.3.1
         run: |
-          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          sudo unzip -q -o /tmp/gradle.zip -d /opt
-          sudo chmod +x /opt/gradle-8.9/bin/gradle
-          echo "/opt/gradle-8.9/bin" >> "$GITHUB_PATH"
+          set -e
+          if [ ! -x /opt/gradle-9.3.1/bin/gradle ]; then
+            curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+            sudo unzip -q -o /tmp/gradle.zip -d /opt
+            sudo chmod +x /opt/gradle-9.3.1/bin/gradle
+          fi
+          echo "GRADLE_BIN=/opt/gradle-9.3.1/bin/gradle" >> "$GITHUB_ENV"
 
-      - name: Show tool versions
+      - name: Verify Gradle version
         run: |
+          set -e
+          echo "GRADLE_BIN = ${GRADLE_BIN}"
           java -version
-          gradle --version | head -12
+          "$GRADLE_BIN" --version | head -12
+          v=$("$GRADLE_BIN" --version | grep -m1 '^Gradle' | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          echo "detected gradle = $v"
+          major=$(echo "$v" | cut -d. -f1)
+          minor=$(echo "$v" | cut -d. -f2)
+          if [ "$major" -lt 9 ] || { [ "$major" -eq 9 ] && [ "$minor" -lt 3 ]; }; then
+            echo "::error::Gradle $v is too old - AGP 9.1.1 needs >= 9.3.1 (compileSdk 37)"
+            exit 1
+          fi
+          echo "gradle OK (>= 9.3.1)"
 
       # 固定簽名：GitHub runner 每次都係全新機器，若然用系統自動產生嘅 debug key，
       # 每次簽名都唔同，用戶裝新版會彈「套件與現有的套件發生衝突」。
@@ -112,7 +134,8 @@ jobs:
       - name: Build Release APK
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+          # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
+          "$GRADLE_BIN" :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
 
       - name: Show build outputs
         run: |
