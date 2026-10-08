@@ -35,6 +35,7 @@ import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.FavoriteStop
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
@@ -103,6 +104,7 @@ fun FavoritesScreen(
 private fun FavoriteRow(
     fav: FavoriteStop,
     etas: List<EtaEntry>,
+    loading: Boolean = false,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
     onRefresh: () -> Unit
@@ -120,7 +122,7 @@ private fun FavoriteRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${fav.name}（${fav.id}）",
+                        text = "${fav.displayName()}（${fav.id}）",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )

@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 import kotlinx.coroutines.delay
@@ -43,7 +44,11 @@ fun EtaScreen(
     val etas by vm.etas.collectAsState()
     val busy by vm.busy.collectAsState()
     val favorites by vm.favorites.collectAsState()
-    val isFav = if (stop != null) favorites.any { it.op == stop.op && it.id == stop.id && it.route.isBlank() } else false
+    // 用局部 val 接住 —— delegated property（`by collectAsState()`）compiler 唔會幫你 smart cast
+    val curStop = stop
+    val isFav = if (curStop != null)
+        favorites.any { it.op == curStop.op && it.id == curStop.id && it.route.isBlank() }
+    else false
     val dash = stringResource(R.string.eta_dash)
     val soon = stringResource(R.string.eta_soon)
 
@@ -62,14 +67,14 @@ fun EtaScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = (stop?.name ?: stringResource(R.string.eta_stop_default)) +
-                    (if (stop?.id.isNullOrBlank()) "" else "（${stop?.id}）"),
+                text = (curStop?.displayName() ?: stringResource(R.string.eta_stop_default)) +
+                    (if (curStop?.id.isNullOrBlank()) "" else "（${curStop?.id}）"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            if (stop != null) {
-                IconButton(onClick = { vm.toggleFavorite(stop, null) }) {
+            if (curStop != null) {
+                IconButton(onClick = { curStop?.let { vm.toggleFavorite(it, null) } }) {
                     Icon(
                         painter = painterResource(if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off),
                         contentDescription = stringResource(if (isFav) R.string.fav_remove else R.string.fav_add),
