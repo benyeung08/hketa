@@ -147,6 +147,16 @@
     <string name="op_lrt">Light Rail</string>
 
     <!-- Index status -->
+
+    <!-- ETA data repair -->
+    <string name="settings_eta_repair">ETA data repair</string>
+    <string name="eta_repair_main">Repair and re-download</string>
+    <string name="eta_repair_ctb">Repair Citybus</string>
+    <string name="eta_repair_gmb">Repair minibus</string>
+    <string name="eta_repair_clear">Clear cache only</string>
+    <string name="eta_repair_cleared">Cache cleared — it will be re-downloaded next launch</string>
+    <string name="eta_repair_hint">If you hit "no stop data", get no arrivals, or see stop names as a string of digits, tap "Repair and re-download" to fetch the official data again. Citybus and GMB are crawled route by route, so repairing issues many requests — run it on Wi-Fi.</string>
+
     <string name="index_ready">Index ready (%1$d routes)</string>
     <string name="index_done">Index complete: %1$d routes / %2$d stops</string>
     <string name="index_step_kmb">Downloading KMB routes…</string>
