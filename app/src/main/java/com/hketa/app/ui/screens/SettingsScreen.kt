@@ -41,7 +41,10 @@ import com.hketa.app.util.AppLocale
 import com.hketa.app.vm.AppViewModel
 
 @Composable
-fun SettingsScreen(vm: AppViewModel) {
+fun SettingsScreen(
+    vm: AppViewModel,
+    onOpenAbout: () -> Unit = {}
+) {
     val status by vm.indexStatus.collectAsState()
     val busy by vm.busy.collectAsState()
     val index by vm.index.collectAsState()
@@ -66,6 +69,12 @@ fun SettingsScreen(vm: AppViewModel) {
                 .align(Alignment.CenterHorizontally)
         )
         Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(onClick = onOpenAbout, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.about_title))
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         // ---- 語言 ----
         Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
