@@ -156,6 +156,20 @@ fun SettingsScreen(vm: AppViewModel) {
         }
         Muted(stringResource(R.string.settings_routestops, index.routeStops.size))
 
+        // ---- 索引診斷：講清楚邊個營辦商點解係 0 ----
+        val diag = vm.indexErrors.collectAsState().value
+        if (diag.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.settings_index_diag),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            diag.forEach { (op, msg) ->
+                Muted("• ${op.labelText()}：${'$'}msg")
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
 
         // ---- 資料來源 ----

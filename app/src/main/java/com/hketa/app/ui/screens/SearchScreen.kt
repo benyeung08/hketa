@@ -1,5 +1,6 @@
 package com.hketa.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,12 +17,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +37,8 @@ import com.hketa.app.data.RouteDef
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.StopHit
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.RouteKeyboard
+import com.hketa.app.ui.RouteSearchField
 import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
@@ -58,6 +63,8 @@ fun SearchScreen(
     val busy by vm.busy.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
+    // 路線分頁用自訂數字／字母鍵盤（路線號只係數字+少量字母，唔使系統鍵盤）
+    var showKeyboard by remember { mutableStateOf(true) }
 
     Column(
         modifier = Modifier
@@ -80,13 +87,26 @@ fun SearchScreen(
         Spacer(Modifier.height(12.dp))
 
         if (tab == 0) {
-            OutlinedTextField(
+            RouteSearchField(
                 value = query,
-                onValueChange = vm::setQuery,
-                label = { Text(stringResource(R.string.search_hint)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                hint = stringResource(R.string.search_hint),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showKeyboard = true }
             )
+            Spacer(Modifier.height(8.dp))
+            if (showKeyboard) {
+                RouteKeyboard(
+                    onKey = { vm.setQuery(query + it) },
+                    onDelete = { vm.setQuery(query.dropLast(1)) },
+                    onDone = { showKeyboard = false }
+                )
+                Spacer(Modifier.height(8.dp))
+            } else {
+                TextButton(onClick = { showKeyboard = true }) {
+                    Text(stringResource(R.string.search_open_keyboard))
+                }
+            }
         } else {
             OutlinedTextField(
                 value = stopQuery,
