@@ -11,6 +11,17 @@
     <string name="tab_home">Home</string>
     <string name="tab_favorites">Saved</string>
     <string name="title_favorites">Saved stops</string>
+
+    <!-- Auto locate -->
+    <string name="auto_locate_title">Find nearby routes by location</string>
+    <string name="auto_locate_off">Off</string>
+    <string name="auto_locate_idle">Standby</string>
+    <string name="auto_locating">Locating…</string>
+    <string name="auto_locate_ok">Located</string>
+    <string name="auto_locate_failed">Location unavailable</string>
+    <string name="auto_locate_no_perm">Location not granted</string>
+    <string name="settings_auto_locate">Auto locate (refresh home every 60s)</string>
+
     <string name="home_refresh">Find routes near me</string>
     <string name="home_hint">Tap the button above to list nearby stops and live arrival times.</string>
     <string name="home_empty">No stops nearby — move a little, or run a deep index from Settings.</string>
