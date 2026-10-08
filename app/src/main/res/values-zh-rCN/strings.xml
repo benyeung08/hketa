@@ -11,6 +11,17 @@
     <string name="tab_home">主页</string>
     <string name="tab_favorites">收藏</string>
     <string name="title_favorites">收藏车站</string>
+
+    <!-- 自动定位 -->
+    <string name="auto_locate_title">用定位找附近路线</string>
+    <string name="auto_locate_off">已关闭</string>
+    <string name="auto_locate_idle">待命</string>
+    <string name="auto_locating">定位中…</string>
+    <string name="auto_locate_ok">已定位</string>
+    <string name="auto_locate_failed">找不到定位</string>
+    <string name="auto_locate_no_perm">未授权定位</string>
+    <string name="settings_auto_locate">自动定位（每 60 秒重整主页）</string>
+
     <string name="home_refresh">用定位查找附近路线</string>
     <string name="home_hint">点上面的按钮，会用你的位置列出附近车站和即时到站预报。</string>
     <string name="home_empty">附近找不到车站，试试移动一下或到「设置」执行深度索引。</string>
