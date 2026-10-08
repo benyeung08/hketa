@@ -250,6 +250,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         buildIndex()
     }
 
+    /**
+     * 淨係清除快取，唔即刻重建 —— 交由下次啟動嘅 ensureIndex() 自動重新下載。
+     * 畀「ETA 資料修復」入面「淨係清除快取」掣用。
+     */
+    fun clearEtaCache() {
+        viewModelScope.launch {
+            _busy.value = true
+            store.clear()
+            _index.value = IndexData()
+            _indexStatus.value = ""
+            _favorites.value = favoritesStore.all().takeIf { ::favoritesStore.isInitialized }.orEmpty()
+            _busy.value = false
+            _message.value = str(R.string.eta_repair_cleared)
+        }
+    }
+
     fun rebuildIndex() {
         viewModelScope.launch {
             store.clear()
