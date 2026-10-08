@@ -1,0 +1,353 @@
+name: Build HKETA Release APK
+
+# 只出正式版（release）APK —— 一份，簽名固定。
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '把 APK 提交到 builds 目錄'
+        type: boolean
+        default: true
+      target_repo:
+        description: '目標 repo（預設＝本 repo；跨 repo 先需要 PUBLISH_TOKEN）'
+        type: string
+        default: ''
+      target_branch:
+        description: '目標分支'
+        type: string
+        default: 'apk'
+      target_dir:
+        description: '目標目錄（repo 內）'
+        type: string
+        default: 'builds'
+      keep_history:
+        description: '保留舊 APK（關＝只保留 latest.apk + 本次版本檔）'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
+    # （寫咗會報 "A mapping was not expected"）
+    outputs:
+      version_name: ${{ steps.ver.outputs.value }}
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read versionName
+        id: ver
+        run: |
+          v=$(grep -m1 'versionName' app/build.gradle.kts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          echo "value=${v:-1.0.0}" >> "$GITHUB_OUTPUT"
+          echo "versionName = ${v:-1.0.0}"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Android SDK 37 components
+        run: |
+          set -x
+          ls "$ANDROID_HOME" || true
+          # Android 17 (API 37)：platform 37 + Build Tools 36.0.0
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platforms;android-37" "build-tools;36.0.0" || true
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+          echo "--- installed platforms ---"
+          ls "$ANDROID_HOME/platforms" || true
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            echo "::error::platforms;android-37 not found, cannot compileSdk 37"
+            exit 1
+          fi
+          echo "--- installed build-tools ---"
+          ls "$ANDROID_HOME/build-tools" || true
+
+      - name: Install Gradle 9.3.1
+        run: |
+          # AGP 9.1.1 要求最低 Gradle 9.3.1
+          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+          sudo unzip -q -o /tmp/gradle.zip -d /opt
+          sudo chmod +x /opt/gradle-9.3.1/bin/gradle
+          echo "/opt/gradle-9.3.1/bin" >> "$GITHUB_PATH"
+
+      - name: Show tool versions
+        run: |
+          java -version
+          gradle --version | head -12
+
+      # 固定簽名：GitHub runner 每次都係全新機器，若然用系統自動產生嘅 debug key，
+      # 每次簽名都唔同，用戶裝新版會彈「套件與現有的套件發生衝突」。
+      # 呢度確保 keystore/hketa.jks 存在（冇就由 base64 文字檔還原）。
+      - name: Ensure signing keystore
+        run: |
+          mkdir -p keystore
+          if [ -s keystore/hketa.jks ]; then
+            echo "keystore/hketa.jks already present"
+          elif [ -s keystore/hketa.jks.b64 ]; then
+            base64 -d keystore/hketa.jks.b64 > keystore/hketa.jks
+            echo "restored from hketa.jks.b64"
+          else
+            echo "::warning::no fixed keystore found - APK signature will differ between builds"
+          fi
+          if [ -s keystore/hketa.jks ]; then
+            keytool -list -keystore keystore/hketa.jks -storepass hketa2026 -alias hketa > /dev/null 2>&1 \
+              && echo "keystore verified" \
+              || { echo "::error::keystore is invalid"; exit 1; }
+          fi
+
+      # 一定要 set -o pipefail：淨係寫 `gradle ... | tee log` 嘅話，
+      # 管道退出碼係 tee（永遠 0），gradle 失敗會被吞掉、步驟顯示綠剔。
+      - name: Build Release APK
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+
+      - name: Show build outputs
+        run: |
+          echo "--- app/build/outputs ---"
+          find app/build/outputs -maxdepth 4 2>/dev/null || echo "(none)"
+          echo "--- all apk ---"
+          find app/build -name "*.apk" 2>/dev/null || true
+
+      - name: Collect release APK
+        run: |
+          mkdir -p apk-out
+          for f in $(find app/build/outputs/apk -name "*.apk" -type f); do
+            cp "$f" "apk-out/HKETA-release.apk"
+          done
+          ls -lh apk-out
+          test -n "$(ls -A apk-out)" || { echo "::error::no APK produced"; exit 1; }
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-release-apk
+          path: apk-out/*.apk
+
+      - name: Attach APK to release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apk-out/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write errors to job summary
+        if: failure()
+        run: |
+          {
+            echo "## Build failed"
+            echo
+            echo "### Error excerpt"
+            echo '```'
+            grep -h -E "^(e: |error: |FAILURE: |.*What went wrong)" -A 4 /tmp/*-build.log 2>/dev/null | head -80 || echo "(no error lines captured)"
+            echo '```'
+            echo
+            echo "Full log: download the **build-log** artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/*-build.log
+          if-no-files-found: ignore
+
+  # =====================================================================
+  # 把 APK 提交到 repo 嘅 apk 分支 / builds 目錄，
+  # 令 APK 可以直接喺 repo 檔案列表度撳 latest.apk 下載
+  # （同 ci-bot 上傳嘅做法一樣）。
+  #
+  # 默認係「本 repo」，內置 GITHUB_TOKEN 就夠，唔使另外設定 PAT。
+  #       只有想推去「另一個」repo 時先需要 PUBLISH_TOKEN：
+  #       Settings ▸ Developer settings ▸ Personal access tokens 開一個
+  #       classic token（scope 揀 repo），再加落本 repo 嘅
+  #       Settings ▸ Secrets ▸ Actions。
+  # =====================================================================
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # 關鍵：發布失敗唔應該拖垮成個 workflow —— APK 已經喺 build job 嘅
+    # artifact 度，呢度只係額外抄一份去 apk 分支。開咗 continue-on-error 之後，
+    # 就算 git push 失敗（shallow 被拒 / 分支保護 / token 權限），Actions 只會
+    # 顯示黃色警告，成個 run 仍然係綠色。
+    continue-on-error: true
+    # 點解會「This job was skipped」：
+    #   之前淨係喺 workflow_dispatch 或 push tag 時先跑，
+    #   所以 push 去 main 嗰陣成個表達式係 false → job 被跳過。
+    #   而家三種情況都會發布：
+    #     ① push 去 main
+    #     ② push v* tag
+    #     ③ 手動 Run workflow 且 inputs.publish 係 true
+    #   註：唔加 always() 係刻意嘅 —— build 失敗時就唔應該發布，
+    #   needs 關係會令呢個 job 自動取消，唔會浪費時間。
+    if: >-
+      ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+          || github.event_name == 'workflow_dispatch' && inputs.publish }}
+
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: hketa-release-apk
+          path: apk-in
+
+      - name: Check publish settings
+        id: tok
+        run: |
+          TARGET="${{ github.event.inputs.target_repo || github.repository }}"
+          SELF="${{ github.repository }}"
+          echo "目標 repo：$TARGET（本 repo：$SELF）"
+          if [ "$TARGET" = "$SELF" ] || [ -n "${{ secrets.PUBLISH_TOKEN }}" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            if [ "$TARGET" = "$SELF" ]; then
+              echo "同 repo 推送 —— 用內置 GITHUB_TOKEN"
+            else
+              echo "跨 repo 推送 —— 用 PUBLISH_TOKEN"
+            fi
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::跨 repo 推送需要 PUBLISH_TOKEN，今次跳過（APK 仍然喺 Actions artifact 度）"
+          fi
+
+      - name: Resolve target settings
+        if: steps.tok.outputs.skip == 'false'
+        id: cfg
+        run: |
+          # 用 ${VAR:-default} 而唔係 `[ -z x ] && x=...`：
+          # 後者喺 `set -e` 之下，當變數非空時會返回非零、直接成個 step 失敗
+          repo="${{ github.event.inputs.target_repo || github.repository }}"
+          br="${{ github.event.inputs.target_branch || 'apk' }}"
+          dir="${{ github.event.inputs.target_dir || 'builds' }}"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "branch=$br" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "目標：$repo （分支 $br，目錄 $dir）"
+
+      - name: Clone target repo
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          # 同 repo 用內置 GITHUB_TOKEN 就夠；只有跨 repo 先需要 PAT（PUBLISH_TOKEN）
+          TOKEN="${{ secrets.PUBLISH_TOKEN || github.token }}"
+          export TOKEN
+          BR="${{ steps.cfg.outputs.branch }}"
+
+          rm -rf target-repo && mkdir target-repo && cd target-repo
+          git init -q
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git"
+
+          # 睇下目標分支存唔存在（pipefail 必要：唔係 ls-remote 失敗會被 grep 吞掉）
+          set -o pipefail
+          if git ls-remote --heads origin "$BR" 2>/dev/null | grep -q "refs/heads/$BR$"; then
+            set +o pipefail
+            echo "分支 $BR 已存在 → fetch 佢"
+            # 重點：一定要寫「全 refspec」。
+            # 淨係寫 `git fetch origin apk` 只會放落 FETCH_HEAD，
+            # 唔會建立 refs/remotes/origin/apk，下一句 checkout 就會報
+            # fatal: 'origin/apk' is not a commit
+            git fetch --depth 1 origin "refs/heads/$BR:refs/remotes/origin/$BR"
+            git checkout -q -B "$BR" "refs/remotes/origin/$BR"
+          else
+            set +o pipefail
+            echo "分支 $BR 唔存在 → 開 orphan（唔會掝走 main 嘅歷史）"
+            git checkout -q --orphan "$BR"
+            git rm -rf --cached . -q || true
+          fi
+
+      - name: Copy APK into target repo
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          cd target-repo
+          mkdir -p "${{ steps.cfg.outputs.dir }}"
+          SRC="$(ls ../apk-in/*.apk | head -1)"
+          echo "來源：$SRC"
+          VER="${{ needs.build.outputs.version_name || '1.0.0' }}"
+          cp "$SRC" "${{ steps.cfg.outputs.dir }}/hketa-v${VER}-run${{ github.run_number }}.apk"
+          cp "$SRC" "${{ steps.cfg.outputs.dir }}/latest.apk"
+          # 只保留 latest.apk + 最近 5 個版本檔（關咗 keep_history 就只留 latest）
+          if [ "${{ github.event.inputs.keep_history || 'true' }}" != "true" ]; then
+            # 只保留 latest.apk + 最近 5 個版本檔（sort -V 先啱：run9 < run10）
+            ls -1 ${{ steps.cfg.outputs.dir }}/*.apk 2>/dev/null \
+              | grep -v '/latest.apk$' \
+              | grep -v '/hketa-v'"$VER"'-run${{ github.run_number }}.apk$' \
+              | sort -V | head -n -5 | xargs -r rm -f
+          fi
+          ls -lh "${{ steps.cfg.outputs.dir }}"
+
+      - name: Commit and push
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          cd target-repo
+          git add -A "${{ steps.cfg.outputs.dir }}"
+          if git diff --cached --quiet; then
+            echo "冇變化，唔使提交"
+            exit 0
+          fi
+          git commit -m "APK run ${{ github.run_number }} (${{ github.sha }})"
+
+          # shallow clone 有機會被 server 以 "shallow update not allowed" 拒絕，
+          # 咁就攞完整歷史再推一次
+          if git push origin "HEAD:${{ steps.cfg.outputs.branch }}" 2>/tmp/push.err; then
+            echo "推送成功"
+          else
+            echo "第一次推送失敗，攞完整歷史重試："
+            tail -3 /tmp/push.err 2>/dev/null || true
+            git fetch --unshallow origin || true
+            git push origin "HEAD:${{ steps.cfg.outputs.branch }}"
+            echo "重試成功"
+          fi
+          echo "已推送 → ${{ steps.cfg.outputs.repo }}#${{ steps.cfg.outputs.branch }}/${{ steps.cfg.outputs.dir }}"
+
+      - name: Summary
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          {
+            echo "## APK 已提交"
+            echo
+            echo "- Repo：**${{ steps.cfg.outputs.repo }}**"
+            echo "- 分支：\`${{ steps.cfg.outputs.branch }}\`"
+            echo "- 路徑：\`${{ steps.cfg.outputs.dir }}/latest.apk\`"
+            echo
+            echo "直接喺 repo 檔案列表撳 \`latest.apk\` → Download 就可以裝。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnose push failure
+        if: failure() && steps.tok.outputs.skip == 'false'
+        run: |
+          {
+            echo "## ⚠️ 發布步驟失敗（唔影響 APK）"
+            echo
+            echo "APK 仍然喺 **build** job 嘅 artifact \`hketa-release-apk\` 度。"
+            echo
+            echo "常見原因："
+            echo "1. 分支有 branch protection —— Settings ▸ Branches 解除，或改推去冇保護嘅分支"
+            echo "2. shallow clone 被拒 —— 已自動 \`--unshallow\` 重試"
+            echo "3. Token 權限唔夠 —— 同 repo 要 \`contents: write\`，跨 repo 要 PAT"
+            echo
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -20 /tmp/push.err 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+          echo '\`' >> "$GITHUB_STEP_SUMMARY"
