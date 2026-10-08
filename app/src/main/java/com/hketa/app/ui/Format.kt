@@ -54,7 +54,13 @@ fun StopDef.codeLabel(): String {
     return c
 }
 
-/** 站名（連站號一次過），唔會重複出現括號站號 */
+/**
+ * 站名（連站號一次過），唔會重複出現括號站號。
+ *
+ * 必須係 @Composable —— 因為入面叫咗 [StopDef.displayName]，
+ * 而 displayName 要讀 AppLocale.current()（一個 Composable State）。
+ */
+@Composable
 fun StopDef.titleWithCode(): String {
     val name0 = displayName()
     val code = codeLabel()
