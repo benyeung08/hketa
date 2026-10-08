@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,7 +16,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +33,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hketa.app.R
+import com.hketa.app.data.UpdateChecker
+import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.labelText
 import com.hketa.app.util.AppLocale
@@ -39,6 +45,12 @@ fun SettingsScreen(vm: AppViewModel) {
     val status by vm.indexStatus.collectAsState()
     val busy by vm.busy.collectAsState()
     val index by vm.index.collectAsState()
+    val updateState by vm.updateState.collectAsState()
+    val updateInfo by vm.updateInfo.collectAsState()
+    val updateError by vm.updateError.collectAsState()
+
+    // 一入設定頁就靜默檢查一次（節流；手動撳掣可以即時再查）
+    LaunchedEffect(Unit) { vm.checkUpdate() }
 
     Column(
         modifier = Modifier
@@ -61,6 +73,7 @@ fun SettingsScreen(vm: AppViewModel) {
 
         // 語言選擇：四個選項分兩行，揀完即時生效
         val context = LocalContext.current
+        val currentVersion = remember { UpdateChecker.currentVersion(context) }
         var langTag by remember { mutableStateOf(AppLocale.choice(context)) }
         AppLocale.options(context).chunked(2).forEach { row ->
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -92,18 +105,22 @@ fun SettingsScreen(vm: AppViewModel) {
 
         Spacer(Modifier.height(16.dp))
 
-        // ---- 索引 ----
-        Text(stringResource(R.string.settings_index), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // ---- ETA 資料修復（原「路線索引」）----
+        Text(stringResource(R.string.settings_eta_repair), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Muted(status)
 
         Spacer(Modifier.height(12.dp))
 
+        Muted(stringResource(R.string.eta_repair_hint))
+
+        Spacer(Modifier.height(8.dp))
+
         Button(
             onClick = { vm.rebuildIndex() },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth()
-        ) { Text(stringResource(R.string.settings_rebuild)) }
+        ) { Text(stringResource(R.string.eta_repair_main)) }
 
         Spacer(Modifier.height(8.dp))
 
@@ -112,15 +129,22 @@ fun SettingsScreen(vm: AppViewModel) {
                 onClick = { vm.deepIndexCtb() },
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
-            ) { Text(stringResource(R.string.settings_deep_ctb)) }
-            Spacer(Modifier.height(1.dp))
+            ) { Text(stringResource(R.string.eta_repair_ctb)) }
+            Spacer(Modifier.width(8.dp))
             OutlinedButton(
                 onClick = { vm.deepIndexGmb() },
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
-            ) { Text(stringResource(R.string.settings_deep_gmb)) }
+            ) { Text(stringResource(R.string.eta_repair_gmb)) }
         }
-        Muted(stringResource(R.string.settings_deep_hint))
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { vm.clearEtaCache() },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(stringResource(R.string.eta_repair_clear)) }
 
         Spacer(Modifier.height(16.dp))
 
@@ -147,8 +171,103 @@ fun SettingsScreen(vm: AppViewModel) {
 
         Spacer(Modifier.height(16.dp))
 
+        Spacer(Modifier.height(16.dp))
+
+        Text(stringResource(R.string.map_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Muted(stringResource(R.string.settings_widget_hint))
+
+        Spacer(Modifier.height(12.dp))
+
         Muted(stringResource(R.string.settings_rail_builtin))
         Muted(stringResource(R.string.settings_version, "1.0.0"))
         Muted(stringResource(R.string.settings_privacy))
+
+        Spacer(Modifier.height(16.dp))
+
+        // ---- 版本更新 ----
+        Text(
+            stringResource(R.string.update_section),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        Muted(stringResource(R.string.update_current, currentVersion))
+
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = { vm.checkUpdate(force = true) },
+            enabled = updateState != UpdateState.CHECKING,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(stringResource(R.string.update_check)) }
+
+        Spacer(Modifier.height(8.dp))
+
+        when (updateState) {
+            UpdateState.IDLE -> Unit
+
+            UpdateState.CHECKING -> Muted(stringResource(R.string.update_checking))
+
+            UpdateState.UP_TO_DATE -> Muted(stringResource(R.string.update_latest))
+
+            UpdateState.NO_RELEASE -> Muted(stringResource(R.string.update_no_release))
+
+            UpdateState.ERROR -> Muted(stringResource(R.string.update_failed, updateError))
+
+            UpdateState.AVAILABLE -> {
+                val rel = updateInfo
+                if (rel != null) {
+                    Text(
+                        text = stringResource(R.string.update_available, rel.tag_name),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    val asset = UpdateChecker.apkAsset(rel)
+                    val sizeMb = UpdateChecker.sizeMb(asset)
+                    val dlUrl = asset?.browser_download_url.orEmpty()
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { openUrl(context, dlUrl.ifBlank { rel.html_url }) },
+                            enabled = dlUrl.isNotBlank() || rel.html_url.isNotBlank(),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(stringResource(R.string.update_download)) }
+                        Spacer(Modifier.height(1.dp))
+                        OutlinedButton(
+                            onClick = { openUrl(context, rel.html_url) },
+                            enabled = rel.html_url.isNotBlank(),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(stringResource(R.string.update_view_release)) }
+                    }
+
+                    if (sizeMb > 0f) Muted(stringResource(R.string.update_size, sizeMb))
+
+                    if (rel.body.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.update_notes),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Muted(rel.body.trim().take(500))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 用瀏覽器打開下載／Release 頁面 */
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 }
