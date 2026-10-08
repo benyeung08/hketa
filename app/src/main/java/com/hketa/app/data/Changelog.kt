@@ -37,6 +37,40 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.2",
+            date = "2026-10-08",
+            titleZhHant = "主頁自動定位 + 更新介面改版",
+            titleZhHans = "主页自动定位 + 更新界面改版",
+            titleEn = "Auto-locate on home + redesigned update UI",
+            itemsZhHant = listOf(
+                "主頁自動定位：一開波就搵附近路線，每 60 秒自動重整，唔使再撳掣",
+                "自動定位狀態列：圓點顏色顯示「定位中／已定位／未授權／搵唔到」，撳圓點可開關",
+                "更新介面改版：移植自 code-to-app，顯示「新版本 → 目前版本 → 大小」同可展開嘅 Release Notes",
+                "版本歷史改用 BottomSheet：每個版本可撳開睇內容，目前版本會標「已安裝」，舊版本可獨立下載",
+                "語義化版本比較：正式版永遠排喺預覽版之上（1.0.0 > 1.0.0-beta1），唔會再撞名",
+                "Release Notes 中英自動切換：用 <!-- zh-CN --> 分隔，App 會按介面語言揀其中一半",
+                "修好 17 個編譯錯誤（缺 LocatePhase / Box / size / width import）"
+            ),
+            itemsZhHans = listOf(
+                "主页自动定位：一开就找附近路线，每 60 秒自动重整，不用再点按钮",
+                "自动定位状态栏：圆点颜色显示「定位中／已定位／未授权／找不到」，点圆点可开关",
+                "更新界面改版：移植自 code-to-app，显示「新版本 → 当前版本 → 大小」与可展开的 Release Notes",
+                "版本历史改用 BottomSheet：每个版本可点开看内容，当前版本会标「已安装」，旧版本可独立下载",
+                "语义化版本比较：正式版永远排在预览版之上（1.0.0 > 1.0.0-beta1），不会再撞名",
+                "Release Notes 中英自动切换：用 <!-- zh-CN --> 分隔，App 会按界面语言选其中一半",
+                "修好 17 个编译错误（缺 LocatePhase / Box / size / width import）"
+            ),
+            itemsEn = listOf(
+                "Auto-locate on Home: finds nearby routes on launch and refreshes every 60s — no button needed",
+                "Auto-locate status bar: dot colour shows Locating / Located / Not granted / Unavailable; tap the dot to toggle",
+                "Update dialog redesigned, ported from code-to-app: shows New version → Current version → Size plus expandable release notes",
+                "Version history moved to a bottom sheet: tap any release to expand its notes, current version tagged \"installed\", older builds downloadable individually",
+                "Semantic version comparison: a stable release always ranks above any pre-release (1.0.0 > 1.0.0-beta1) — no more name collisions",
+                "Bilingual release notes: split with <!-- zh-CN --> and the app picks the half matching the interface language",
+                "Fixed 17 compile errors (missing LocatePhase / Box / size / width imports)"
+            )
+        ),
+        Entry(
             version = "1.0.1",
             date = "2026-10-08",
             titleZhHant = "到站預報頁改版 + 站號顯示修正",
