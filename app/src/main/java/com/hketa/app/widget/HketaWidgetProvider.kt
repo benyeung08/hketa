@@ -92,7 +92,23 @@ class HketaWidgetProvider : AppWidgetProvider() {
                                     RailData.nameOf(context, Operator.MTR_HR, it, AppLocale.isEnglish())
                                 }.first.minByOrNull { it.minutes ?: Int.MAX_VALUE }
                             }
-                            // 城巴／嶼巴／小巴要逐條路線查，Widget 唔會嘈到咁多請求
+                            // 城巴／嶼巴／小巴：收藏嗰陣如果記低咗路線，
+                            // 就淨係查嗰一條（1 個請求），唔會嘈 —— 所以而家全部營辦商都支援
+                            Operator.CTB -> {
+                                if (fav.route.isBlank()) null
+                                else repo.ctbEta(fav.id, fav.route)
+                                    .minByOrNull { it.minutes ?: Int.MAX_VALUE }
+                            }
+                            Operator.NLB -> {
+                                if (fav.routeId.isBlank()) null
+                                else repo.nlbEta(fav.routeId, fav.id)
+                                    .minByOrNull { it.minutes ?: Int.MAX_VALUE }
+                            }
+                            Operator.GMB -> {
+                                if (fav.routeId.isBlank()) null
+                                else repo.gmbEta(fav.id, fav.routeId)
+                                    .minByOrNull { it.minutes ?: Int.MAX_VALUE }
+                            }
                             else -> null
                         }
                     }.getOrNull()
