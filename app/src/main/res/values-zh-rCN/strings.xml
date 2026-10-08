@@ -147,6 +147,16 @@
     <string name="op_lrt">轻铁</string>
 
     <!-- 索引状态 -->
+
+    <!-- ETA 数据修复 -->
+    <string name="settings_eta_repair">ETA 数据修复</string>
+    <string name="eta_repair_main">修复并重新下载</string>
+    <string name="eta_repair_ctb">修复城巴</string>
+    <string name="eta_repair_gmb">修复小巴</string>
+    <string name="eta_repair_clear">仅清除缓存</string>
+    <string name="eta_repair_cleared">已清除缓存，下次启动会重新下载</string>
+    <string name="eta_repair_hint">如果遇到「暂时没有车站资料」、查不到到站预报，或者车站名变成一串数字，点「修复并重新下载」重新获取官方数据。城巴和专线小巴要逐条路线抓取，修复会发出大量请求，建议在 Wi-Fi 下执行。</string>
+
     <string name="index_ready">索引已就绪（%1$d 条路线）</string>
     <string name="index_done">索引完成：%1$d 条路线 / %2$d 个车站</string>
     <string name="index_step_kmb">正在下载九巴路线…</string>
