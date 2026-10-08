@@ -147,6 +147,16 @@
     <string name="op_lrt">輕鐵</string>
 
     <!-- 索引狀態 -->
+
+    <!-- ETA 資料修復 -->
+    <string name="settings_eta_repair">ETA 資料修復</string>
+    <string name="eta_repair_main">修復並重新下載</string>
+    <string name="eta_repair_ctb">修復城巴</string>
+    <string name="eta_repair_gmb">修復小巴</string>
+    <string name="eta_repair_clear">淨係清除快取</string>
+    <string name="eta_repair_cleared">已清除快取，下次啟動會重新下載</string>
+    <string name="eta_repair_hint">如果遇到「暫時冇車站資料」、查唔到到站預報，或者車站名變咗一串數字，撳「修復並重新下載」重新攞過官方資料。城巴同專線小巴要逐條路線抓取，修復會發出大量請求，建議喺 Wi-Fi 下執行。</string>
+
     <string name="index_ready">索引已就緒（%1$d 條路線）</string>
     <string name="index_done">索引完成：%1$d 條路線 / %2$d 個車站</string>
     <string name="index_step_kmb">正在下載九巴路線…</string>
