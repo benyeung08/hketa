@@ -237,25 +237,32 @@ jobs:
         if: steps.tok.outputs.skip == 'false'
         run: |
           set -e
-          git config --global user.name "ci-bot"
-          git config --global user.email "ci-bot@users.noreply.github.com"
-          rm -rf target-repo
           # 同 repo 用內置 GITHUB_TOKEN 就夠；只有跨 repo 先需要 PAT（PUBLISH_TOKEN）
           TOKEN="${{ secrets.PUBLISH_TOKEN || github.token }}"
           export TOKEN
-          # 一定要 pipefail：淨係用 `| sed` 嘅話，clone 失敗會被 sed 嘅退出碼吞掉
+          BR="${{ steps.cfg.outputs.branch }}"
+
+          rm -rf target-repo && mkdir target-repo && cd target-repo
+          git init -q
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git"
+
+          # 睇下目標分支存唔存在（pipefail 必要：唔係 ls-remote 失敗會被 grep 吞掉）
           set -o pipefail
-          git clone --depth 1 \
-            "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git" \
-            target-repo 2>&1 | sed 's/x-access-token:[^@]*@/***@/'
-          set +o pipefail
-          cd target-repo
-          # 目標分支唔存在就由 orphan 開一條，避免掝走原有 main 嘅 184 個 commit
-          if git ls-remote --heads origin "${{ steps.cfg.outputs.branch }}" | grep -q "${{ steps.cfg.outputs.branch }}$"; then
-            git fetch --depth 1 origin "${{ steps.cfg.outputs.branch }}"
-            git checkout -B "${{ steps.cfg.outputs.branch }}" "origin/${{ steps.cfg.outputs.branch }}"
+          if git ls-remote --heads origin "$BR" 2>/dev/null | grep -q "refs/heads/$BR$"; then
+            set +o pipefail
+            echo "分支 $BR 已存在 → fetch 佢"
+            # 重點：一定要寫「全 refspec」。
+            # 淨係寫 `git fetch origin apk` 只會放落 FETCH_HEAD，
+            # 唔會建立 refs/remotes/origin/apk，下一句 checkout 就會報
+            # fatal: 'origin/apk' is not a commit
+            git fetch --depth 1 origin "refs/heads/$BR:refs/remotes/origin/$BR"
+            git checkout -q -B "$BR" "refs/remotes/origin/$BR"
           else
-            git checkout --orphan "${{ steps.cfg.outputs.branch }}"
+            set +o pipefail
+            echo "分支 $BR 唔存在 → 開 orphan（唔會掝走 main 嘅歷史）"
+            git checkout -q --orphan "$BR"
             git rm -rf --cached . -q || true
           fi
 
@@ -291,7 +298,18 @@ jobs:
             exit 0
           fi
           git commit -m "APK run ${{ github.run_number }} (${{ github.sha }})"
-          git push origin "HEAD:${{ steps.cfg.outputs.branch }}"
+
+          # shallow clone 有機會被 server 以 "shallow update not allowed" 拒絕，
+          # 咁就攞完整歷史再推一次
+          if git push origin "HEAD:${{ steps.cfg.outputs.branch }}" 2>/tmp/push.err; then
+            echo "推送成功"
+          else
+            echo "第一次推送失敗，攞完整歷史重試："
+            tail -3 /tmp/push.err 2>/dev/null || true
+            git fetch --unshallow origin || true
+            git push origin "HEAD:${{ steps.cfg.outputs.branch }}"
+            echo "重試成功"
+          fi
           echo "已推送 → ${{ steps.cfg.outputs.repo }}#${{ steps.cfg.outputs.branch }}/${{ steps.cfg.outputs.dir }}"
 
       - name: Summary
