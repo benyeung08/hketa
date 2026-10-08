@@ -38,6 +38,10 @@
     <string name="search_hint">Route number, e.g. 1A, 6, K51</string>
 
     <!-- Standalone stop search -->
+
+    <!-- Route keyboard -->
+    <string name="search_open_keyboard">Show keyboard</string>
+
     <string name="search_tab_routes">Routes</string>
     <string name="search_tab_stops">Stops</string>
     <string name="search_stops_hint">Enter a stop name or code (e.g. Sha Tin, KT492)</string>
@@ -160,6 +164,16 @@
     <!-- ETA data repair -->
 
     <!-- Bottom status bar -->
+
+    <!-- Version history -->
+    <string name="status_version_history">Version history</string>
+    <string name="history_title">Version history</string>
+    <string name="history_current">Current version: %1$s</string>
+    <string name="history_online">Online (GitHub Releases)</string>
+    <string name="history_local">Local changelog</string>
+    <string name="history_installed">Installed</string>
+    <string name="history_close">Close</string>
+
     <string name="status_refresh">Refresh now</string>
     <string name="status_auto_refresh">Auto refresh (tap to toggle)</string>
     <string name="status_check_update">Check for updates</string>
@@ -171,6 +185,12 @@
     <string name="eta_repair_clear">Clear cache only</string>
     <string name="eta_repair_cleared">Cache cleared — it will be re-downloaded next launch</string>
     <string name="eta_repair_hint">If you hit "no stop data", get no arrivals, or see stop names as a string of digits, tap "Repair and re-download" to fetch the official data again. Citybus and GMB are crawled route by route, so repairing issues many requests — run it on Wi-Fi.</string>
+
+
+    <!-- Index diagnostics -->
+    <string name="index_err_ctb_stops">Citybus has no bulk-stop API — stops need a separate repair</string>
+    <string name="index_err_gmb">Minibus route fetch failed — retry or repair later</string>
+    <string name="settings_index_diag">Diagnostics</string>
 
     <string name="index_ready">Index ready (%1$d routes)</string>
     <string name="index_done">Index complete: %1$d routes / %2$d stops</string>
