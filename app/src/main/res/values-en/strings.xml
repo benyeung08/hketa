@@ -158,6 +158,12 @@
     <!-- Index status -->
 
     <!-- ETA data repair -->
+
+    <!-- Bottom status bar -->
+    <string name="status_refresh">Refresh now</string>
+    <string name="status_auto_refresh">Auto refresh (tap to toggle)</string>
+    <string name="status_check_update">Check for updates</string>
+
     <string name="settings_eta_repair">ETA data repair</string>
     <string name="eta_repair_main">Repair and re-download</string>
     <string name="eta_repair_ctb">Repair Citybus</string>
