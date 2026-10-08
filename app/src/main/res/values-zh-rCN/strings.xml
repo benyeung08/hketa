@@ -255,4 +255,22 @@
     <string name="status_copy_version">复制版本号</string>
     <string name="status_version_copied">版本号已复制</string>
 
+
+    <!-- 手动选点 -->
+    <string name="manual_location_title">手动选点（不用定位）</string>
+    <string name="manual_location_current">当前使用：%1$s</string>
+    <string name="manual_location_clear">清除（改回用定位）</string>
+
+
+    <string name="index_deep_already_done">已经全部修复完成，不用再抓</string>
+
+
+    <!-- 轻铁特别班次 -->
+    <string name="rail_special_title">轻铁特别班次</string>
+    <string name="rail_special_hint">9xx 之类的特别班次不在常规路线里。官方没有提供清单，但可以扫描各站预报动态找出来。</string>
+    <string name="rail_special_scan">扫描特别班次</string>
+    <string name="rail_special_scanning">扫描中…</string>
+    <string name="rail_special_stops">%1$d 个站有这个班次</string>
+    <string name="rail_special_none">暂时找不到特别班次</string>
+
 </resources>
