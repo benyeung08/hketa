@@ -35,10 +35,19 @@
     <string name="title_settings">Settings</string>
 
     <!-- Search -->
-    <string name="search_hint">Route number or stop name, e.g. 1A, K51, Tuen Ma, Sha Tin</string>
+    <string name="search_hint">Route number, e.g. 1A, 6, K51</string>
+
+    <!-- Standalone stop search -->
+    <string name="search_tab_routes">Routes</string>
+    <string name="search_tab_stops">Stops</string>
+    <string name="search_stops_hint">Enter a stop name or code (e.g. Sha Tin, KT492)</string>
+    <string name="search_stops_empty">No such stop — try part of the name, or re-download from "ETA data repair"</string>
+    <string name="search_stops_routes">Served by: %1$s</string>
+    <string name="search_stops_none">No route data yet</string>
+    <string name="search_stops_more">…%1$d more</string>
     <string name="search_group_stops">Stops</string>
     <string name="search_group_routes">Routes</string>
-    <string name="search_empty">No match. Try digits only (e.g. 6 instead of 6A), or open the Rail tab.</string>
+    <string name="search_empty">No routes found — try digits only (e.g. 6 instead of 6A). To find stops use Home or Nearby.</string>
     <string name="route_bound_to">to %1$s</string>
 
     <!-- Route stops -->
