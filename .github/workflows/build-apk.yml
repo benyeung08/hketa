@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: '把 APK 提交到目標 repo（需要 PUBLISH_TOKEN）'
+        description: '把 APK 提交到 builds 目錄'
         type: boolean
         default: true
       target_repo:
-        description: '目標 repo，形如 owner/name'
+        description: '目標 repo（預設＝本 repo；跨 repo 先需要 PUBLISH_TOKEN）'
         type: string
-        default: 'benyeung08/code-to-app'
+        default: ''
       target_branch:
         description: '目標分支'
         type: string
@@ -22,7 +22,7 @@ on:
       target_dir:
         description: '目標目錄（repo 內）'
         type: string
-        default: 'apk'
+        default: 'builds'
       keep_history:
         description: '保留舊 APK（關＝只保留 latest.apk + 本次版本檔）'
         type: boolean
@@ -191,14 +191,22 @@ jobs:
           name: hketa-release-apk
           path: apk-in
 
-      - name: Check publish token
+      - name: Check publish settings
         id: tok
         run: |
-          if [ -z "${{ secrets.PUBLISH_TOKEN }}" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::冇設定 PUBLISH_TOKEN，跳過跨 repo 推送（APK 仍然喺 Actions artifact 度）"
-          else
+          TARGET="${{ github.event.inputs.target_repo || github.repository }}"
+          SELF="${{ github.repository }}"
+          echo "目標 repo：$TARGET（本 repo：$SELF）"
+          if [ "$TARGET" = "$SELF" ] || [ -n "${{ secrets.PUBLISH_TOKEN }}" ]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            if [ "$TARGET" = "$SELF" ]; then
+              echo "同 repo 推送 —— 用內置 GITHUB_TOKEN"
+            else
+              echo "跨 repo 推送 —— 用 PUBLISH_TOKEN"
+            fi
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::跨 repo 推送需要 PUBLISH_TOKEN，今次跳過（APK 仍然喺 Actions artifact 度）"
           fi
 
       - name: Resolve target settings
@@ -207,9 +215,9 @@ jobs:
         run: |
           # 用 ${VAR:-default} 而唔係 `[ -z x ] && x=...`：
           # 後者喺 `set -e` 之下，當變數非空時會返回非零、直接成個 step 失敗
-          repo="${{ github.event.inputs.target_repo || 'benyeung08/code-to-app' }}"
+          repo="${{ github.event.inputs.target_repo || github.repository }}"
           br="${{ github.event.inputs.target_branch || 'apk' }}"
-          dir="${{ github.event.inputs.target_dir || 'apk' }}"
+          dir="${{ github.event.inputs.target_dir || 'builds' }}"
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "branch=$br" >> "$GITHUB_OUTPUT"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
@@ -222,9 +230,14 @@ jobs:
           git config --global user.name "ci-bot"
           git config --global user.email "ci-bot@users.noreply.github.com"
           rm -rf target-repo
+          # 同 repo 用內置 GITHUB_TOKEN 就夠；只有跨 repo 先需要 PAT（PUBLISH_TOKEN）
+          TOKEN="${{ secrets.PUBLISH_TOKEN || github.token }}"
+          export TOKEN
           # 一定要 pipefail：淨係用 `| sed` 嘅話，clone 失敗會被 sed 嘅退出碼吞掉
           set -o pipefail
-          git clone --depth 1             "https://x-access-token:${{ secrets.PUBLISH_TOKEN }}@github.com/${{ steps.cfg.outputs.repo }}.git"             target-repo 2>&1 | sed 's/x-access-token:[^@]*@/***@/'
+          git clone --depth 1 \
+            "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git" \
+            target-repo 2>&1 | sed 's/x-access-token:[^@]*@/***@/'
           set +o pipefail
           cd target-repo
           # 目標分支唔存在就由 orphan 開一條，避免掝走原有 main 嘅 184 個 commit
@@ -249,7 +262,11 @@ jobs:
           cp "$SRC" "${{ steps.cfg.outputs.dir }}/latest.apk"
           # 只保留 latest.apk + 最近 5 個版本檔（關咗 keep_history 就只留 latest）
           if [ "${{ github.event.inputs.keep_history || 'true' }}" != "true" ]; then
-            ls -1 ${{ steps.cfg.outputs.dir }}/*.apk 2>/dev/null | grep -v 'latest.apk' | sort | head -n -1 | xargs -r rm -f
+            # 只保留 latest.apk + 最近 5 個版本檔（sort -V 先啱：run9 < run10）
+            ls -1 ${{ steps.cfg.outputs.dir }}/*.apk 2>/dev/null \
+              | grep -v '/latest.apk$' \
+              | grep -v '/hketa-v'"$VER"'-run${{ github.run_number }}.apk$' \
+              | sort -V | head -n -5 | xargs -r rm -f
           fi
           ls -lh "${{ steps.cfg.outputs.dir }}"
 
