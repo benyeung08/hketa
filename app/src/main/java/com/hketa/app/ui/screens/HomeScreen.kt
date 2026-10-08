@@ -52,6 +52,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
 import com.hketa.app.data.PresetLocation
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import com.hketa.app.data.RouteDef
 import com.hketa.app.data.HK_PRESET_LOCATIONS
 import com.hketa.app.data.LocatePhase
 import com.hketa.app.data.EtaEntry
@@ -72,7 +76,8 @@ import com.hketa.app.vm.AppViewModel
 fun HomeScreen(
     vm: AppViewModel,
     onNeedLocation: (callback: (Boolean) -> Unit) -> Unit,
-    onOpenStop: (StopDef) -> Unit
+    onOpenStop: (StopDef) -> Unit,
+    onOpenRoute: (RouteDef) -> Unit = {}
 ) {
     val context = LocalContext.current
     val items by vm.homeItems.collectAsState()
@@ -158,77 +163,219 @@ fun HomeScreen(
             Muted(stringResource(R.string.home_hint))
         }
 
+        // 一個站一組：站名做小標題，下面逐條班次一張卡（撳卡 → 嗰條路線嘅沿途車站）
         items.forEach { item ->
-            HomeStopCard(
-                item = item,
-                isFav = favorites.any { it.id == item.stop.id && it.op == item.stop.op },
+            val isFav = favorites.any { it.id == item.stop.id && it.op == item.stop.op }
+            NearbyStopHeader(
+                stop = item.stop,
+                distanceMeters = item.distanceMeters,
+                isFav = isFav,
                 onToggleFav = { vm.toggleFavorite(item.stop) },
                 onOpenStop = { onOpenStop(item.stop) }
             )
+
+            if (item.etas.isNotEmpty()) {
+                item.etas.forEach { e ->
+                    NearbyEtaCard(
+                        eta = e,
+                        stop = item.stop,
+                        onClick = { onOpenRoute(vm.routeOfEta(e)) }
+                    )
+                }
+                // 有路線但冇班次（例如已過尾班車）→ 照樣出卡，撳落去睇沿途車站
+                val shown = item.etas.map { it.route }.toSet()
+                item.routes.filter { it !in shown }.take(6).forEach { r ->
+                    NearbyRouteOnlyCard(
+                        route = r,
+                        stop = item.stop,
+                        onClick = { onOpenRoute(vm.routeOfEta(EtaEntry(op = item.stop.op, route = r))) }
+                    )
+                }
+            } else {
+                // 完全冇班次：淨係列路線號
+                item.routes.take(8).forEach { r ->
+                    NearbyRouteOnlyCard(
+                        route = r,
+                        stop = item.stop,
+                        onClick = { onOpenRoute(vm.routeOfEta(EtaEntry(op = item.stop.op, route = r))) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
         }
 
         Spacer(Modifier.height(24.dp))
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 附近車站小標題：站名 + 距離 + 收藏。
+ * 淨係做分組用，班次本身喺下面嘅 [NearbyEtaCard]。
+ */
 @Composable
-private fun HomeStopCard(
-    item: HomeItem,
+private fun NearbyStopHeader(
+    stop: StopDef,
+    distanceMeters: Int,
     isFav: Boolean,
     onToggleFav: () -> Unit,
     onOpenStop: () -> Unit
 ) {
-    Card(
-        onClick = onOpenStop,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stop.titleWithCode(),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Muted("${stop.op.labelText()}　${distanceText(distanceMeters)}")
+        }
+        IconButton(onClick = onToggleFav) {
+            Icon(
+                painter = painterResource(
+                    if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off
+                ),
+                contentDescription = stringResource(
+                    if (isFav) R.string.fav_remove else R.string.fav_add
+                ),
+                tint = if (isFav) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onOpenStop) {
+            Icon(
+                painterResource(R.drawable.ic_status_layers),
+                contentDescription = stringResource(R.string.home_open_stop),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * 一條班次一張卡（對應第二張圖嘅版面）：
+ *
+ *   ┌────────────────────────────────┐
+ *   │ [12]  往 尖沙咀東(麼地道)  1 分鐘 │
+ *   │      海麗邨巴士總站 (SS667)      │
+ *   └────────────────────────────────┘
+ *
+ * 撳一下 → 打開呢條路線嘅沿途車站（第三張圖）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NearbyEtaCard(
+    eta: EtaEntry,
+    stop: StopDef,
+    onClick: () -> Unit
+) {
+    val soon = (eta.minutes ?: 99) <= 5
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
         colors = CardDefaults.cardColors()
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.stop.titleWithCode(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Muted("${item.stop.op.labelText()}　${distanceText(item.distanceMeters)}")
-                }
-                IconButton(onClick = onToggleFav) {
-                    Icon(
-                        painter = androidx.compose.ui.res.painterResource(
-                            if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off
-                        ),
-                        contentDescription = stringResource(
-                            if (isFav) R.string.fav_remove else R.string.fav_add
-                        ),
-                        tint = if (isFav) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 路線號：膠囊 badge
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                modifier = Modifier.widthIn(min = 52.dp)
+            ) {
+                Text(
+                    text = eta.route,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.route_bound_to, eta.dest),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Muted(
+                    text = stop.titleWithCode(),
+                    maxLines = 1
+                )
+                if (eta.remark.isNotBlank()) {
+                    Muted(eta.remark)
                 }
             }
 
-            if (item.etas.isEmpty()) {
-                if (item.routes.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Muted(item.routes.take(12).joinToString("　"))
-                }
-            } else {
-                Spacer(Modifier.height(4.dp))
-                item.etas.forEach { e -> EtaRow(e) }
-                if (item.routes.size > item.etas.size) {
-                    Spacer(Modifier.height(4.dp))
-                    val shown = item.etas.map { it.route }.toSet()
-                    Muted(
-                        stringResource(
-                            R.string.home_more_routes,
-                            item.routes.count { it !in shown }
-                        )
-                    )
-                }
+            Spacer(Modifier.width(8.dp))
+
+            // 分鐘數：5 分鐘內用主色強調
+            Text(
+                text = minutesText(eta.minutes),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (soon) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+/** 冇班次（例如過咗尾班車）嗰陣：淨係顯示路線號，撳落去照樣睇沿途車站 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NearbyRouteOnlyCard(
+    route: String,
+    stop: StopDef,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        colors = CardDefaults.cardColors()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.widthIn(min = 52.dp)
+            ) {
+                Text(
+                    text = route,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Muted(stop.titleWithCode(), maxLines = 1)
+            }
+            Muted(stringResource(R.string.eta_dash))
         }
     }
 }
