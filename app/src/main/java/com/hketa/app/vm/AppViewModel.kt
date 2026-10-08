@@ -23,6 +23,8 @@ import com.hketa.app.data.RouteStopDef
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.LocatePhase
+import com.hketa.app.data.PresetLocation
+import com.hketa.app.data.SpecialRouteInfo
 import com.hketa.app.util.AppLocale
 import com.hketa.app.data.StopWithSeq
 import com.hketa.app.data.UpdateChecker
@@ -52,6 +54,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         /** 主頁自動重新定位／重整間隔（秒） */
         const val HOME_AUTO_LOCATE_SEC = 60
+
+        /**
+         * 深度修復嘅並發數。
+         * 城巴／小巴要逐條路線抓，串行嘅話幾百條路線要幾十分鐘；
+         * 改成分批並發之後時間大幅縮短，亦因為係增量（跳過已抓過嘅），
+         * 實際發出嘅請求數會少好多 —— 唔再一定需要 Wi-Fi。
+         */
+        const val DEEP_INDEX_CONCURRENCY = 8
 
         private const val INDEX_VERSION = 2
         private const val UPDATE_THROTTLE_MS = 30 * 60 * 1000L
@@ -115,6 +125,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _lastLocateAt = MutableStateFlow(0L)
     val lastLocateAt: StateFlow<Long> = _lastLocateAt.asStateFlow()
 
+    /**
+     * 手動選點：用戶唔想授權定位／定位失敗嗰陣，自己揀一個地點。
+     * 設定咗之後，主頁會用呢個座標去搵附近車站，
+     * 唔會淨係顯示「未授權定位」就冇嘢睇。
+     */
+    private val _manualLocation = MutableStateFlow<PresetLocation?>(null)
+    val manualLocation: StateFlow<PresetLocation?> = _manualLocation.asStateFlow()
+
+    /** 設定手動選點；傳 null 即清除（改返用真實定位） */
+    fun setManualLocation(loc: PresetLocation?) {
+        _manualLocation.value = loc
+    }
+
     private var locateJob: Job? = null
 
     fun setAutoLocate(on: Boolean) {
@@ -134,7 +157,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         locateJob?.cancel()
         locateJob = viewModelScope.launch {
             while (_autoLocate.value) {
-                if (granted()) {
+                // 已授權、或者已經揀咗手動選點，都可以繼續搵附近車站
+                if (granted() || _manualLocation.value != null) {
                     _locatePhase.value = LocatePhase.LOCATING
                     val ok = suspendCatching { loadHomeInternal(context) }.getOrDefault(false)
                     _locatePhase.value = if (ok) LocatePhase.OK else LocatePhase.FAILED
@@ -151,7 +175,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadHomeInternal(context: android.content.Context): Boolean {
         ensureFavorites()
         _favorites.value = favoritesStore.all()
+        // 真實定位優先；冇（未授權／失敗）就退返手動選點
         val fix = LocationProvider.current(context)
+            ?: _manualLocation.value?.let { LocationProvider.Fix(it.lat, it.lon, "Manual") }
         if (fix == null) {
             _homeItems.value = emptyList()
             return false
@@ -536,32 +562,60 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 城巴沒有全量車站接口，逐條路線補齊車站與座標 */
-    fun deepIndexCtb() {
+    /**
+     * 城巴深度修復：逐條路線抓車站。
+     * @param incremental true = 增量，跳過已經有車站資料嘅路線（預設）
+     */
+    fun deepIndexCtb(incremental: Boolean = true) {
         viewModelScope.launch {
-            val targets = _index.value.routes.filter { it.op == Operator.CTB }
+            val all = _index.value.routes.filter { it.op == Operator.CTB }
+            val done = _index.value.routeStops
+                .filter { it.op == Operator.CTB }.map { it.route }.toSet()
+            val targets = if (incremental) all.filter { it.route !in done } else all
+
             if (targets.isEmpty()) {
-                _message.value = str(R.string.index_no_ctb)
+                _message.value = str(R.string.index_deep_already_done)
                 return@launch
             }
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
-            val known = _index.value.stops.map { "${it.op.name}|${it.id}" }.toMutableSet()
-            // for + withIndex 而唔係 forEachIndexed（後者 lambda 唔係 suspend 上下文）
-            for ((i, r) in targets.withIndex()) {
-                _indexStatus.value = str(R.string.index_deep_ctb_progress, r.route, i + 1, targets.size)
-                suspendCatching {
-                    val rs = repo.ctbRouteStops(r.route, r.bound)
-                    newRouteStops.addAll(rs)
-                    for (s in rs) {
-                        val key = "CTB|${s.stopId}"
-                        if (known.add(key)) {
-                            repo.ctbStop(s.stopId)?.let { newStops.add(it) }
+
+            // 分批並發（唔係逐條串行）—— 每批 8 條，時間大幅縮短
+            var finished = 0
+            for (batch in targets.chunked(DEEP_INDEX_CONCURRENCY)) {
+                _indexStatus.value = str(
+                    R.string.index_deep_ctb_progress,
+                    batch.first().route, finished + 1, targets.size
+                )
+                // 每條路線自己返一組結果，避免並發寫同一個 mutableList
+                val results = coroutineScope {
+                    batch.map { r ->
+                        async {
+                            suspendCatching {
+                                val rs = repo.ctbRouteStops(r.route, r.bound)
+                                val stops = rs.mapNotNull { repo.ctbStop(it.stopId) }
+                                rs to stops
+                            }.getOrNull()
                         }
-                    }
+                    }.awaitAll()
                 }
+                for ((rs, stops) in results.filterNotNull()) {
+                    newRouteStops.addAll(rs)
+                    newStops.addAll(stops)
+                }
+                finished += batch.size
+                _indexStatus.value = str(
+                    R.string.index_deep_ctb_progress,
+                    batch.last().route, finished, targets.size
+                )
             }
-            mergeAll(newStops, newRouteStops)
+
+            // 唔同路線會重複出現同一個站 → 去重先合併
+            mergeAll(
+                newStops.distinctBy { "${it.op.name}|${it.id}" },
+                newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
+            )
             _indexStatus.value = str(R.string.index_deep_ctb_done, newStops.size)
             _message.value = str(R.string.index_deep_ctb_msg)
             _busy.value = false
@@ -569,37 +623,129 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 專線小巴車站座標要逐條路線抓，畀「附近車站」用（建議 Wi-Fi 下執行） */
-    fun deepIndexGmb() {
+    /**
+     * 專線小巴深度修復：車站座標要逐條路線抓。
+     * @param incremental true = 增量，跳過已經有車站資料嘅路線（預設）
+     */
+    fun deepIndexGmb(incremental: Boolean = true) {
         viewModelScope.launch {
-            val targets = _index.value.routes.filter { it.op == Operator.GMB }
+            val all = _index.value.routes.filter { it.op == Operator.GMB }
+            val done = _index.value.routeStops
+                .filter { it.op == Operator.GMB }.map { it.routeId }.toSet()
+            val targets = if (incremental) all.filter { it.routeId !in done } else all
+
             if (targets.isEmpty()) {
-                _message.value = str(R.string.index_no_gmb)
+                _message.value = str(R.string.index_deep_already_done)
                 return@launch
             }
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
-            // for + withIndex 而唔係 forEachIndexed（後者 lambda 唔係 suspend 上下文）
-            for ((i, r) in targets.take(400).withIndex()) {
-                _indexStatus.value = str(R.string.index_deep_gmb_progress, r.route, i + 1, targets.size)
-                suspendCatching {
-                    val list = repo.gmbRouteStops(r.routeId, "1")
-                        .ifEmpty { repo.gmbRouteStops(r.routeId, "2") }
-                    newRouteStops.addAll(
-                        list.mapIndexed { idx, s ->
-                            RouteStopDef(
-                                op = Operator.GMB, route = r.route, routeId = r.routeId,
-                                seq = idx + 1, stopId = s.id
-                            )
+
+            var finished = 0
+            for (batch in targets.chunked(DEEP_INDEX_CONCURRENCY)) {
+                _indexStatus.value = str(
+                    R.string.index_deep_gmb_progress,
+                    batch.first().route, finished + 1, targets.size
+                )
+                val results = coroutineScope {
+                    batch.map { r ->
+                        async {
+                            suspendCatching {
+                                val list = repo.gmbRouteStops(r.routeId, "1")
+                                    .ifEmpty { repo.gmbRouteStops(r.routeId, "2") }
+                                val rs = list.mapIndexed { idx, st ->
+                                    RouteStopDef(
+                                        op = Operator.GMB, route = r.route, routeId = r.routeId,
+                                        seq = idx + 1, stopId = st.id
+                                    )
+                                }
+                                rs to list
+                            }.getOrNull()
                         }
-                    )
+                    }.awaitAll()
+                }
+                for ((rs, list) in results.filterNotNull()) {
+                    newRouteStops.addAll(rs)
                     newStops.addAll(list)
                 }
+                finished += batch.size
+                _indexStatus.value = str(
+                    R.string.index_deep_gmb_progress,
+                    batch.last().route, finished, targets.size
+                )
             }
-            mergeAll(newStops, newRouteStops)
+
+            mergeAll(
+                newStops.distinctBy { "${it.op.name}|${it.id}" },
+                newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
+            )
             _indexStatus.value = str(R.string.index_deep_gmb_done, newStops.size)
             _message.value = str(R.string.index_deep_gmb_msg)
             _busy.value = false
+        }
+    }
+
+    // ---- 輕鐵特別班次（9xx 等）----
+
+    private val _specialRoutes = MutableStateFlow<List<SpecialRouteInfo>>(emptyList())
+    val specialRoutes: StateFlow<List<SpecialRouteInfo>> = _specialRoutes.asStateFlow()
+
+    private val _scanningSpecial = MutableStateFlow(false)
+    val scanningSpecial: StateFlow<Boolean> = _scanningSpecial.asStateFlow()
+
+    /**
+     * 掃描輕鐵特別班次（如 9xx）。
+     *
+     * 官方冇提供「特別班次路線清單」，但預報接口會返呢啲班次，
+     * 所以逐個站查預報、收集路線號，再減走常規 11 條線，
+     * 剩低嘅就係特別班次 —— 唔使硬編碼 9xx 清單，官方加減班次都跟到。
+     */
+    fun scanLrSpecialRoutes() {
+        viewModelScope.launch {
+            _scanningSpecial.value = true
+            _specialRoutes.value = emptyList()
+            // 要寫明類型：AndroidViewModel.getApplication() 係泛型方法 <T: Application>，
+            // 直接指派畀無類型嘅 val 會推斷唔到 T
+            val ctx: android.app.Application = getApplication()
+            val lines = RailData.lightRail(ctx)
+            val regular = lines.map { it.id }.toSet()
+            val stops = lines.flatMap { it.stops }.distinctBy { it.id }
+
+            // route → 有呢個班次嘅站
+            val found = linkedMapOf<String, MutableList<String>>()
+
+            for (batch in stops.chunked(DEEP_INDEX_CONCURRENCY)) {
+                val results = coroutineScope {
+                    batch.map { st ->
+                        async {
+                            val routes = suspendCatching {
+                                repo.lightRailEta(st.id, etaText())
+                            }.getOrDefault(emptyList()).map { it.route }.distinct()
+                            st.id to routes
+                        }
+                    }.awaitAll()
+                }
+                for ((stopId, routes) in results) {
+                    for (r in routes) {
+                        if (r.isBlank() || r in regular) continue
+                        found.getOrPut(r) { mutableListOf() }.add(stopId)
+                    }
+                }
+            }
+
+            _specialRoutes.value = found.entries
+                .map { (route, ids) ->
+                    val uniq = ids.distinct()
+                    SpecialRouteInfo(
+                        route = route,
+                        stopIds = uniq,
+                        stopNames = uniq.map { RailData.nameOf(ctx, Operator.LRT, it, AppLocale.isEnglish()) }
+                    )
+                }
+                .sortedWith(compareBy<SpecialRouteInfo> { it.route.length }.thenBy { it.route })
+
+            _scanningSpecial.value = false
         }
     }
 
@@ -862,7 +1008,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             ?: RailData.linesOf(ctx, Operator.MTR_HR, stop.id).firstOrNull()?.id
                             ?: return@suspendCatching emptyList()
                         val (etas, alert) = repo.mtrHeavyRailEta(line, stop.id, etaText()) { code ->
-                            RailData.nameOf(ctx, Operator.MTR_HR, code)
+                            RailData.nameOf(ctx, Operator.MTR_HR, code, AppLocale.isEnglish())
                         }
                         alert?.let { _message.value = it }
                         etas
@@ -927,7 +1073,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val line = RailData.linesOf(getApplication(), Operator.MTR_HR, fav.id).firstOrNull()?.id
             if (line == null) emptyList()
             else repo.mtrHeavyRailEta(line, fav.id, etaText()) {
-                RailData.nameOf(getApplication(), Operator.MTR_HR, it)
+                RailData.nameOf(getApplication(), Operator.MTR_HR, it, AppLocale.isEnglish())
             }.first
         }
         Operator.CTB -> if (fav.route.isBlank()) emptyList() else repo.ctbEta(fav.id, fav.route)
@@ -1006,7 +1152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     ).firstOrNull()?.id
                                     if (line == null) emptyList()
                                     else repo.mtrHeavyRailEta(line, st.id, etaText()) {
-                                        RailData.nameOf(getApplication(), Operator.MTR_HR, it)
+                                        RailData.nameOf(getApplication(), Operator.MTR_HR, it, AppLocale.isEnglish())
                                     }.first
                                 }
                                 // 城巴／嶼巴／小巴要逐條路線查 —— 淨係查頭一條，慳請求
