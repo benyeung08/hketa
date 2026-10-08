@@ -758,10 +758,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ============ 到站預報 ============
 
+    /**
+     * 站號正規化：若傳入嘅 stop.id 明顯唔係站號（例如誤填咗 routeId），
+     * 就改用索引入面同名同營辦商嘅站（攞佢嘅站號同座標），
+     * 否則攞去查 ETA 一定失敗、畫面只會顯示「暫時冇班次資料」。
+     */
+    private fun normalizeStop(stop: StopDef): StopDef {
+        if (stop.id.isBlank() || stop.id.length <= 12) return stop
+        val hit = _index.value.stops.firstOrNull {
+            it.op == stop.op && it.name == stop.name && it.id.length <= 12
+        }
+        return hit ?: stop
+    }
+
     fun openStop(stop: StopDef, route: RouteDef? = null) {
-        _selectedStop.value = stop
+        val fixed = normalizeStop(stop)
+        _selectedStop.value = fixed
         _etas.value = emptyList()
-        loadEta(stop, route ?: _selectedRoute.value)
+        loadEta(fixed, route ?: _selectedRoute.value)
     }
 
     fun refreshEta() {
