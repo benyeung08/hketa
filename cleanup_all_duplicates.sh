@@ -31,7 +31,7 @@ echo
 echo "===== 3) 檢查仲有冇重複嘅頂層 class / object 名 ====="
 dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
 if [ -n "$dup" ]; then
-  echo "  ⚠ 仲有同名檔案（可能唔係錯，例如兩個目錄各有一份係合理嘅）："
+  echo "  ⚠ 仲有同名檔案："
   echo "$dup" | sed 's/^/    /'
 else
   echo "  ✔ 無任何同名 .kt 檔案"
