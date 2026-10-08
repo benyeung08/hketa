@@ -28,6 +28,8 @@ import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
 import com.hketa.app.R
 import com.hketa.app.location.LocationProvider
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -44,6 +46,9 @@ import kotlin.math.sqrt
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
+        /** 到站預報自動刷新間隔（秒）—— 同底部狀態欄嘅倒數一致 */
+        const val ETA_AUTO_REFRESH_SEC = 20
+
         private const val INDEX_VERSION = 2
         private const val UPDATE_THROTTLE_MS = 30 * 60 * 1000L
         private const val HOME_RADIUS_M = 800.0
@@ -89,6 +94,74 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _results = MutableStateFlow<List<RouteDef>>(emptyList())
     val results: StateFlow<List<RouteDef>> = _results.asStateFlow()
+
+    // ---- 底部狀態欄 ----
+    /** 上次成功更新資料嘅時間（epoch millis），0 = 未更新過 */
+    private val _lastUpdateAt = MutableStateFlow(0L)
+    val lastUpdateAt: StateFlow<Long> = _lastUpdateAt.asStateFlow()
+
+    /** 自動刷新倒數（秒）；0 = 已關閉自動刷新 */
+    private val _refreshCountdown = MutableStateFlow(0)
+    val refreshCountdown: StateFlow<Int> = _refreshCountdown.asStateFlow()
+
+    /** 自動刷新開關（預設開，對應到站預報每 20 秒刷新） */
+    private val _autoRefresh = MutableStateFlow(true)
+    val autoRefresh: StateFlow<Boolean> = _autoRefresh.asStateFlow()
+
+    private var countdownJob: Job? = null
+
+    fun toggleAutoRefresh() {
+        _autoRefresh.value = !_autoRefresh.value
+        if (!_autoRefresh.value) {
+            countdownJob?.cancel()
+            countdownJob = null
+            _refreshCountdown.value = 0
+        } else {
+            restartCountdown()
+        }
+    }
+
+    /** 重新整理：依目前所在頁面重拉資料；順便重置自動刷新倒數 */
+    fun refreshNow() {
+        viewModelScope.launch {
+            _busy.value = true
+            suspendCatching {
+                // 重新拉目前車站嘅到站預報；冇揀車站就刷新主頁／收藏
+                val st = _selectedStop.value
+                if (st != null) {
+                    loadEta(st, _selectedRoute.value)
+                } else {
+                    loadFavoriteEtas()
+                }
+            }
+            _lastUpdateAt.value = System.currentTimeMillis()
+            _busy.value = false
+            restartCountdown()
+        }
+    }
+
+    private fun restartCountdown() {
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
+            var left = ETA_AUTO_REFRESH_SEC
+            while (_autoRefresh.value && left > 0) {
+                _refreshCountdown.value = left
+                delay(1000)
+                left--
+            }
+            _refreshCountdown.value = 0
+            if (_autoRefresh.value) {
+                val st = _selectedStop.value
+                if (st != null) loadEta(st, _selectedRoute.value) else loadFavoriteEtas()
+                _lastUpdateAt.value = System.currentTimeMillis()
+                restartCountdown()
+            }
+        }
+    }
+
+    init {
+        restartCountdown()
+    }
 
     // ---- 獨立嘅「搜尋車站」----
     private val _stopQuery = MutableStateFlow("")
@@ -671,7 +744,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     Operator.LRT -> repo.lightRailEta(stop.id, etaText())
                 }
-            }.onFailure { _message.value = str(R.string.eta_query_failed, it.message.orEmpty()) }
+            }.onSuccess { _lastUpdateAt.value = System.currentTimeMillis() }
+            .onFailure { _message.value = str(R.string.eta_query_failed, it.message.orEmpty()) }
                 .getOrDefault(emptyList())
             _etas.value = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
             _busy.value = false
