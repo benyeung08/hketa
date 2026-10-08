@@ -182,8 +182,8 @@ fun AppRoot(
                         vm.openRoute(it)
                         navController.navigate(Dest.ROUTE)
                     },
-                    onOpenStop = { stop ->
-                        vm.openStop(stop, null)
+                    onOpenStop = {
+                        vm.openStop(it, null)
                         navController.navigate(Dest.ETA)
                     },
                     onOpenRail = { navController.navigate(Dest.RAIL) },
