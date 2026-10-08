@@ -38,6 +38,10 @@
     <string name="search_hint">路线号，如 1A、6、K51</string>
 
     <!-- 独立搜索车站 -->
+
+    <!-- 路线键盘 -->
+    <string name="search_open_keyboard">开启键盘</string>
+
     <string name="search_tab_routes">路线</string>
     <string name="search_tab_stops">车站</string>
     <string name="search_stops_hint">输入车站名或站号（如 沙田、SHA TIN、KT492）</string>
@@ -160,6 +164,16 @@
     <!-- ETA 数据修复 -->
 
     <!-- 底部状态栏 -->
+
+    <!-- 版本历史 -->
+    <string name="status_version_history">版本历史</string>
+    <string name="history_title">版本历史</string>
+    <string name="history_current">当前版本：%1$s</string>
+    <string name="history_online">线上（GitHub Releases）</string>
+    <string name="history_local">本地更新记录</string>
+    <string name="history_installed">已安装</string>
+    <string name="history_close">关闭</string>
+
     <string name="status_refresh">即时刷新</string>
     <string name="status_auto_refresh">自动刷新（点按开关）</string>
     <string name="status_check_update">检查版本更新</string>
@@ -171,6 +185,12 @@
     <string name="eta_repair_clear">仅清除缓存</string>
     <string name="eta_repair_cleared">已清除缓存，下次启动会重新下载</string>
     <string name="eta_repair_hint">如果遇到「暂时没有车站资料」、查不到到站预报，或者车站名变成一串数字，点「修复并重新下载」重新获取官方数据。城巴和专线小巴要逐条路线抓取，修复会发出大量请求，建议在 Wi-Fi 下执行。</string>
+
+
+    <!-- 索引诊断 -->
+    <string name="index_err_ctb_stops">城巴官方没有全量车站接口，车站需另行修复</string>
+    <string name="index_err_gmb">专线小巴路线抓取失败，请重试或稍后再修复</string>
+    <string name="settings_index_diag">索引诊断</string>
 
     <string name="index_ready">索引已就绪（%1$d 条路线）</string>
     <string name="index_done">索引完成：%1$d 条路线 / %2$d 个车站</string>
