@@ -27,6 +27,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 桌面小工具：顯示收藏車站的下一班到站時間 -->
+        <receiver
+            android:name="com.hketa.app.widget.HketaWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/hketa_widget_info" />
+        </receiver>
+
         <!-- 讓 AppCompatDelegate 在 Android 12 及以下代為保存應用程式語言設定 -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
