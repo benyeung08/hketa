@@ -39,7 +39,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // 固定簽名：repo 內置 keystore/hketa.jks（鎖死唔變）。
+    // 唔固定嘅話，CI 每次喺新 runner 上都會自動生成全新嘅 debug.keystore，
+    // 令每份 APK 簽名都唔同 —— 用戶裝咗舊版再裝新版會彈
+    // 「套件與現有的套件發生衝突，無法安裝」。
+    val builtinStore = rootProject.file("keystore/hketa.jks")
+    val hasBuiltinSigning = builtinStore.isFile
+
     signingConfigs {
+        if (hasBuiltinSigning) {
+            create("builtin") {
+                storeFile = builtinStore
+                storePassword = "hketa2026"
+                keyAlias = "hketa"
+                keyPassword = "hketa2026"
+            }
+        }
         if (hasCustomSigning) {
             create("custom") {
                 storeFile = customStoreFile
@@ -51,17 +66,20 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // debug 都用同一個固定 key，debug ⇄ release 互相可以覆蓋安裝
+            if (hasBuiltinSigning) signingConfig = signingConfigs.getByName("builtin")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = if (hasCustomSigning) {
-                signingConfigs.getByName("custom")
-            } else {
-                // 沒有自備簽名檔時，退回 debug 簽名，讓 assembleRelease 也能直接安裝
-                signingConfigs.getByName("debug")
+            signingConfig = when {
+                hasCustomSigning -> signingConfigs.getByName("custom")
+                hasBuiltinSigning -> signingConfigs.getByName("builtin")
+                else -> signingConfigs.getByName("debug")
             }
         }
     }
@@ -82,6 +100,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // 唔好把 keystore 打進 APK
+            excludes += "/debug.keystore"
+            excludes += "debug.keystore"
         }
     }
 }
