@@ -1,5 +1,6 @@
 package com.hketa.app.widget
 
+import com.hketa.app.util.AppLocale
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -88,7 +89,7 @@ class HketaWidgetProvider : AppWidgetProvider() {
                                 val line = RailData.linesOf(context, Operator.MTR_HR, fav.id)
                                     .firstOrNull()?.id ?: return@suspendCatching null
                                 repo.mtrHeavyRailEta(line, fav.id) {
-                                    RailData.nameOf(context, Operator.MTR_HR, it)
+                                    RailData.nameOf(context, Operator.MTR_HR, it, AppLocale.isEnglish())
                                 }.first.minByOrNull { it.minutes ?: Int.MAX_VALUE }
                             }
                             // 城巴／嶼巴／小巴要逐條路線查，Widget 唔會嘈到咁多請求
