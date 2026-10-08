@@ -34,6 +34,7 @@ object UpdateChecker {
     private const val OWNER = "benyeung08"
     private const val REPO = "hketa"
     private const val LATEST = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+    private const val ALL = "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=30"
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -61,6 +62,19 @@ object UpdateChecker {
                 throw e
             }
         return runCatching { json.decodeFromString<GitHubRelease>(text) }.getOrNull()
+    }
+
+    /**
+     * 抓取版本歷史（全部 Release，由新到舊）。
+     * 失敗時丟出例外由呼叫方處理；404（未發布過）會當做空清單。
+     */
+    suspend fun fetchHistory(): List<GitHubRelease> {
+        val text = suspendCatching { Http.get(ALL) }
+            .getOrElse { e ->
+                if (e.message.orEmpty().contains("404")) return emptyList()
+                throw e
+            }
+        return runCatching { json.decodeFromString<List<GitHubRelease>>(text) }.getOrDefault(emptyList())
     }
 
     /**
