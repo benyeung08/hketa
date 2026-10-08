@@ -91,7 +91,7 @@ fun EtaScreen(
                     )
                     if (curStop != null) {
                         IconButton(
-                            onClick = { curStop?.let { vm.toggleFavorite(it, null) } },
+                            onClick = { curStop?.let { vm.toggleFavorite(it, route) } },
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(

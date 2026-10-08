@@ -170,7 +170,9 @@ fun HomeScreen(
                 stop = item.stop,
                 distanceMeters = item.distanceMeters,
                 isFav = isFav,
-                onToggleFav = { vm.toggleFavorite(item.stop) },
+                // 記低頭一條路線 —— Widget 同收藏頁查 ETA 嗰陣，
+                // 城巴／嶼巴／小巴淨係靠呢條路線發一個請求就夠，唔使逐條試
+                onToggleFav = { vm.toggleFavorite(item.stop, vm.routeOfEta(homeEtaForFav(item))) },
                 onOpenStop = { onOpenStop(item.stop) }
             )
 
@@ -565,3 +567,11 @@ private fun ManualLocationBar(
         }
     }
 }
+
+/**
+ * 收藏嗰陣要記低邊條路線。
+ * 有班次就用最快嗰班嘅路線；冇班次（例如過咗尾班車）就用索引入面頭一條。
+ */
+private fun homeEtaForFav(item: HomeItem): EtaEntry =
+    item.etas.firstOrNull()
+        ?: EtaEntry(op = item.stop.op, route = item.routes.firstOrNull().orEmpty())

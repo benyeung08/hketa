@@ -98,8 +98,9 @@ private fun OsmRouteMap(
                     loadWithOverviewMode = true
                     useWideViewPort = true
                     builtInZoomControls = false
-                    // 唔好把地圖瓦片寫入磁碟快取之外的嘢
-                    cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                    // 優先讀快取：睇過嘅路線（Leaflet + 瓦片）離線都出到圖，
+                    // 未睇過嘅先上網攞。所以「要返睇第二次」嘅路線唔使再靠網絡。
+                    cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
                 }
                 setBackgroundColor(AndroidColor.parseColor("#121212"))
                 webViewClient = object : WebViewClient() {

@@ -16,12 +16,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,10 @@ fun RailScreen(
     val groups = vm.railGroups()
     val scanning by vm.scanningSpecial.collectAsState()
     val special by vm.specialRoutes.collectAsState()
+
+    // 載入上次嘅掃描結果（存落本地，唔使每次開頁都掃）
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { vm.loadSpecialRoutes(context) }
 
     // 分清楚「仲未掃」同「掃咗但搵唔到」
     var hasScanned by remember { mutableStateOf(false) }
