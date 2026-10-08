@@ -158,6 +158,12 @@
     <!-- 索引状态 -->
 
     <!-- ETA 数据修复 -->
+
+    <!-- 底部状态栏 -->
+    <string name="status_refresh">即时刷新</string>
+    <string name="status_auto_refresh">自动刷新（点按开关）</string>
+    <string name="status_check_update">检查版本更新</string>
+
     <string name="settings_eta_repair">ETA 数据修复</string>
     <string name="eta_repair_main">修复并重新下载</string>
     <string name="eta_repair_ctb">修复城巴</string>
