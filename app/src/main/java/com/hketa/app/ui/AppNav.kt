@@ -33,6 +33,7 @@ import com.hketa.app.ui.screens.RailScreen
 import com.hketa.app.ui.screens.RouteStopsScreen
 import com.hketa.app.ui.screens.SearchScreen
 import com.hketa.app.R
+import com.hketa.app.ui.StatusBar
 import com.hketa.app.ui.screens.SettingsScreen
 import com.hketa.app.vm.AppViewModel
 
@@ -101,6 +102,23 @@ fun AppRoot(
             if (currentRoute == Dest.HOME || currentRoute == Dest.SEARCH ||
                 currentRoute == Dest.FAVORITES || currentRoute == Dest.SETTINGS
             ) {
+                // 狀態欄放喺導覽列上面（圖嗰種編輯器風格：版本 · 計數 + 三個掣）
+                StatusBar(
+                    vm = vm,
+                    onCheckUpdate = {
+                        vm.checkUpdate(true)
+                        navController.navigate(Dest.SETTINGS) {
+                            launchSingleTop = true
+                            popUpTo(Dest.HOME) { inclusive = false }
+                        }
+                    },
+                    onOpenFavorites = {
+                        navController.navigate(Dest.FAVORITES) {
+                            launchSingleTop = true
+                            popUpTo(Dest.HOME) { inclusive = false }
+                        }
+                    }
+                )
                 NavigationBar {
                     NavigationBarItem(
                         selected = currentRoute == Dest.HOME,
