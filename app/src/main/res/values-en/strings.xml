@@ -255,4 +255,22 @@
     <string name="status_copy_version">Copy version</string>
     <string name="status_version_copied">Version copied</string>
 
+
+    <!-- Manual location -->
+    <string name="manual_location_title">Pick a location manually</string>
+    <string name="manual_location_current">Using: %1$s</string>
+    <string name="manual_location_clear">Clear (use GPS again)</string>
+
+
+    <string name="index_deep_already_done">All routes already fetched — nothing to repair</string>
+
+
+    <!-- Light Rail special trips -->
+    <string name="rail_special_title">Light Rail special trips</string>
+    <string name="rail_special_hint">Special trips such as 9xx aren't part of the regular route list. There's no official list, but scanning stop arrivals finds them.</string>
+    <string name="rail_special_scan">Scan for special trips</string>
+    <string name="rail_special_scanning">Scanning…</string>
+    <string name="rail_special_stops">Serves %1$d stops</string>
+    <string name="rail_special_none">No special trips found right now</string>
+
 </resources>
