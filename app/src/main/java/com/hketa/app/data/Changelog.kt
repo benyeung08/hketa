@@ -37,6 +37,31 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.4",
+            date = "2026-10-08",
+            titleZhHant = "附近車站改為「一條班次一張卡」，撳落去睇沿途車站",
+            titleZhHans = "附近车站改为「一条班次一张卡」，点进去看沿途车站",
+            titleEn = "Nearby stops: one card per departure, tap to see the route",
+            itemsZhHant = listOf(
+                "附近車站版面重做：一個站做小標題，下面每條班次一張獨立卡片（路線號膠囊 + 目的地 + 分鐘數）",
+                "撳任何一張班次卡 → 直接打開嗰條路線嘅沿途車站，唔使再經站嘅預報頁",
+                "冇班次（例如過咗尾班車）嘅路線照樣出卡，撳落去睇沿途車站",
+                "5 分鐘內嘅班次分鐘數用主色強調"
+            ),
+            itemsZhHans = listOf(
+                "附近车站版面重做：一个站做小标题，下面每条班次一张独立卡片（路线号胶囊 + 目的地 + 分钟数）",
+                "点任何一张班次卡 → 直接打开那条路线的沿途车站，不用再经站的预报页",
+                "没有班次（例如过了末班车）的路线照样出卡，点进去看沿途车站",
+                "5 分钟内的班次分钟数用主色强调"
+            ),
+            itemsEn = listOf(
+                "Nearby stops redesigned: each stop is a small header, with one card per departure (route badge + destination + minutes)",
+                "Tap any departure card to open that route's stop list directly — no detour through the stop's arrivals page",
+                "Routes with no departures (e.g. after last bus) still get a card so you can view the stop list",
+                "Arrivals within 5 minutes are highlighted in the accent colour"
+            )
+        ),
+        Entry(
             version = "1.0.3",
             date = "2026-10-08",
             titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、手動選點",
