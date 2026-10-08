@@ -237,4 +237,22 @@
     <string name="index_no_ctb">尚未取得城巴路线，请先重建索引</string>
     <string name="index_no_gmb">尚未取得小巴路线，请先重建索引</string>
     <string name="index_mtrbus_hint">即时向港铁巴士查询</string>
+
+    <!-- 关于页面 -->
+    <string name="about_title">关于</string>
+    <string name="about_app_name">hketa app</string>
+    <string name="about_desc">香港巴士到站预报 · 原生 Android App</string>
+    <string name="about_open_settings">设置</string>
+    <string name="about_data_source">数据来源</string>
+    <string name="about_data_source_desc">直接对接九巴、城巴、屿巴、专线小巴、港铁的官方公开数据接口，没有 WebView、没有网页外壳。</string>
+    <string name="about_privacy">隐私</string>
+    <string name="about_privacy_desc">只向官方接口发出 HTTPS 请求；定位仅用于当下排序附近车站，不存储、不上传。</string>
+    <string name="about_open_source">开源</string>
+    <string name="about_open_source_desc">HKETA 是开源项目，采用 Apache License 2.0。</string>
+    <string name="about_view_source">查看源代码</string>
+
+
+    <string name="status_copy_version">复制版本号</string>
+    <string name="status_version_copied">版本号已复制</string>
+
 </resources>
