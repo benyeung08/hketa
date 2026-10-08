@@ -35,10 +35,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
+    # （寫咗會報 "A mapping was not expected"）
     outputs:
-      version_name:
-        description: 'APK versionName'
-        value: ${{ steps.ver.outputs.value }}
+      version_name: ${{ steps.ver.outputs.value }}
 
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
