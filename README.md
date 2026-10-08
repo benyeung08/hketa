@@ -167,9 +167,34 @@ res/
 └─ drawable-*/mipmap-*/        自適應圖示（前景 + 背景）
 ```
 
-技術棧：Kotlin 2.0.21、Jetpack Compose（Material 3）、Navigation Compose、
-OkHttp 4.12 + kotlinx.serialization、Coroutines/Flow + AndroidViewModel、
-Play Services Location，minSdk 26（Android 8.0）／targetSdk 35。
+技術棧：Kotlin 2.2.10（AGP 9.1.1 內置）、Jetpack Compose（Material 3）、
+Navigation Compose、OkHttp 4.12 + kotlinx.serialization、
+Coroutines/Flow + AndroidViewModel、Play Services Location。
+
+**支援範圍（v1.0.3 起）：Android 8 – 17**
+
+| 項目 | 值 | 對應系統 |
+|---|---|---|
+| `minSdk` | **26** | Android 8.0 Oreo（下線） |
+| `targetSdk` | **37** | Android 17 Cinnamon Bun（上線） |
+| `compileSdk` | **37** | Android 17 |
+
+即係 **Android 8、9、10、11、12、12L、13、14、15、16、17 全部裝到**。
+
+**工具鏈硬門檻**：`compileSdk 37` 要求 **AGP ≥ 9.1.1 + Gradle ≥ 9.3.1 + Build Tools 36.0.0 + JDK 17**，
+少一樣都認唔到。CI 已一併升級。
+
+**兩點必須知道嘅配套改動**
+
+1. **AGP 9 內置咗 Kotlin** —— 唔可以再寫 `id("org.jetbrains.kotlin.android")`，
+   否則會報 `Cannot add extension with name 'kotlin'`。Kotlin 版本由 AGP 決定（9.1.1 → KGP 2.2.10）。
+2. **minSdk 26 唔使開 desugaring** —— 項目用咗 `java.time`（`TimeUtil`），
+   Android 8.0 起系統本身就有呢個 API；開咗反而白白加大 APK。
+   （若日後要降到 Android 7 或以下，就必須開 `coreLibraryDesugaring`。）
+
+**Android 17 行為變更**：大屏裝置（sw > 600dp）上系統會忽略 `screenOrientation`，
+App 必須自適應任何視窗尺寸。Manifest 保留 `portrait`：
+手機上仍然生效（保持直向），大屏則由系統自動轉為可調整大小 —— 版面用 Compose + 捲動，任何尺寸都唔會爆。
 
 ## 已知限制
 
@@ -189,14 +214,20 @@ Play Services Location，minSdk 26（Android 8.0）／targetSdk 35。
 | 地圖係示意圖 | **已修**：沿途車站頁「顯示地圖」改用 WebView + Leaflet + CARTO 深色瓦片，**有底圖、有街道、可縮放撳站名**，而且唔使 API key、唔使引入 Maps SDK。載入失敗（冇網／CDN 唔通）會自動退回示意圖，唔會留低空白 |
 | 城巴／小巴修復一定要 Wi-Fi | **已改善**：深度修復改咗**分批並發**（每批 8 條）兼**增量**（跳過已抓過嘅路線），時間同請求數都大幅減少，唔再一定需要 Wi-Fi |
 | 未授權定位就冇嘢睇 | **已修**：加咗「手動選點」。唔想授權定位嗰陣，可以自己揀一個區／交通樞紐（16 個預設），主頁照樣用嗰個座標搵附近車站 |
+| Widget 唔查城巴／嶼巴／小巴 | **已修**：之前唔係因為「要逐條路線查」，而係**收藏嗰陣根本冇記低路線**。而家收藏會記低路線（預報頁記當前路線、主頁記最快嗰班），Widget 淨係查嗰一條（1 個請求），**全部營辦商都支援** |
+| 城巴／小巴要人手撳修復 | **已修**：索引一建好就**自動喺背景補**（增量 + 並發、唔彈訊息、唔阻住用）。做過一次就記低，唔會每次開 App 重做。想手動再跑都可以，掣仲喺度 |
+| 輕鐵特別班次要人手撳掃描 | **已改善**：掃描結果**存落本地快取**（`filesDir/hketa_lr_special.json`）。掃一次之後開鐵路頁即刻顯示，唔使每次掃；想更新先再撳掣 |
+| 睇過嘅地圖離線變空白 | **已改善**：WebView 改咗 `LOAD_CACHE_ELSE_NETWORK`。睇過嘅路線（Leaflet + 瓦片）有快取，**離線都出到圖**；完全未睇過嘅先要上網 |
 
 ### 仍然存在嘅限制
 
-- **嶼巴冇英文站名**：官方接口只有中文
-- **附近車站完整度**：鐵路站同九巴最完整；城巴、專線小巴需要去「設定 ▸ ETA 資料修復」執行修復先至會納入（呢一步而家係並發 + 增量，快好多）
-- **真實地圖要聯網**：底圖同 Leaflet 由網絡載入，**離線時會自動退回 Canvas 示意圖**（冇底圖，但睇到走向）。如果要完全離線嘅真地圖，就要打包離線瓦片，體積會大好多
-- **Widget 唔查城巴／嶼巴／小巴**：呢三家要逐條路線發請求，Widget 唔會咁嘈；只顯示九巴、輕鐵、重鐵收藏站嘅 ETA，其餘顯示路線號
-- **輕鐵特別班次要靠掃描**：官方冇清單介面，所以要撳掣掃描各站預報先搵到；掃描結果只反映「當下」有冇呢個班次
+- **嶼巴冇英文站名**：官方接口（`rt.data.gov.hk/.../nlb`）只提供中文站名，冇 `name_en` 之類嘅欄位。
+  呢個**唔會硬翻譯** —— 自行拼嘅英文名會同官方站牌對唔上，反而難搵車。
+  所以英文介面下嶼巴站名維持中文（九巴／城巴／小巴／鐵路全部有官方英文）。
+- **真實地圖第一次要聯網**：睇過嘅路線有快取、離線出到圖，但**第一次睇某條路線**仍然要上網攞瓦片同 Leaflet。
+  要「完全離線、第一次都唔使網」就要打包離線瓦片，APK 會大好多，所以暫時唔做。
+- **輕鐵特別班次要掃描先有**：官方冇特別班次清單介面，所以第一次要撳掣掃；掃完有快取，但結果只反映「掃描嗰刻」有冇呢個班次。
+- **附近車站完整度**：自動背景修復做完之後城巴／小巴都會納入，但係**第一次建索引嗰陣**會先出九巴，城巴／小巴要等背景修復跑完（通常一兩分鐘）。
 
 ## 隱私
 
