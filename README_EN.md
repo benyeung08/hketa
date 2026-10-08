@@ -180,12 +180,26 @@ Play Services Location. minSdk 26 (Android 8.0) / targetSdk 35.
 
 ## Known limitations
 
-- Not implemented yet: home-screen widget, favourite stops, route map
-- Stop and route names returned by the official endpoints are mostly Traditional Chinese only, so they stay in their original form even when the UI is in English
-- Simplified Chinese lives in `values-zh-rCN`; a device set to another Simplified locale (e.g. `zh-SG`) falls back to the default Traditional resources — pick 简体中文 manually in that case
-- The heavy rail endpoint only covers the 10 lines listed by MTR; Light Rail lists the 11 regular routes (special 9xx services are not listed separately but still show up in arrivals)
-- "Nearby stops" coverage depends on how much has been indexed: rail stations and KMB are complete by default, while Citybus and GMB need a deep index run from Settings
-- NLB / GMB / MTR Bus occasionally change their response fields. Parsing is lenient, but always treat the official documentation as the source of truth.
+### Limitations that have been fixed
+
+| Previous limitation | Now |
+|---|---|
+| No home-screen widget | **Added**: `widget/HketaWidgetProvider` (RemoteViews, no new dependency). Shows the next departure at your saved stops, with a sync icon for instant refresh and a 30-minute system update |
+| No saved stops | **Added**: tap the heart on an arrivals screen; the Saved tab fetches ETA for every saved stop concurrently. Stored locally in SharedPreferences |
+| No route map | **Added**: "Show map" on the route-stops screen draws the path on a Canvas from stop coordinates (termini highlighted). No dependency, no API key; routes without coordinates say so |
+| Stop names stayed Chinese in English | **Fixed**: reads the official `name_en` field (present in the KMB, Citybus and GMB APIs), so English mode shows the operator's own English names |
+| Rail line names were Chinese only | **Fixed**: all 10 heavy rail lines now carry official English names (Tuen Ma Line, Island Line…) in `rail.json` as `nameEn` |
+| `zh-SG` fell back to Traditional | **Fixed**: added `values-b+zh+Hans/` (BCP 47 script matching), which ignores region and hits Simplified for any Simplified locale |
+| Nearby ETA only worked for KMB | **Improved**: the home screen now queries the first route at Citybus / NLB / GMB stops too (one request each), instead of listing route numbers only |
+
+### Limitations that remain
+
+- **No English rail station names**: the official station table (`mtr_lines_and_stations.csv`) is Chinese-only, so station names stay Chinese in English mode. Line names are English.
+- **Light Rail specials (9xx)**: not listed as separate routes in the Rail tab, but they **do appear in the arrivals list** for any Light Rail stop you query.
+- **NLB has no English stop names**: the official endpoint is Chinese-only.
+- **Nearby-stop coverage**: rail stops and KMB are complete; Citybus and GMB need a deep index from Settings first.
+- **The map is schematic**: coordinates are projected onto a Canvas with no basemap or streets — good for seeing the shape and relative position, but a real map would need a Maps SDK and API key.
+- **The widget skips Citybus / NLB / GMB**: those need one request per route, which is too chatty for a widget. It shows ETA for saved KMB, Light Rail and heavy rail stops, and just the route number for the rest.
 
 ## Privacy
 
