@@ -273,4 +273,7 @@
     <string name="rail_special_stops">%1$d 個站有呢個班次</string>
     <string name="rail_special_none">暫時搵唔到特別班次</string>
 
+
+    <string name="home_open_stop">查看呢個站全部班次</string>
+
 </resources>
