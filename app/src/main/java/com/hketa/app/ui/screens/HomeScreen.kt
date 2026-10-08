@@ -19,10 +19,15 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,6 +36,7 @@ import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.HomeItem
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
@@ -45,16 +51,16 @@ fun HomeScreen(
     onNeedLocation: (callback: (Boolean) -> Unit) -> Unit,
     onOpenStop: (StopDef) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val items by vm.homeItems.collectAsState()
     val loading by vm.homeLoading.collectAsState()
     val busy by vm.busy.collectAsState()
     val origin by vm.nearbyOrigin.collectAsState()
     val favorites by vm.favorites.collectAsState()
 
-    var trigger by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var trigger by remember { mutableIntStateOf(0) }
 
-    androidx.compose.runtime.LaunchedEffect(trigger) {
+    LaunchedEffect(trigger) {
         if (trigger > 0) vm.loadHome(context)
     }
 
@@ -118,7 +124,7 @@ private fun HomeStopCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${item.stop.name}（${item.stop.id}）",
+                        text = "${item.stop.displayName()}（${item.stop.id}）",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
