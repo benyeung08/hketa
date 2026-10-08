@@ -1,16 +1,20 @@
 package com.hketa.app.ui.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,9 +30,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hketa.app.R
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.codeLabel
 import com.hketa.app.ui.displayName
+import com.hketa.app.ui.titleWithCode
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 import kotlinx.coroutines.delay
@@ -65,31 +72,90 @@ fun EtaScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = (curStop?.displayName() ?: stringResource(R.string.eta_stop_default)) +
-                    (if (curStop?.id.isNullOrBlank()) "" else "（${curStop?.id}）"),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+        // ---- 車站卡片（同「沿途車站」列表嘅卡片風格一致：站名 / 站號 / 營辦商 分行）----
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
             )
-            if (curStop != null) {
-                IconButton(onClick = { curStop?.let { vm.toggleFavorite(it, null) } }) {
-                    Icon(
-                        painter = painterResource(if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off),
-                        contentDescription = stringResource(if (isFav) R.string.fav_remove else R.string.fav_add),
-                        tint = if (isFav) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = curStop?.displayName() ?: stringResource(R.string.eta_stop_default),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (curStop != null) {
+                        IconButton(
+                            onClick = { curStop?.let { vm.toggleFavorite(it, null) } },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(if (isFav) R.drawable.ic_fav_on else R.drawable.ic_fav_off),
+                                contentDescription = stringResource(if (isFav) R.string.fav_remove else R.string.fav_add),
+                                tint = if (isFav) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(6.dp))
+
+                // 站號（異常嘅 routeId 唔顯示）
+                val code = curStop?.codeLabel().orEmpty()
+                if (code.isNotBlank()) {
+                    Text(
+                        text = code,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                // 營辦商
+                val opLabel = stop?.op?.labelText() ?: ""
+                if (opLabel.isNotBlank()) {
+                    Muted(opLabel)
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                // 自動更新提示
+                Muted(stringResource(R.string.eta_auto_refresh))
+            }
+        }
+
+        // ---- 路線 + 目的地 ----
+        if (route != null) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                ) {
+                    Text(
+                        text = route?.route ?: "",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                val d = route?.dest.orEmpty()
+                if (d.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.route_bound_to, d),
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
-        }
-        val opLabel = stop?.op?.labelText() ?: ""
-        Muted("$opLabel　${stop?.id ?: ""}　${stringResource(R.string.eta_auto_refresh)}")
-
-        if (route != null) {
-            val d = if (route?.dest.isNullOrBlank()) "" else " " + stringResource(R.string.route_bound_to, route?.dest ?: "")
-            Muted("${route?.route}$d")
         }
 
         Spacer(Modifier.height(12.dp))
