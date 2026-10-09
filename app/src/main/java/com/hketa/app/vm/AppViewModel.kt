@@ -326,6 +326,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _favoritesLoading = MutableStateFlow(false)
     val favoritesLoading: StateFlow<Boolean> = _favoritesLoading.asStateFlow()
 
+    private lateinit var timetableStore: com.hketa.app.data.TimetableStore
     private lateinit var favoritesStore: FavoritesStore
 
     // ============ 版本更新 ============
@@ -1379,35 +1380,214 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loadEta(stop, _selectedRoute.value)
     }
 
+    /**
+     * 抽出來共用嘅「抓某個站、某條路線嘅 ETA」。
+     * [loadEta]（單站頁）同 [loadRouteTimetable]（全線班次表）都用佢，
+     * 免得兩邊邏輯分叉。
+     */
+    private suspend fun etasFor(stop: StopDef, route: RouteDef?): Pair<List<EtaEntry>, String?> {
+        var alert: String? = null
+        val list = suspendCatching {
+            when (stop.op) {
+                Operator.KMB -> repo.kmbEta(stop.id).let { all ->
+                    if (route == null || route.op != Operator.KMB) all
+                    else all.filter { it.route == route.route }
+                }
+                Operator.CTB -> repo.ctbEta(stop.id, route?.route ?: "")
+                Operator.NLB -> repo.nlbEta(route?.routeId.orEmpty(), stop.id)
+                Operator.GMB -> repo.gmbEta(stop.id, route?.routeId.orEmpty())
+                Operator.MTR_BUS -> repo.mtrBus(route?.route ?: "").second
+                Operator.MTR_HR -> {
+                    val ctx = getApplication<Application>()
+                    val line = route?.routeId
+                        ?: RailData.linesOf(ctx, Operator.MTR_HR, stop.id).firstOrNull()?.id
+                        ?: return@suspendCatching emptyList()
+                    val (etas, a) = repo.mtrHeavyRailEta(line, stop.id, etaText()) { code ->
+                        RailData.nameOf(ctx, Operator.MTR_HR, code, AppLocale.isEnglish())
+                    }
+                    alert = a      // 港鐵官方服務公告（如有）
+                    etas
+                }
+                Operator.LRT -> repo.lightRailEta(stop.id, etaText())
+            }
+        }.getOrDefault(emptyList())
+        return list to alert
+    }
+
+    // ============ 班次時間表 + 公告 ============
+
+    private val _routeTimetable =
+        MutableStateFlow<com.hketa.app.data.RouteTimetable?>(null)
+    val routeTimetable: StateFlow<com.hketa.app.data.RouteTimetable?> =
+        _routeTimetable.asStateFlow()
+
+    private val _routeNotices =
+        MutableStateFlow<List<com.hketa.app.data.Notice>>(emptyList())
+    val routeNotices: StateFlow<List<com.hketa.app.data.Notice>> =
+        _routeNotices.asStateFlow()
+
+    private val _routeNoticesBusy = MutableStateFlow(false)
+    val routeNoticesBusy: StateFlow<Boolean> = _routeNoticesBusy.asStateFlow()
+
+    private fun ensureTimetableStore() {
+        if (!::timetableStore.isInitialized) {
+            timetableStore = com.hketa.app.data.TimetableStore(getApplication())
+        }
+    }
+
+    /**
+     * 構建呢條路線嘅班次表。
+     *
+     * 做法：並發抓沿線每個站嘅 ETA，第 N 班車 = 每個站 ETA 清單嘅第 N 項
+     * （官方 ETA 本身已按到站先後排好）。呢個係真實資料，唔係估算。
+     *
+     * 班次間隔 = 同一個站相鄰兩班嘅分鐘差。
+     * 頭／尾班車官方冇接口，所以用 [TimetableStore] 觀察累積。
+     */
+    fun loadRouteTimetable(rd: RouteDef) {
+        viewModelScope.launch {
+            _routeTimetable.value = null
+            val stops = _routeStops.value
+            if (stops.isEmpty()) return@launch
+
+            // 太多站會打爆官方接口：淨係取樣最多 12 個（頭、尾、中間均勻）
+            val sampled = if (stops.size <= 12) stops else {
+                val step = (stops.size - 1) / 11.0
+                (0..11).map { stops[(it * step).toInt().coerceIn(0, stops.size - 1)] }
+                    .distinctBy { it.stop.id }
+            }
+
+            _busy.value = true
+            val results = coroutineScope {
+                sampled.map { sw ->
+                    async {
+                        val (list, _) = etasFor(sw.stop, rd)
+                        sw.stop to list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                    }
+                }.awaitAll()
+            }
+            _busy.value = false
+
+            val names = results.map { (st, _) -> st.name.ifBlank { st.id } }
+            // 以「最多班次嗰個站」決定有幾多班
+            val tripCount = results.maxOfOrNull { it.second.size } ?: 0
+            if (tripCount == 0) {
+                _routeTimetable.value = com.hketa.app.data.RouteTimetable(
+                    stopNames = names,
+                    state = com.hketa.app.data.ServiceState.ENDED.name
+                )
+                return@launch
+            }
+
+            val trips = (0 until tripCount.coerceAtMost(6)).map { i ->
+                com.hketa.app.data.Trip(
+                    seq = i + 1,
+                    cells = results.map { (_, list) ->
+                        val e = list.getOrNull(i)
+                        com.hketa.app.data.TripCell(
+                            stopName = "",
+                            minutes = e?.minutes,
+                            clock = e?.clock.orEmpty()
+                        )
+                    }
+                )
+            }
+
+            // 班次間隔：用第一個站相鄰兩班嘅分鐘差
+            val first = results.firstOrNull()?.second.orEmpty()
+            val headway = if (first.size >= 2) {
+                val a = first[0].minutes
+                val b = first[1].minutes
+                if (a != null && b != null) (b - a).takeIf { it in 1..180 } else null
+            } else null
+
+            // 觀察累積（頭／尾班車）
+            ensureTimetableStore()
+            val allClocks = results.flatMap { it.second.map { e -> e.clock } }
+            val rec = timetableStore.observe(
+                "${rd.op.name}|${rd.route}|${rd.bound}|${rd.serviceType}",
+                allClocks
+            )
+
+            _routeTimetable.value = com.hketa.app.data.RouteTimetable(
+                trips = trips,
+                headwayMin = headway,
+                firstObserved = rec.firstSeen.ifBlank { null },
+                lastObserved = rec.lastSeen.ifBlank { null },
+                state = com.hketa.app.data.ServiceState.RUNNING.name,
+                stopNames = names
+            )
+        }
+    }
+
+    /**
+     * 公告：官方服務公告 + App 公告。
+     *
+     * 官方：港鐵嘅 getSchedule 會一併返 service alert（改道／延誤／暫停），
+     *       係真實官方公告；其他營辦商嘅 ETA 接口冇呢個欄位。
+     * App：由 GitHub releases 拉（同「版本更新」同一個來源）。
+     */
+    fun loadRouteNotices(rd: RouteDef) {
+        viewModelScope.launch {
+            _routeNoticesBusy.value = true
+            val out = mutableListOf<com.hketa.app.data.Notice>()
+
+            // ① 官方服務公告（港鐵系先有）
+            val stops = _routeStops.value
+            if (rd.op == Operator.MTR_HR || rd.op == Operator.LRT) {
+                val probe = stops.firstOrNull()?.stop
+                if (probe != null) {
+                    val (_, alert) = etasFor(probe, rd)
+                    if (!alert.isNullOrBlank()) {
+                        out.add(
+                            com.hketa.app.data.Notice(
+                                title = str(R.string.notice_official_title),
+                                body = alert,
+                                time = str(R.string.notice_just_now),
+                                source = str(R.string.notice_source_official)
+                            )
+                        )
+                    }
+                }
+            }
+
+            // ② App 公告（GitHub releases）
+            val releases = suspendCatching {
+                com.hketa.app.data.UpdateChecker.fetchHistory()
+            }.getOrDefault(emptyList())
+            releases.take(5).forEach { r ->
+                val body = com.hketa.app.data.UpdateChecker
+                    .localizeBody(r.body.orEmpty(), com.hketa.app.util.AppLocale.current())
+                    .lineSequence()
+                    .filter { it.isNotBlank() }
+                    .take(6)
+                    .joinToString("\n")
+                out.add(
+                    com.hketa.app.data.Notice(
+                        title = r.name?.takeIf { it.isNotBlank() } ?: (r.tag_name ?: ""),
+                        body = body,
+                        time = r.published_at?.take(10) ?: "",
+                        source = str(R.string.notice_source_app),
+                        url = r.html_url ?: ""
+                    )
+                )
+            }
+
+            _routeNotices.value = out
+            _routeNoticesBusy.value = false
+        }
+    }
+
     private fun loadEta(stop: StopDef, route: RouteDef?) {
         viewModelScope.launch {
             _busy.value = true
-            val list = suspendCatching {
-                when (stop.op) {
-                    Operator.KMB -> repo.kmbEta(stop.id).let { all ->
-                        if (route == null || route.op != Operator.KMB) all
-                        else all.filter { it.route == route.route }
-                    }
-                    Operator.CTB -> repo.ctbEta(stop.id, route?.route ?: "")
-                    Operator.NLB -> repo.nlbEta(route?.routeId.orEmpty(), stop.id)
-                    Operator.GMB -> repo.gmbEta(stop.id, route?.routeId.orEmpty())
-                    Operator.MTR_BUS -> repo.mtrBus(route?.route ?: "").second
-                    Operator.MTR_HR -> {
-                        val ctx = getApplication<Application>()
-                        val line = route?.routeId
-                            ?: RailData.linesOf(ctx, Operator.MTR_HR, stop.id).firstOrNull()?.id
-                            ?: return@suspendCatching emptyList()
-                        val (etas, alert) = repo.mtrHeavyRailEta(line, stop.id, etaText()) { code ->
-                            RailData.nameOf(ctx, Operator.MTR_HR, code, AppLocale.isEnglish())
-                        }
-                        alert?.let { _message.value = it }
-                        etas
-                    }
-                    Operator.LRT -> repo.lightRailEta(stop.id, etaText())
-                }
-            }.onSuccess { _lastUpdateAt.value = System.currentTimeMillis() }
-            .onFailure { _message.value = str(R.string.eta_query_failed, it.message.orEmpty()) }
-                .getOrDefault(emptyList())
+            val (raw, alert) = etasFor(stop, route)
+            val list = raw
+            alert?.let { _message.value = it }
+            run { if (list.isNotEmpty()) _lastUpdateAt.value = System.currentTimeMillis() }
+            if (list.isEmpty() && alert == null) {
+                // 交畀下面統一提示
+            }
             _etas.value = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
             _busy.value = false
             if (list.isEmpty() && _message.value == null) {
