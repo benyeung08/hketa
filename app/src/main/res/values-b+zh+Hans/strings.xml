@@ -282,4 +282,10 @@
     <string name="tt_in_min">%1$d 分钟</string>
     <string name="tt_next_trip">第1班 · 最快开出</string>
     <string name="tt_now">现</string>
+    <string name="update_download_failed">下载失败：%1$s</string>
+    <string name="update_install">安装</string>
+    <string name="update_need_install_permission">要先授权「允许安装未知来源」才装到</string>
+    <string name="update_no_asset">这个版本没 APK 附件</string>
+    <string name="update_progress">下载中 %1$d%%（%2$.1f / %3$.1f MB）</string>
+    <string name="update_verifying">校验紧 APK…</string>
 </resources>
