@@ -278,4 +278,9 @@
     <string name="home_repairing_hint">Adding Citybus / GMB stops in the background \u2014 until it finishes, nearby stops are mostly KMB</string>
     <string name="about_intro">HKATE is a Hong Kong bus arrival app that talks to the operators\' official open-data endpoints directly \u2014 no WebView, no ads, no tracking.\n\nSee nearby stops with live arrivals on launch, plus route and stop search, stop lists, route maps and a home-screen widget.\n\nOnly HTTPS requests to official endpoints. Location is used solely to sort nearby stops \u2014 never stored or uploaded.</string>
     <string name="index_auto_repair">Index is stale or incomplete \u2014 rebuilding automatically on startup\u2026</string>
+    <string name="eta_repair_op">Repair %s</string>
+    <string name="eta_repair_op_progress">Repairing %1$s\u2026</string>
+    <string name="eta_repair_op_done">%1$s repaired: %2$d routes / %3$d stops</string>
+    <string name="eta_repair_op_failed">%1$s repair failed: %2$s</string>
+    <string name="eta_repair_per_op_hint">If one operator looks incomplete or wrong, repair just that one instead of rebuilding the whole index.</string>
 </resources>
