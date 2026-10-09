@@ -53,9 +53,12 @@ fun RouteKeyboard(
 ) {
     val letters = listOf("A", "B", "C", "E", "K", "M", "N", "S", "X")
 
+    // 藍灰色底（跟第二張圖嗰個鍵盤色調）
+    val kbBg = Color(0xFF3A4252)
+
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        color = kbBg,
         shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
     ) {
         Column(
@@ -88,7 +91,7 @@ fun RouteKeyboard(
                         text = "▼",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color.White
                     )
                 }
                 DigitKey("0", Modifier.weight(1f)) { onKey("0") }
@@ -99,7 +102,7 @@ fun RouteKeyboard(
                     Text(
                         text = "⌫",
                         fontSize = 17.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.White
                     )
                 }
             }
@@ -127,10 +130,10 @@ private fun DigitKey(label: String, modifier: Modifier = Modifier, onClick: () -
         modifier = modifier
             .height(46.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .background(Color(0xFF4C5566))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                color = Color(0xFF5C6678),
                 shape = RoundedCornerShape(10.dp)
             )
             .clickable(onClick = onClick),
@@ -140,7 +143,7 @@ private fun DigitKey(label: String, modifier: Modifier = Modifier, onClick: () -
             text = label,
             fontSize = 20.sp,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
+            color = Color.White
         )
     }
 }
@@ -151,7 +154,7 @@ private fun LetterKey(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -159,7 +162,7 @@ private fun LetterKey(label: String, onClick: () -> Unit) {
             text = label,
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            color = Color.White
         )
     }
 }
@@ -167,7 +170,7 @@ private fun LetterKey(label: String, onClick: () -> Unit) {
 @Composable
 private fun FuncKey(
     modifier: Modifier = Modifier,
-    container: Color = MaterialTheme.colorScheme.surface,
+    container: Color = Color(0xFF4C5566),
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -192,6 +195,11 @@ private fun FuncKey(
 fun RouteSearchField(
     value: String,
     hint: String,
+    /**
+     * 白色底（模擬第二張圖嗰個白框）。
+     * 深色介面入面用白框會好搶眼，但原圖就係白色，所以畀個開關。
+     */
+    light: Boolean = false,
     onClear: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -210,10 +218,11 @@ fun RouteSearchField(
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .background(if (light) Color.White else MaterialTheme.colorScheme.surface)
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                color = if (light) Color(0xFFBDBDBD)
+                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(10.dp)
             )
             .padding(horizontal = 14.dp),
@@ -222,7 +231,8 @@ fun RouteSearchField(
         if (value.isEmpty()) {
             Text(
                 text = hint,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                color = if (light) Color(0xFF9E9E9E)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 fontSize = 15.sp,
                 modifier = Modifier.weight(1f)
             )
@@ -231,7 +241,7 @@ fun RouteSearchField(
                 text = value,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (light) Color.Black else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(4.dp))
