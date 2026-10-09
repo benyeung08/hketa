@@ -37,6 +37,46 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.4",
+            date = "2026-10-09",
+            titleZhHant = "嶼巴英文名、地圖離線包、輕鐵自動掃描",
+            titleZhHans = "屿巴英文名、地图离线包、轻铁自动扫描",
+            titleEn = "NLB English names, offline map pack, auto Light Rail scan",
+            itemsZhHant = listOf(
+                "嶼巴站名補返英文：官方接口冇 name_en，所以內置咗約 90 個大嶼山站名嘅官方英文對照（政府地名 + 嶼巴站牌），唔係機器翻譯；查唔到一律維持中文",
+                "地圖離線包：睇過嘅路線會自動預取 zoom 12–16 嘅瓦片存落本地，WebView 攞瓦片時由本地攔截供給，飛機模式都出到真實地圖（唔再靠唔可靠嘅 WebView 快取）",
+                "輕鐵特別班次自動掃描：開「鐵路」分頁會自動喺背景掃（快取 7 日，過期自動重掃），唔使撳掣都有；手動即時重掃嘅掣照樣保留",
+                "主頁會提示「背景補充緊城巴／小巴資料」，唔會再無聲無息淨係出九巴",
+                "開 App 全自動：索引、ETA 資料修復、定位搵附近路線三樣都唔使再自己撳 —— 一開 App 就自動做",
+                "自動體檢：索引冇嘢／過期（超過 14 日）會開 App 自動重建，唔使去設定頁撳「ETA 資料修復」",
+                "定位權限統一喺開 App 嗰陣請求一次，主頁唔會再彈多次對話框",
+                "「版本更新」區塊改為 code-to-app 嗰種 VersionPill 膠囊：撳膠囊檢查更新，右邊三個掣係檢查更新／版本歷史／複製版本號",
+                "底部狀態欄、設定頁、關於頁三處嘅版本膠囊統一為同一個共用元件，樣式完全一致"
+            ),
+            itemsZhHans = listOf(
+                "屿巴站名补回英文：官方接口没有 name_en，所以内置了约 90 个大屿山站名的官方英文对照（政府地名 + 屿巴站牌），不是机器翻译；查不到一律维持中文",
+                "地图离线包：看过的路线会自动预取 zoom 12–16 的瓦片存到本地，WebView 取瓦片时由本地拦截供给，飞行模式都能出真实地图（不再靠不可靠的 WebView 缓存）",
+                "轻铁特别班次自动扫描：开「铁路」分页会自动在后台扫（缓存 7 天，过期自动重扫），不用按键都有；手动即时重扫的按钮照样保留",
+                "主页会提示「背景补充紧城巴／小巴资料」，不会再无声无息只有九巴",
+                "开 App 全自动：索引、ETA 资料修复、定位找附近路线三样都不用再自己按 —— 一开 App 就自动做",
+                "自动体检：索引没东西／过期（超过 14 天）会开 App 自动重建，不用去设置页按「ETA 资料修复」",
+                "定位权限统一在开 App 时请求一次，主页不会再弹多次对话框",
+                "「版本更新」区块改为 code-to-app 那种 VersionPill 胶囊：按胶囊检查更新，右边三个按钮是检查更新／版本历史／复制版本号",
+                "底部状态栏、设置页、关于页三处的版本胶囊统一为同一个共用组件，样式完全一致"
+            ),
+            itemsEn = listOf(
+                "NLB stops now have English names: the API has no name_en, so ~90 Lantau stop names ship with their official English names (government gazetteer + NLB signage) \u2014 not machine-translated; anything unmatched stays Chinese",
+                "Offline map pack: viewed routes prefetch zoom 12\u201316 tiles to disk and the WebView serves them locally, so real maps render even in airplane mode (no longer reliant on the unreliable WebView cache)",
+                "Light Rail special trips scan automatically: opening the Rail tab scans in the background (cached 7 days, rescans when stale) \u2014 no button press needed; the manual rescan button remains",
+                "Home now says when Citybus / GMB stops are being added in the background, instead of silently showing KMB only",
+                "Fully automatic on launch: index, ETA data repair and nearby-route location all run on startup - no buttons to press",
+                "Auto health check: an empty or stale index (older than 14 days) is rebuilt on startup, so you never need Settings then ETA data repair",
+                "Location permission is requested once at startup instead of the Home tab prompting repeatedly",
+                "The version-update block is now a code-to-app style VersionPill: tap the pill to check for updates, and the three icons are check / version history / copy version",
+                "The version pill in the bottom bar, Settings and About is now one shared component, so all three look identical"
+            )
+        ),
+        Entry(
             version = "1.0.3",
             date = "2026-10-08",
             titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、自動修復、版面重做",
