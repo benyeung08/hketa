@@ -305,4 +305,14 @@
     <string name="notice_just_now">刚才</string>
     <string name="notice_empty">暂时没公告</string>
     <string name="notice_view">查看详情</string>
+    <string name="search_hint_route_no">输入路线号码</string>
+    <string name="search_route_prefix">%1$s - %2$s</string>
+    <string name="src_nlb_full">大屿山巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_kmb_full">九龙巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_ctb_full">城巴 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_gmb_full">专线小巴 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_bus_full">港铁巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_hr_full">港铁 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_lrt_full">轻铁 (资料由DATA.GOV.HK提供)</string>
+    <string name="route_bound_to_plain">往</string>
 </resources>
