@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hketa.app.R
@@ -85,7 +86,7 @@ fun StatusBar(
             onCheckUpdate = onCheckUpdate,
             onOpenHistory = onOpenHistory,
             onCopy = {
-                copyToClipboard(context, "HKETA version", "HKETA v$versionName ($versionCode)")
+                copyToClipboard(context, "HKATE version", "HKATE v$versionName ($versionCode)")
                 Toast.makeText(
                     context,
                     context.getString(R.string.status_version_copied),
@@ -117,94 +118,102 @@ fun VersionPill(
     onCopy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 版面數值全部跟足 code-to-app 原版 VersionPill：
+    //   膠囊 padding  = 14 / 6 dp
+    //   分隔符前後    = 6 / 6 dp
+    //   版本→掣       = 8 dp
+    //   掣與掣之間    = 10 dp
+    //   icon 尺寸     = Sync 14 / History 15 / Copy 14
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xFF1E1E1E).copy(alpha = 0.85f))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f))
             .clickable(onClick = onPillClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // ---- 左：v版本名 · versionCode · 圓點 + 數字 ----
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .clickable(onClick = onPillClick)
-                .padding(horizontal = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "v$versionName",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.width(6.dp))
-            // 原版係 "·" 分隔符
-            Text(
-                text = "·",
-                color = Color(0xFF8A8A8A),
-                fontSize = 12.sp
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = versionCode.toString(),
-                // 有新版本 → 數字轉主色（唔加徽章，版面同 code-to-app 原版一致）
-                color = if (hasUpdate) Color(0xFFFF5252) else Color(0xFFB0B0B0),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
+        // ---- 左：v版本名 · versionCode ----
+        //   原版冇圓點徽章；有新版本時 versionCode 數字轉紅（HKATE 增強）
+        Text(
+            text = "v$versionName",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "\u00b7",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = versionCode.toString(),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (hasUpdate) Color(0xFFFF5252)
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
 
         // ---- 右：三個掣（對應原版 Sync / History / ContentCopy）----
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            // ① 檢查更新
-            StatusIcon(
-                res = R.drawable.ic_status_sync,
-                desc = stringResource(R.string.status_check_update),
-                enabled = !busy,
-                onClick = onCheckUpdate
-            )
-            // ② 版本歷史
-            StatusIcon(
-                res = R.drawable.ic_status_clock,
-                desc = stringResource(R.string.status_version_history),
-                enabled = true,
-                onClick = onOpenHistory
-            )
-            // ③ 複製版本號（原版係 ContentCopy）
-            StatusIcon(
-                res = R.drawable.ic_status_copy,
-                desc = stringResource(R.string.status_copy_version),
-                enabled = true,
-                onClick = onCopy
-            )
-        }
+        // ① 檢查更新
+        StatusIcon(
+            res = R.drawable.ic_status_sync,
+            desc = stringResource(R.string.status_check_update),
+            enabled = !busy,
+            size = 14.dp,
+            tint = MaterialTheme.colorScheme.primary,
+            onClick = onCheckUpdate
+        )
+        Spacer(Modifier.width(10.dp))
+        // ② 版本歷史
+        StatusIcon(
+            res = R.drawable.ic_status_clock,
+            desc = stringResource(R.string.status_version_history),
+            enabled = true,
+            size = 15.dp,
+            tint = MaterialTheme.colorScheme.primary,
+            onClick = onOpenHistory
+        )
+        Spacer(Modifier.width(10.dp))
+        // ③ 複製版本號
+        StatusIcon(
+            res = R.drawable.ic_status_copy,
+            desc = stringResource(R.string.status_copy_version),
+            enabled = true,
+            size = 14.dp,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            onClick = onCopy
+        )
     }
 }
 
-/** 狀態欄入面嗰啲 16dp 圖標掣；About 頁面嘅 VersionPill 都重用緊。 */
+
 @Composable
 fun StatusIcon(
     res: Int,
     desc: String,
     enabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    /** 原版 VersionPill 三個 icon 尺寸唔同：Sync 14 / History 15 / Copy 14 */
+    size: Dp = 16.dp,
+    tint: Color = Color.Unspecified,
+    /** 原版掣周圍冇 padding，撳擊區就係 icon 本身；畀 0 就跟足原版 */
+    pad: Dp = 6.dp
 ) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled) { onClick() }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = pad, vertical = if (pad > 0.dp) 4.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             painter = painterResource(res),
             contentDescription = desc,
-            tint = if (enabled) Color.White else Color(0xFF6A6A6A),
-            modifier = Modifier.size(16.dp)
+            tint = if (tint != Color.Unspecified) tint
+                   else if (enabled) Color.White else Color(0xFF6A6A6A),
+            modifier = Modifier.size(size)
         )
     }
 }

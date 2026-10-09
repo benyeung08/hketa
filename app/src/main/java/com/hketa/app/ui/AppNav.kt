@@ -127,10 +127,17 @@ fun AppRoot(
             notes = vm.updateInfo.collectAsState().value?.body.orEmpty(),
             errorMessage = vm.message.collectAsState().value.orEmpty(),
             onDownload = {
-                val url = vm.updateInfo.value?.let {
-                    com.hketa.app.data.UpdateChecker.apkAsset(it)?.browser_download_url
+                // App 內下載 + 校驗 + 開安裝器（移植自 code-to-app）
+                vm.updateInfo.value?.let { vm.downloadAndInstall(it) }
+            },
+            downloadState = vm.downloadState.collectAsState().value,
+            onCancelDownload = { vm.cancelDownload() },
+            onInstall = {
+                val st = vm.downloadState.value
+                if (st is com.hketa.app.data.ApkInstaller.State.Done) {
+                    vm.installDownloaded(st.file)
+                    vm.resetDownload()
                 }
-                if (!url.isNullOrBlank()) openUrl(context, url)
             },
             onOpenHistory = {
                 showUpdate = false

@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +54,7 @@ import com.hketa.app.util.AppLocale
 
 /**
  * 應用更新介面 —— 移植自 code-to-app（`com.webtoapp.ui.screens.AboutScreen`
- * 入面嘅 `UpdateDialog` + `VersionHistorySheet`），並改用 HKETA 嘅
+ * 入面嘅 `UpdateDialog` + `VersionHistorySheet`），並改用 HKATE 嘅
  * UpdateChecker 同三語資源。
  *
  * 兩部分：
@@ -77,7 +78,7 @@ import com.hketa.app.util.AppLocale
  * 而家主視覺直接係膠囊：
  *
  *   ┌──────────────────────────────────┐
- *   │ v1.0.4 · 5  ● 1      ⟳   ◷   ▤   │  ← VersionPill
+ *   │ v1.0.4 · 5           ⟳   ◷   ▤   │  ← VersionPill
  *   └──────────────────────────────────┘
  *   已經係最新版本
  *   [        檢查更新        ]            ← 淺紫膠囊掣
@@ -96,7 +97,12 @@ fun UpdateDialog(
     onDownload: () -> Unit,
     onDismiss: () -> Unit,
     onOpenHistory: () -> Unit = {},
-    onCopyVersion: () -> Unit = {}
+    onCopyVersion: () -> Unit = {},
+    /** App 內下載狀態（移植自 code-to-app 嘅 UpdateDownloadState） */
+    downloadState: com.hketa.app.data.ApkInstaller.State =
+        com.hketa.app.data.ApkInstaller.State.Idle,
+    onCancelDownload: () -> Unit = {},
+    onInstall: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lang = AppLocale.current()
@@ -199,6 +205,56 @@ fun UpdateDialog(
                     UpdateState.IDLE -> Unit
                 }
 
+                // ★ 下載進度（移植自原版 UpdateAvailableContent 嘅進度條）
+                when (downloadState) {
+                    is com.hketa.app.data.ApkInstaller.State.Downloading -> {
+                        Spacer(Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadState.percent / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(
+                                R.string.update_progress,
+                                downloadState.percent,
+                                downloadState.receivedMb,
+                                downloadState.totalMb
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    is com.hketa.app.data.ApkInstaller.State.Verifying -> {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(R.string.update_verifying),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    is com.hketa.app.data.ApkInstaller.State.Done -> {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(R.string.update_install_ready),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    is com.hketa.app.data.ApkInstaller.State.Failed -> {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(
+                                R.string.update_download_failed,
+                                downloadState.message
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> Unit
+                }
+
                 // Release notes（有新版本先顯示）
                 if (state == UpdateState.AVAILABLE && localizedNotes.isNotBlank()) {
                     Spacer(Modifier.height(10.dp))
@@ -224,7 +280,13 @@ fun UpdateDialog(
 
                 // 主掣：淺紫膠囊（同第一張圖嗰個掣一致）
                 Button(
-                    onClick = if (state == UpdateState.AVAILABLE) onDownload else onDismiss,
+                    onClick = when (downloadState) {
+                        is com.hketa.app.data.ApkInstaller.State.Done -> onInstall
+                        is com.hketa.app.data.ApkInstaller.State.Failed -> onDownload
+                        is com.hketa.app.data.ApkInstaller.State.Downloading,
+                        is com.hketa.app.data.ApkInstaller.State.Verifying -> onCancelDownload
+                        else -> if (state == UpdateState.AVAILABLE) onDownload else onDismiss
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
@@ -233,10 +295,22 @@ fun UpdateDialog(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
+                    // 掣面文字跟足原版：Done→安裝 / Failed→重試 /
+                    // 下載中→取消 / 有新版本→下載 / 否則→關閉
                     Text(
                         stringResource(
-                            if (state == UpdateState.AVAILABLE) R.string.update_download
-                            else R.string.update_check
+                            when (downloadState) {
+                                is com.hketa.app.data.ApkInstaller.State.Done ->
+                                    R.string.update_install
+                                is com.hketa.app.data.ApkInstaller.State.Failed ->
+                                    R.string.update_retry
+                                is com.hketa.app.data.ApkInstaller.State.Downloading,
+                                is com.hketa.app.data.ApkInstaller.State.Verifying ->
+                                    R.string.update_cancel
+                                else ->
+                                    if (state == UpdateState.AVAILABLE) R.string.update_download
+                                    else R.string.update_check
+                            }
                         )
                     )
                 }
