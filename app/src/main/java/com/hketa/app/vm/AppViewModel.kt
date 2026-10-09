@@ -440,6 +440,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (cached != null && cached.routes.isNotEmpty() && cached.version >= INDEX_VERSION) {
             _index.value = cached
             _indexStatus.value = str(R.string.index_ready, cached.routes.size)
+            // 快取命中都要補城巴／小巴車站 —— 以前淨係得「重建索引」嗰條路會叫
+            // maybeAutoRepair()，所以第二次開 App 起就永遠唔會補，
+            // 主頁嗰句「背景補充緊…」亦會一直掛住唔消失。
+            maybeAutoRepair()
             return
         }
         buildIndex()
@@ -576,7 +580,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 內部版：可以俾 [maybeAutoRepair] 喺背景直接叫，唔使再包一層 launch */
-    private suspend fun deepIndexCtbInternal(incremental: Boolean = true) {
+    private suspend fun deepIndexCtbInternal(
+        incremental: Boolean = true,
+        silent: Boolean = false
+    ) {
         coroutineScope {
             val all = _index.value.routes.filter { it.op == Operator.CTB }
             val done = _index.value.routeStops
@@ -627,8 +634,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
             )
             _indexStatus.value = str(R.string.index_deep_ctb_done, newStops.size)
-            _message.value = str(R.string.index_deep_ctb_msg)
-            _busy.value = false
+            // silent = 背景自動修復：唔彈訊息、唔掝 busy（費事蓋住用戶自己開嘅動作）
+            if (!silent) {
+                _message.value = str(R.string.index_deep_ctb_msg)
+                _busy.value = false
+            }
         }
     }
 
@@ -642,7 +652,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 內部版：可以俾 [maybeAutoRepair] 喺背景直接叫，唔使再包一層 launch */
-    private suspend fun deepIndexGmbInternal(incremental: Boolean = true) {
+    private suspend fun deepIndexGmbInternal(
+        incremental: Boolean = true,
+        silent: Boolean = false
+    ) {
         coroutineScope {
             val all = _index.value.routes.filter { it.op == Operator.GMB }
             val done = _index.value.routeStops
@@ -696,8 +709,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
             )
             _indexStatus.value = str(R.string.index_deep_gmb_done, newStops.size)
-            _message.value = str(R.string.index_deep_gmb_msg)
-            _busy.value = false
+            if (!silent) {
+                _message.value = str(R.string.index_deep_gmb_msg)
+                _busy.value = false
+            }
         }
     }
 
@@ -811,6 +826,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _autoRepairDone = MutableStateFlow(false)
     val autoRepairDone: StateFlow<Boolean> = _autoRepairDone.asStateFlow()
 
+    /** 係咪「而家」喺背景補緊 —— 主頁嗰句提示淨係呢段時間先顯示 */
+    private val _autoRepairing = MutableStateFlow(false)
+    val autoRepairing: StateFlow<Boolean> = _autoRepairing.asStateFlow()
+
     /**
      * 索引建立完之後，自動喺背景補城巴／小巴嘅車站。
      *
@@ -819,21 +838,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 做過一次就記低，唔會每次開 App 都重做。
      */
     fun maybeAutoRepair() {
-        if (_autoRepairDone.value || _busy.value) return
+        if (_autoRepairDone.value || _autoRepairing.value || _busy.value) return
         val idx = _index.value
         val ctbMissing = idx.routes.any { it.op == Operator.CTB } &&
             idx.stops.none { it.op == Operator.CTB }
         val gmbMissing = idx.routes.any { it.op == Operator.GMB } &&
             idx.stops.none { it.op == Operator.GMB }
         if (!ctbMissing && !gmbMissing) {
+            // 冇嘢要補（例如已經補過，或者根本冇呢啲路線）→ 直接當完成
             _autoRepairDone.value = true
             return
         }
-        _autoRepairDone.value = true
+        _autoRepairing.value = true
         viewModelScope.launch {
-            // 唔設 busy、唔彈訊息 —— 靜靜地喺背景做，唔阻住用戶揾車
-            if (ctbMissing) deepIndexCtbInternal()
-            if (gmbMissing) deepIndexGmbInternal()
+            try {
+                // 唔設 busy、唔彈訊息 —— 靜靜地喺背景做，唔阻住用戶揾車
+                if (ctbMissing) deepIndexCtbInternal(silent = true)
+                if (gmbMissing) deepIndexGmbInternal(silent = true)
+            } finally {
+                // 無論成功定失敗都要收尾：否則主頁提示會永遠掛住
+                _autoRepairing.value = false
+                _autoRepairDone.value = true
+            }
         }
     }
 
