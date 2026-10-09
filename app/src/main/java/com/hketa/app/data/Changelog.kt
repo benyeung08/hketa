@@ -37,6 +37,43 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.1.0",
+            date = "2026-10-09",
+            titleZhHant = "路線頁加班次表同公告、搜尋頁改版",
+            titleZhHans = "路线页加班次表同公告、搜索页改版",
+            titleEn = "Route page gains trip timetable and notices; search page redesigned",
+            itemsZhHant = listOf(
+                "路線頁新增「班次」分頁：由官方即時到站預報構建班次表（第 N 班 = 各站預報嘅第 N 項），並推算班次間隔",
+                "班次表最多顯示 6 班車，沿線超過 12 個站會自動均勻取樣，唔會打爆官方接口",
+                "路線頁新增「公告」分頁：港鐵官方服務提示（改道／延誤／暫停）＋ App 更新公告，可撳「查看詳情」開連結",
+                "增設「觀察到嘅營運時段」：官方冇公開頭／尾班車接口，所以靠日常開 App 慢慢累積，會標明係觀察值而唔係官方公佈",
+                "搜尋頁版面改版：頂部加主色「搜尋」標題列、輸入框改白底「輸入路線號碼」",
+                "搜尋結果改為「路線號 ｜ 往 XX ｜ 箭頭」一列式，撳一下即開沿途車站",
+                "非九巴路線會顯示「目的地 - 營辦商」（例如「大澳 - 嶼巴」），下一行標示官方全名同「資料由 DATA.GOV.HK 提供」",
+                "路線專用鍵盤改為藍灰色調，數字鍵、字母圓鍵對比更清楚"
+            ),
+            itemsZhHans = listOf(
+                "路线页新增「班次」分页：由官方即时到站预报构建班次表（第 N 班 = 各站预报的第 N 项），并推算班次间隔",
+                "班次表最多显示 6 班车，沿线超过 12 个站会自动均匀取样，不会打爆官方接口",
+                "路线页新增「公告」分页：港铁官方服务提示（改道／延误／暂停）＋ App 更新公告，可点「查看详情」开链接",
+                "增设「观察到的营运时段」：官方没有公开头／尾班车接口，所以靠日常开 App 慢慢累积，会标明是观察值而不是官方公布",
+                "搜索页版面改版：顶部加主色「搜索」标题栏、输入框改白底「输入路线号码」",
+                "搜索结果改为「路线号 ｜ 往 XX ｜ 箭头」一列式，点一下即开沿途车站",
+                "非九巴路线会显示「目的地 - 运营商」（例如「大澳 - 屿巴」），下一行标示官方全名同「资料由 DATA.GOV.HK 提供」",
+                "路线专用键盘改为蓝灰色调，数字键、字母圆键对比更清楚"
+            ),
+            itemsEn = listOf(
+                "Route page gained a Trips tab: the timetable is built from the live official arrivals (trip N = the Nth prediction at each stop), with the headway derived from it",
+                "Shows up to 6 trips; routes with more than 12 stops are sampled evenly so the official endpoints aren\u2019t hammered",
+                "Route page gained a Notices tab: official MTR service alerts (diversion / delay / suspension) plus app announcements, each with a Details link",
+                "Added an \u201cobserved service window\u201d: there is no public first/last-bus API, so it accumulates as you use the app and is labelled as observed rather than official",
+                "Search page redesigned: a primary-coloured Search title bar and a white field reading \u201cEnter a route number\u201d",
+                "Results are now one row each \u2014 route number, destination, chevron \u2014 and a tap opens the stop list",
+                "Non-KMB routes show \u201cdestination - operator\u201d (e.g. \u201cTai O - NLB\u201d) with the official name and the DATA.GOV.HK credit underneath",
+                "The route keypad is now blue-grey, with clearer contrast on the digit and round letter keys"
+            )
+        ),
+        Entry(
             version = "1.0.5",
             date = "2026-10-09",
             titleZhHant = "改名 HKATE、版本膠囊去徽章、背景修復收緊",
@@ -44,8 +81,6 @@ object Changelog {
             titleEn = "Renamed to HKATE, cleaner version pill, tighter background repair",
             itemsZhHant = listOf(
                 "應用程式改名為 HKATE（顯示名「HKATE 巴士到站預報」），關於頁同複製版本號都跟埋改",
-                "路線頁新增「班次」／「公告」兩個分頁：班次表由官方即時預報構建（第 N 班 = 各站預報嘅第 N 項），會推算班次間隔；公告會顯示港鐵官方服務提示同 App 更新公告",
-                "搜尋頁版面改版：頂部加主色「搜尋」標題列、輸入框改白底「輸入路線號碼」、結果改為「路線號 + 往 XX + 箭頭」一列式；非九巴路線會顯示「目的地 - 營辦商」同「資料由 DATA.GOV.HK 提供」",
                 "版本膠囊跟足 code-to-app 原版：移除圓點徽章，版面變成「v1.0.5 · 6 + 三個掣」；有新版本時 versionCode 數字會轉紅，唔使靠徽章都睇得出",
                 "底部狀態欄、設定頁、關於頁三處膠囊繼續共用同一個元件，改一處三處都改",
                 "修好「背景補充緊城巴／小巴資料」提示永久掛住唔消失嘅問題：而家淨係「而家補緊」先顯示，補完即收",
@@ -55,8 +90,6 @@ object Changelog {
             ),
             itemsZhHans = listOf(
                 "应用程序改名为 HKATE（显示名「HKATE 巴士到站预报」），关于页同复制版本号都跟着改",
-                "路线页新增「班次」／「公告」两个分页：班次表由官方即时预报构建（第 N 班 = 各站预报的第 N 项），会推算班次间隔；公告会显示港铁官方服务提示同 App 更新公告",
-                "搜索页版面改版：顶部加主色「搜索」标题栏、输入框改白底「输入路线号码」、结果改为「路线号 + 往 XX + 箭头」一列式；非九巴路线会显示「目的地 - 运营商」同「资料由 DATA.GOV.HK 提供」",
                 "版本胶囊跟足 code-to-app 原版：移除圆点徽章，版面变成「v1.0.5 · 6 + 三个按钮」；有新版本时 versionCode 数字会转红，不用靠徽章都看得出",
                 "底部状态栏、设置页、关于页三处胶囊继续共用同一个元件，改一处三处都改",
                 "修好「背景补充紧城巴／小巴资料」提示永久挂着不消失的问题：现在只有「正在补充」才显示，补充完即收",
@@ -66,8 +99,6 @@ object Changelog {
             ),
             itemsEn = listOf(
                 "The app is now called HKATE (display name \u201cHKATE bus ETA\u201d), including the About page and the copy-version text",
-                "Route page gained Trips / Notices tabs: the trip table is built from live official arrivals (trip N = the Nth prediction at each stop) and derives the headway; Notices shows official MTR service alerts plus app announcements",
-                "Search page redesigned: a primary-coloured Search title bar, a white field reading \u201cEnter a route number\u201d, and one row per route (number + destination + chevron); non-KMB routes also show \u201cdestination - operator\u201d and the DATA.GOV.HK credit",
                 "The version pill now matches code-to-app exactly: the dot badge is gone, so it reads \u201cv1.0.5 \u00b7 6\u201d plus three icons; when an update exists the version number turns red, so the badge isn\u2019t needed",
                 "The bottom bar, Settings and About still share one pill component, so a change lands in all three at once",
                 "Fixed the \u201cadding Citybus / GMB stops in the background\u201d note never going away: it now shows only while a repair is actually running",
