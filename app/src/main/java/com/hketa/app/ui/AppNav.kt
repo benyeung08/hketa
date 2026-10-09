@@ -65,6 +65,14 @@ fun AppRoot(
     val navController = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
 
+    // ---- 開 App 全自動：索引 + ETA 資料修復 + 定位搵附近路線 ----
+    // 以前要用戶自己撳（設定頁「ETA 資料修復」、主頁「用定位搵附近路線」），
+    // 而家一開 App 就自己做；bootstrap() 內部有「淨係行一次」嘅守衛。
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        vm.bootstrap(context, onNeedLocation)
+    }
+
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
 
@@ -78,7 +86,6 @@ fun AppRoot(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Dest.SEARCH
 
-    val context = LocalContext.current
     var showHistory by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
 
@@ -131,8 +138,8 @@ fun AppRoot(
             onCopyVersion = {
                 com.hketa.app.ui.copyToClipboard(
                     context,
-                    "HKETA version",
-                    "HKETA v$navVersionName ($navVersionCode)"
+                    "HKATE version",
+                    "HKATE v$navVersionName ($navVersionCode)"
                 )
             },
             onDismiss = { showUpdate = false }
