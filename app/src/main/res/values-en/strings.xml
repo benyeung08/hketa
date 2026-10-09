@@ -301,9 +301,9 @@
     <string name="tt_reload">Reload</string>
     <string name="notice_official_title">Service notice</string>
     <string name="notice_source_official">Official</string>
-    <string name="notice_source_app">HKATE</string>
+    <string name="notice_source_app">HKATE app</string>
     <string name="notice_just_now">Just now</string>
-    <string name="notice_empty">No notices</string>
+    <string name="notice_empty">No route notices</string>
     <string name="notice_view">Details</string>
     <string name="search_hint_route_no">Enter a route number</string>
     <string name="search_route_prefix">%1$s - %2$s</string>
@@ -325,4 +325,16 @@
     <string name="update_no_asset">This release has no APK attached</string>
     <string name="update_need_install_permission">Allow \u201cinstall unknown apps\u201d first</string>
     <string name="update_progress">Downloading %1$d%% (%2$.1f / %3$.1f MB)</string>
+    <string name="notice_source_derived">Derived from official data</string>
+    <string name="notice_line_no_service_title">No trips on the whole route</string>
+    <string name="notice_line_no_service_body">No stop along this route returned any arrivals. It may be suspended, past the last trip, or the official endpoint may be temporarily empty.</string>
+    <string name="notice_partial_no_data_title">Some stops returned no arrivals</string>
+    <string name="notice_partial_no_data_body">No arrivals returned for: %1$s%2$s</string>
+    <string name="notice_and_more"> (and %1$d more)</string>
+    <string name="notice_sparse_title">Large gap between trips</string>
+    <string name="notice_sparse_body">Longest gap is about %1$d min, possibly due to delays or a diversion.</string>
+    <string name="notice_very_sparse_body">Longest gap exceeds %1$d min \u2014 service is very sparse, possibly due to delays, a diversion, or suspended trips.</string>
+    <string name="notice_line_normal_title">Route running normally</string>
+    <string name="notice_line_normal_body">Every stop along the route returned arrivals and nothing unusual was found.</string>
+    <string name="notice_disclaimer">Apart from the MTR family, which publishes official service alerts, the other operators\u2019 arrival APIs have no notice field. Items labelled \u201cDerived from official data\u201d are observations computed from live official arrivals \u2014 they are not official notices.</string>
 </resources>
