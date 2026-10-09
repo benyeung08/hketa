@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HKETA 巴士到站预报</string>
+    <string name="app_name">HKATE 巴士到站预报</string>
 
     <!-- 底部导航 -->
     <string name="tab_search">搜索</string>
@@ -27,7 +27,7 @@
     <string name="tab_settings">设置</string>
 
     <!-- 页首标题 -->
-    <string name="title_search">HKETA 巴士到站预报</string>
+    <string name="title_search">HKATE 巴士到站预报</string>
     <string name="title_rail">铁路</string>
     <string name="title_route">沿途车站</string>
     <string name="title_eta">到站预报</string>
@@ -94,7 +94,7 @@
     <string name="settings_language_en">English</string>
     <string name="settings_language_hint">选择「繁體中文」／「简体中文」只影响界面文字；车站名、路线名等官方数据维持原文。</string>
     <string name="settings_rail_builtin">铁路站表（重铁 10 线 98 站、轻铁 11 线 68 站）内置于 App，离线可用</string>
-    <string name="settings_version">HKETA %1$s　原生 Android App（Kotlin + Compose）</string>
+    <string name="settings_version">HKATE %1$s　原生 Android App（Kotlin + Compose）</string>
     <string name="settings_privacy">只向官方接口发出 HTTPS 请求，不收集任何个人资料；定位只用于排序附近车站。</string>
 
 
@@ -109,7 +109,7 @@
     <string name="widget_no_fav">还没有收藏车站，点开 App 收藏后会显示在这里</string>
     <string name="widget_now">现已到站</string>
     <string name="widget_minutes">%1$d 分</string>
-    <string name="settings_widget_hint">长按桌面空白处 →「小工具」→ 找 HKETA，添加后会显示收藏车站的下一班车。</string>
+    <string name="settings_widget_hint">长按桌面空白处 →「小工具」→ 找 HKATE，添加后会显示收藏车站的下一班车。</string>
 
     <!-- 版本更新 -->
     <string name="update_section">版本更新</string>
@@ -124,7 +124,7 @@
     <string name="update_view_release">查看 Release</string>
     <string name="update_notes">更新内容</string>
     <string name="update_size">大小约 %1$.1f MB</string>
-    <string name="settings_logo_desc">HKETA</string>
+    <string name="settings_logo_desc">HKATE</string>
 
     <string name="route_bound_from">从 %1$s</string>
     <string name="rail_termini">%1$s ⇄ %2$s　%3$d 站</string>
@@ -165,4 +165,80 @@
     <string name="index_no_ctb">尚未取得城巴路线，请先重建索引</string>
     <string name="index_no_gmb">尚未取得小巴路线，请先重建索引</string>
     <string name="index_mtrbus_hint">即时向港铁巴士查询</string>
+    <string name="about_app_name">hkate app</string>
+    <string name="about_data_source">数据来源</string>
+    <string name="about_data_source_desc">直接对接九巴、城巴、屿巴、专线小巴、港铁的官方公开数据接口，没有 WebView、没有网页外壳。</string>
+    <string name="about_desc">香港巴士到站预报 · 原生 Android App</string>
+    <string name="about_intro">HKATE 是一个香港巴士到站预报 App，直接对接各运营商的官方公开数据接口 —— 没有 WebView、没有广告、没有追踪。\n\n打开就看到附近车站的即时班次，支持搜索路线和车站、沿途车站、路线地图、桌面小工具。\n\n只向官方接口发出 HTTPS 请求，定位只用来排序附近车站，不储存、不上传。</string>
+    <string name="about_open_settings">设置</string>
+    <string name="about_open_source">开源</string>
+    <string name="about_open_source_desc">HKATE 是开源项目，采用 Apache License 2.0。</string>
+    <string name="about_privacy">隐私</string>
+    <string name="about_privacy_desc">只向官方接口发出 HTTPS 请求；定位仅用于当下排序附近车站，不存储、不上传。</string>
+    <string name="about_title">关于</string>
+    <string name="about_view_source">查看源代码</string>
+    <string name="auto_locate_failed">找不到定位</string>
+    <string name="auto_locate_idle">待命</string>
+    <string name="auto_locate_no_perm">未授权定位</string>
+    <string name="auto_locate_off">已关闭</string>
+    <string name="auto_locate_ok">已定位</string>
+    <string name="auto_locate_title">用定位找附近路线</string>
+    <string name="auto_locating">定位中…</string>
+    <string name="eta_repair_clear">仅清除缓存</string>
+    <string name="eta_repair_cleared">已清除缓存，下次启动会重新下载</string>
+    <string name="eta_repair_ctb">修复城巴</string>
+    <string name="eta_repair_gmb">修复小巴</string>
+    <string name="eta_repair_hint">如果遇到「暂时没有车站资料」、查不到到站预报，或者车站名变成一串数字，点「修复并重新下载」重新获取官方数据。城巴和专线小巴要逐条路线抓取，修复会发出大量请求，建议在 Wi-Fi 下执行。</string>
+    <string name="eta_repair_main">修复并重新下载</string>
+    <string name="history_close">关闭</string>
+    <string name="history_current">当前版本：%1$s</string>
+    <string name="history_empty">还没有任何 Release</string>
+    <string name="history_failed">载入版本历史失败</string>
+    <string name="history_installed">已安装</string>
+    <string name="history_loading">载入版本历史…</string>
+    <string name="history_local">本地更新记录</string>
+    <string name="history_online">线上（GitHub Releases）</string>
+    <string name="history_title">版本历史</string>
+    <string name="home_open_stop">查看这个站全部班次</string>
+    <string name="home_repairing_hint">背景补充紧城巴／小巴车站资料，完成前附近车站以九巴为主</string>
+    <string name="index_auto_repair">索引过期或唔完整，开 App 自动重建中…</string>
+    <string name="index_deep_already_done">已经全部修复完成，不用再抓</string>
+    <string name="index_err_ctb_stops">城巴官方没有全量车站接口，车站需另行修复</string>
+    <string name="index_err_gmb">专线小巴路线抓取失败，请重试或稍后再修复</string>
+    <string name="manual_location_clear">清除（改回用定位）</string>
+    <string name="manual_location_current">当前使用：%1$s</string>
+    <string name="manual_location_title">手动选点（不用定位）</string>
+    <string name="rail_special_hint">9xx 之类的特别班次不在常规路线里。官方没有提供清单，但可以扫描各站预报动态找出来。</string>
+    <string name="rail_special_none">暂时找不到特别班次</string>
+    <string name="rail_special_scan">扫描特别班次</string>
+    <string name="rail_special_scanning">扫描中…</string>
+    <string name="rail_special_stops">%1$d 个站有这个班次</string>
+    <string name="rail_special_title">轻铁特别班次</string>
+    <string name="search_open_keyboard">开启键盘</string>
+    <string name="search_stops_empty">找不到这个车站，试试只输入部分站名，或者到「ETA 数据修复」重新下载</string>
+    <string name="search_stops_hint">输入车站名或站号（如 沙田、SHA TIN、KT492）</string>
+    <string name="search_stops_more">…还有 %1$d 条</string>
+    <string name="search_stops_none">暂时没有路线资料</string>
+    <string name="search_stops_routes">停靠：%1$s</string>
+    <string name="search_tab_routes">路线</string>
+    <string name="search_tab_stops">车站</string>
+    <string name="settings_auto_locate">自动定位（每 60 秒重整主页）</string>
+    <string name="settings_eta_repair">ETA 数据修复</string>
+    <string name="settings_index_diag">索引诊断</string>
+    <string name="status_auto_refresh">自动刷新（点按开关）</string>
+    <string name="status_check_update">检查版本更新</string>
+    <string name="status_copy_version">复制版本号</string>
+    <string name="status_refresh">即时刷新</string>
+    <string name="status_version_copied">版本号已复制</string>
+    <string name="status_version_history">版本历史</string>
+    <string name="update_cancel">取消</string>
+    <string name="update_close">关闭</string>
+    <string name="update_current_version">当前版本：v%1$s</string>
+    <string name="update_downloading">下载中…</string>
+    <string name="update_install_ready">下载完成，可以安装</string>
+    <string name="update_new_version">新版本：v%1$s</string>
+    <string name="update_open_browser">用浏览器下载</string>
+    <string name="update_ready_hint">点「安装」开始更新</string>
+    <string name="update_retry">重试</string>
+    <string name="update_title">检查更新</string>
 </resources>
