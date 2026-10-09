@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- APK 下載落 filesDir/update/，安裝時經 FileProvider 以 content:// 交畀系統安裝器 -->
+    <files-path
+        name="update"
+        path="update/" />
+    <external-files-path
+        name="external_update"
+        path="Download/" />
+</paths>
