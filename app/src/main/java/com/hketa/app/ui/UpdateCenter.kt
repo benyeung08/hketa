@@ -77,7 +77,7 @@ import com.hketa.app.util.AppLocale
  * 而家主視覺直接係膠囊：
  *
  *   ┌──────────────────────────────────┐
- *   │ v1.0.3 · 4  ● 1      ⟳   ◷   ▤   │  ← VersionPill
+ *   │ v1.0.4 · 5  ● 1      ⟳   ◷   ▤   │  ← VersionPill
  *   └──────────────────────────────────┘
  *   已經係最新版本
  *   [        檢查更新        ]            ← 淺紫膠囊掣
@@ -120,14 +120,12 @@ fun UpdateDialog(
                 com.hketa.app.ui.VersionPill(
                     versionName = versionName,
                     versionCode = versionCode,
-                    badge = if (hasUpdate) 1 else 0,
                     hasUpdate = hasUpdate,
                     busy = state == UpdateState.CHECKING,
                     onPillClick = onDismiss,
                     onCheckUpdate = onDismiss,
                     onOpenHistory = onOpenHistory,
-                    onCopy = onCopyVersion,
-                    showBadge = true
+                    onCopy = onCopyVersion
                 )
 
                 Spacer(Modifier.height(14.dp))

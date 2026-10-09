@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,14 +60,13 @@ fun StatusBar(
 ) {
     val context = LocalContext.current
     val updateState by vm.updateState.collectAsState()
-    val favorites by vm.favorites.collectAsState()
     val busy by vm.busy.collectAsState()
 
     val (versionName, versionCode) = versionInfo()
 
-    // 有新版本就顯示紅色徽章 + 1，否則灰點 + 收藏車站數
+    // 有新版本 → versionCode 數字轉紅；冇新版維持灰
+    // （唔再顯示圓點徽章 —— 版面跟 code-to-app 原版 VersionPill 一致）
     val hasUpdate = updateState == UpdateState.AVAILABLE
-    val badge = if (hasUpdate) 1 else favorites.size
 
     Row(
         modifier = Modifier
@@ -81,7 +79,6 @@ fun StatusBar(
         VersionPill(
             versionName = versionName,
             versionCode = versionCode,
-            badge = badge,
             hasUpdate = hasUpdate,
             busy = busy,
             onPillClick = { if (hasUpdate) onCheckUpdate() else onOpenFavorites() },
@@ -112,15 +109,13 @@ fun StatusBar(
 fun VersionPill(
     versionName: String,
     versionCode: Long,
-    badge: Int,
     hasUpdate: Boolean,
     busy: Boolean,
     onPillClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onOpenHistory: () -> Unit,
     onCopy: () -> Unit,
-    modifier: Modifier = Modifier,
-    showBadge: Boolean = true
+    modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
@@ -154,26 +149,11 @@ fun VersionPill(
             Spacer(Modifier.width(6.dp))
             Text(
                 text = versionCode.toString(),
-                color = Color(0xFFB0B0B0),
+                // 有新版本 → 數字轉主色（唔加徽章，版面同 code-to-app 原版一致）
+                color = if (hasUpdate) Color(0xFFFF5252) else Color(0xFFB0B0B0),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
-            if (showBadge) {
-                Spacer(Modifier.width(6.dp))
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (hasUpdate) Color(0xFFFF5252) else Color(0xFF8A8A8A))
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = badge.toString(),
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
         }
 
         Spacer(Modifier.width(10.dp))
