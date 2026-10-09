@@ -278,4 +278,8 @@
     <string name="src_mtr_hr_full">港铁 (资料由DATA.GOV.HK提供)</string>
     <string name="src_nlb_full">大屿山巴士 (资料由DATA.GOV.HK提供)</string>
     <string name="route_bound_to_plain">往</string>
+    <string name="tt_arrive_at">预计 %1$s 到站</string>
+    <string name="tt_in_min">%1$d 分钟</string>
+    <string name="tt_next_trip">第1班 · 最快开出</string>
+    <string name="tt_now">现</string>
 </resources>
