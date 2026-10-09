@@ -315,4 +315,8 @@
     <string name="src_mtr_hr_full">港鐵 (資料由DATA.GOV.HK提供)</string>
     <string name="src_lrt_full">輕鐵 (資料由DATA.GOV.HK提供)</string>
     <string name="route_bound_to_plain">往</string>
+    <string name="tt_next_trip">第1班 · 最快開出</string>
+    <string name="tt_arrive_at">預計 %1$s 到站</string>
+    <string name="tt_now">現</string>
+    <string name="tt_in_min">%1$d 分鐘</string>
 </resources>
