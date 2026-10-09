@@ -37,6 +37,40 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.0.5",
+            date = "2026-10-09",
+            titleZhHant = "改名 HKATE、版本膠囊去徽章、背景修復收緊",
+            titleZhHans = "改名 HKATE、版本胶囊去徽章、背景修复收紧",
+            titleEn = "Renamed to HKATE, cleaner version pill, tighter background repair",
+            itemsZhHant = listOf(
+                "應用程式改名為 HKATE（顯示名「HKATE 巴士到站預報」），關於頁同複製版本號都跟埋改",
+                "版本膠囊跟足 code-to-app 原版：移除圓點徽章，版面變成「v1.0.5 · 6 + 三個掣」；有新版本時 versionCode 數字會轉紅，唔使靠徽章都睇得出",
+                "底部狀態欄、設定頁、關於頁三處膠囊繼續共用同一個元件，改一處三處都改",
+                "修好「背景補充緊城巴／小巴資料」提示永久掛住唔消失嘅問題：而家淨係「而家補緊」先顯示，補完即收",
+                "更重要：修好城巴／小巴車站其實從來冇自動補過嘅 bug —— 以前淨係第一次裝 App（重建索引）先會補，第二次開 App 起索引由磁碟載入就直接跳過，所以附近車站永遠淨係得九巴",
+                "背景修復改為靜默模式：唔彈訊息、唔掝忙碌狀態，唔會蓋住你自己開嘅動作",
+                "補齊簡體中文（values-b+zh+Hans）缺咗嘅 76 個字串，四份語言檔而家完全一致"
+            ),
+            itemsZhHans = listOf(
+                "应用程序改名为 HKATE（显示名「HKATE 巴士到站预报」），关于页同复制版本号都跟着改",
+                "版本胶囊跟足 code-to-app 原版：移除圆点徽章，版面变成「v1.0.5 · 6 + 三个按钮」；有新版本时 versionCode 数字会转红，不用靠徽章都看得出",
+                "底部状态栏、设置页、关于页三处胶囊继续共用同一个元件，改一处三处都改",
+                "修好「背景补充紧城巴／小巴资料」提示永久挂着不消失的问题：现在只有「正在补充」才显示，补充完即收",
+                "更重要：修好城巴／小巴车站其实从来没有自动补过的 bug —— 以前只有第一次装 App（重建索引）才会补，第二次开 App 起索引由磁盘载入就直接跳过，所以附近车站永远只有九巴",
+                "背景修复改为静默模式：不弹消息、不设置忙碌状态，不会盖住你自己开的动作",
+                "补齐简体中文（values-b+zh+Hans）缺了的 76 个字符串，四份语言文件现在完全一致"
+            ),
+            itemsEn = listOf(
+                "The app is now called HKATE (display name \u201cHKATE bus ETA\u201d), including the About page and the copy-version text",
+                "The version pill now matches code-to-app exactly: the dot badge is gone, so it reads \u201cv1.0.5 \u00b7 6\u201d plus three icons; when an update exists the version number turns red, so the badge isn\u2019t needed",
+                "The bottom bar, Settings and About still share one pill component, so a change lands in all three at once",
+                "Fixed the \u201cadding Citybus / GMB stops in the background\u201d note never going away: it now shows only while a repair is actually running",
+                "More importantly, fixed a bug where Citybus / GMB stops were never actually added: it only ran on first install (when the index was rebuilt) and was skipped on every later launch, so nearby stops were KMB-only forever",
+                "Background repair is now silent: no toast and no busy flag, so it won\u2019t interrupt whatever you started yourself",
+                "Filled in 76 strings missing from the Simplified Chinese (values-b+zh+Hans) file - all four language files now match"
+            )
+        ),
+        Entry(
             version = "1.0.4",
             date = "2026-10-09",
             titleZhHant = "嶼巴英文名、地圖離線包、輕鐵自動掃描",
