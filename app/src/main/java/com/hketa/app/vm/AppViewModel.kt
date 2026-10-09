@@ -522,7 +522,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun ensureIndex(force: Boolean = false) {
         // 版本落後（例如 1.0.0 建立、未含鐵路站）就自動重建
-        val cached = if (force) null else store.load()
+        val cached = if (force) null else store.loadSuspend()
         if (cached != null && cached.routes.isNotEmpty() && cached.version >= INDEX_VERSION) {
             _index.value = cached
             _indexStatus.value = str(R.string.index_ready, cached.routes.size)
@@ -714,7 +714,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 用新資料成個替換某個營辦商嘅 routes / stops / routeStops */
-    private fun replaceOperator(
+    private suspend fun replaceOperator(
         op: Operator,
         newRoutes: List<RouteDef>,
         newStops: List<StopDef>,
@@ -730,7 +730,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             builtAt = System.currentTimeMillis()
         )
         _index.value = merged
-        store.save(merged)
+        store.saveSuspend(merged)
     }
 
     private suspend fun buildIndex() {
@@ -821,7 +821,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             routeStops = routeStops.distinctBy { "${it.op.name}|${it.route}|${it.bound}|${it.routeId}|${it.stopId}" }
         )
         _index.value = data
-        store.save(data)
+        store.saveSuspend(data)
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
         _busy.value = false
 
@@ -1881,24 +1881,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _nearbyOrigin.value = "%.5f, %.5f（${fix.source}）".format(fix.lat, fix.lon)
 
             val idx = _index.value
-            val stops = idx.stops
-                .filter { it.lat != 0.0 || it.lon != 0.0 }
-                .mapNotNull { st ->
-                    val d = distanceMeters(fix.lat, fix.lon, st.lat, st.lon)
-                    if (d > HOME_RADIUS_M) return@mapNotNull null
-                    st to d.toInt()
-                }
-                .sortedBy { it.second }
-                .take(HOME_MAX_STOPS)
+            // bbox 預篩：7250 個站淨係對方框內嘅候選做三角函數
+            val stops = withContext(Dispatchers.Default) {
+                stopsWithin(idx.stops, fix.lat, fix.lon, HOME_RADIUS_M.toDouble())
+                    .take(HOME_MAX_STOPS)
+            }
 
             val items = coroutineScope {
                 stops.map { (st, dist) ->
                     async {
-                        val routes = idx.routeStops
-                            .filter { it.op == st.op && it.stopId == st.id }
-                            .map { it.route }
-                            .distinct()
-                            .sortedWith(compareBy<String> { it.length }.thenBy { it })
+                        // O(1) 查表（以前係逐個站掃 63150 條 routeStops）
+                        val routes = routesOfStop(idx, st)
                         val etas = suspendCatching {
                             when (st.op) {
                                 // 九巴：一個請求攞晒全站路線預報
@@ -1950,24 +1943,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ============ 附近車站 ============
 
     fun loadNearby(lat: Double, lon: Double, radiusMeters: Int = 3000) {
-        viewModelScope.launch {
+        // Dispatchers.IO：以前呢段喺主線程做（viewModelScope 預設 Main），
+        // 要掃 7250 個站 × 63150 條對應，會明顯卡住 UI。
+        viewModelScope.launch(Dispatchers.IO) {
             _busy.value = true
             _nearbyOrigin.value = "%.5f, %.5f".format(lat, lon)
             val idx = _index.value
-            val list = idx.stops
-                .filter { it.lat != 0.0 || it.lon != 0.0 }
-                .mapNotNull { s ->
-                    val d = distanceMeters(lat, lon, s.lat, s.lon)
-                    if (d > radiusMeters) return@mapNotNull null
-                    val routes = idx.routeStops
-                        .filter { it.op == s.op && it.stopId == s.id }
-                        .map { it.route }
-                        .distinct()
-                        .sortedWith(compareBy<String> { it.length }.thenBy { it })
-                    NearbyStop(s, d.toInt(), routes)
-                }
-                .sortedBy { it.distanceMeters }
+            // bbox 預篩 + 車站→路線索引（O(1) 查表，唔使逐個站掃 63150 條）
+            val list = stopsWithin(idx.stops, lat, lon, radiusMeters.toDouble())
                 .take(80)
+                .map { (s, d) -> NearbyStop(s, d, routesOfStop(idx, s)) }
             _nearby.value = list
             _busy.value = false
             if (list.isEmpty()) {
@@ -1985,7 +1970,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ============ 工具 ============
 
-    private fun mergeAll(newStops: List<StopDef>, newRs: List<RouteStopDef>) {
+    private suspend fun mergeAll(newStops: List<StopDef>, newRs: List<RouteStopDef>) {
         if (newStops.isEmpty() && newRs.isEmpty()) return
         val cur = _index.value
         val merged = cur.copy(
@@ -1994,7 +1979,98 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .distinctBy { "${it.op.name}|${it.route}|${it.bound}|${it.routeId}|${it.stopId}" }
         )
         _index.value = merged
-        store.save(merged)
+        store.saveSuspend(merged)
+    }
+
+    // ==================== 效能：車站→路線索引 + 距離預篩 ====================
+
+    /**
+     * ## 點解要呢個快取
+     *
+     * 以前 `loadNearby()` / `buildHomeItems()` 入面係咁寫嘅：
+     *
+     * ```kotlin
+     * val routes = idx.routeStops                 // 63150 條
+     *     .filter { it.op == st.op && it.stopId == st.id }
+     * ```
+     *
+     * 即係**每一個站都要掃晒全部 routeStops**。近處 50 個站
+     * = 50 × 63150 ≈ **315 萬次遍歷**，而且全部喺主線程 ——
+     * 呢個係開 App 同每次自動定位重整（每 60 秒）卡住嘅主因之一。
+     *
+     * 而家建一次 HashMap（O(m)），之後每個站 O(1) 查表：
+     * **315 萬次 → 63150 次**（快約 50 倍）。
+     *
+     * 快取以 `IndexData` 嘅**物件身份**做 key —— 索引一換（新 copy）
+     * 就自動失效，唔使手動清。
+     */
+    private var routesByStopMap: Map<String, List<String>>? = null
+    private var routesByStopFor: IndexData? = null
+
+    private fun routesByStop(idx: IndexData): Map<String, List<String>> {
+        val cached = routesByStopMap
+        if (cached != null && routesByStopFor === idx) return cached
+
+        val tmp = HashMap<String, LinkedHashSet<String>>(
+            (idx.stops.size * 2).coerceAtLeast(1024)
+        )
+        for (rs in idx.routeStops) {
+            tmp.getOrPut("${rs.op.name}|${rs.stopId}") { LinkedHashSet() }.add(rs.route)
+        }
+        // 排序一次，之後每次查都直接攞到排好嘅結果
+        val built = HashMap<String, List<String>>(tmp.size)
+        for ((k, v) in tmp) {
+            built[k] = v.sortedWith(compareBy<String> { it.length }.thenBy { it })
+        }
+        routesByStopMap = built
+        routesByStopFor = idx
+        return built
+    }
+
+    /** 查某個站有邊啲路線 —— 建好索引後係 O(1)。 */
+    private fun routesOfStop(idx: IndexData, s: StopDef): List<String> =
+        routesByStop(idx)["${s.op.name}|${s.id}"] ?: emptyList()
+
+    /**
+     * 搵半徑內嘅車站，按距離排好。
+     *
+     * ## bounding box 預篩
+     *
+     * Haversine（下面 `distanceMeters`）有 sin/cos/atan2/sqrt，
+     * 對 7250 個站逐個計會好貴。
+     *
+     * 所以先用**加減法**嘅經緯度方框濾走絕大部分站（純比較，極快），
+     * 淨係對方框內嘅候選先做精確計算。3 km 半徑嘅方框喺香港
+     * 大概淨係剩低幾十個站 —— 即係 7250 次三角函數 → 幾十次。
+     */
+    private fun stopsWithin(
+        stops: List<StopDef>,
+        lat: Double,
+        lon: Double,
+        radiusM: Double
+    ): List<Pair<StopDef, Int>> {
+        // 緯度 1° ≈ 111 320 m；經度 1° ≈ 111 320 × cos(lat) m
+        val dLat = radiusM / 111_320.0
+        val cosLat = java.lang.Math.cos(Math.toRadians(lat)).coerceAtLeast(0.01)
+        val dLon = radiusM / (111_320.0 * cosLat)
+        val minLat = lat - dLat
+        val maxLat = lat + dLat
+        val minLon = lon - dLon
+        val maxLon = lon + dLon
+
+        val out = ArrayList<Pair<StopDef, Int>>(64)
+        for (s in stops) {
+            // 冇座標嘅站（例如未補到經緯度嘅）直接跳過
+            if (s.lat == 0.0 && s.lon == 0.0) continue
+            // 粗篩：純比較，唔使三角函數
+            if (s.lat < minLat || s.lat > maxLat) continue
+            if (s.lon < minLon || s.lon > maxLon) continue
+            // 精算：淨係剩低嘅候選先做
+            val d = distanceMeters(lat, lon, s.lat, s.lon)
+            if (d <= radiusM) out.add(s to d.toInt())
+        }
+        out.sortBy { it.second }
+        return out
     }
 
     fun consumeMessage() {
