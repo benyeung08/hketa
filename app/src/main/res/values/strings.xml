@@ -278,4 +278,9 @@
     <string name="home_repairing_hint">背景補充緊城巴／小巴車站資料，完成前附近車站以九巴為主</string>
     <string name="about_intro">HKATE 係一個香港巴士到站預報 App，直接對接各營辦商嘅官方公開資料接口 —— 冇 WebView、冇廣告、冇追蹤。\n\n打開就睇到附近車站嘅即時班次，支援搜尋路線同車站、沿途車站、路線地圖、桌面小工具。\n\n只向官方接口發出 HTTPS 請求，定位淨係用嚟排序附近車站，唔儲存、唔上傳。</string>
     <string name="index_auto_repair">索引過期或唔完整，開 App 自動重建中…</string>
+    <string name="eta_repair_op">修復%s</string>
+    <string name="eta_repair_op_progress">修復緊 %1$s…</string>
+    <string name="eta_repair_op_done">%1$s 修復完成：%2$d 條路線 / %3$d 個車站</string>
+    <string name="eta_repair_op_failed">%1$s 修復失敗：%2$s</string>
+    <string name="eta_repair_per_op_hint">覺得邊個營辦商嘅資料唔齊／唔啱，可以淨係修復嗰一個，唔使成個索引重建。</string>
 </resources>
