@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HKETA 巴士到站预报</string>
+    <string name="app_name">HKATE 巴士到站预报</string>
 
     <!-- 底部导航 -->
     <string name="tab_search">搜索</string>
@@ -38,7 +38,7 @@
     <string name="tab_settings">设置</string>
 
     <!-- 页首标题 -->
-    <string name="title_search">HKETA 巴士到站预报</string>
+    <string name="title_search">HKATE 巴士到站预报</string>
     <string name="title_rail">铁路</string>
     <string name="title_route">沿途车站</string>
     <string name="title_eta">到站预报</string>
@@ -118,7 +118,7 @@
     <string name="settings_language_en">English</string>
     <string name="settings_language_hint">选择「繁體中文」／「简体中文」只影响界面文字；车站名、路线名等官方数据维持原文。</string>
     <string name="settings_rail_builtin">铁路站表（重铁 10 线 98 站、轻铁 11 线 68 站）内置于 App，离线可用</string>
-    <string name="settings_version">HKETA %1$s　原生 Android App（Kotlin + Compose）</string>
+    <string name="settings_version">HKATE %1$s　原生 Android App（Kotlin + Compose）</string>
     <string name="settings_privacy">只向官方接口发出 HTTPS 请求，不收集任何个人资料；定位只用于排序附近车站。</string>
 
 
@@ -133,7 +133,7 @@
     <string name="widget_no_fav">还没有收藏车站，点开 App 收藏后会显示在这里</string>
     <string name="widget_now">现已到站</string>
     <string name="widget_minutes">%1$d 分</string>
-    <string name="settings_widget_hint">长按桌面空白处 →「小工具」→ 找 HKETA，添加后会显示收藏车站的下一班车。</string>
+    <string name="settings_widget_hint">长按桌面空白处 →「小工具」→ 找 HKATE，添加后会显示收藏车站的下一班车。</string>
 
     <!-- 版本更新 -->
     <string name="update_section">版本更新</string>
@@ -160,7 +160,7 @@
     <string name="update_ready_hint">点「安装」开始更新</string>
     <string name="update_downloading">下载中…</string>
     <string name="update_open_browser">用浏览器下载</string>
-    <string name="settings_logo_desc">HKETA</string>
+    <string name="settings_logo_desc">HKATE</string>
 
     <string name="route_bound_from">从 %1$s</string>
     <string name="rail_termini">%1$s ⇄ %2$s　%3$d 站</string>
@@ -240,7 +240,7 @@
 
     <!-- 关于页面 -->
     <string name="about_title">关于</string>
-    <string name="about_app_name">hketa app</string>
+    <string name="about_app_name">hkate app</string>
     <string name="about_desc">香港巴士到站预报 · 原生 Android App</string>
     <string name="about_open_settings">设置</string>
     <string name="about_data_source">数据来源</string>
@@ -248,7 +248,7 @@
     <string name="about_privacy">隐私</string>
     <string name="about_privacy_desc">只向官方接口发出 HTTPS 请求；定位仅用于当下排序附近车站，不存储、不上传。</string>
     <string name="about_open_source">开源</string>
-    <string name="about_open_source_desc">HKETA 是开源项目，采用 Apache License 2.0。</string>
+    <string name="about_open_source_desc">HKATE 是开源项目，采用 Apache License 2.0。</string>
     <string name="about_view_source">查看源代码</string>
 
 
@@ -276,4 +276,6 @@
 
     <string name="home_open_stop">查看这个站全部班次</string>
     <string name="home_repairing_hint">背景补充紧城巴／小巴车站资料，完成前附近车站以九巴为主</string>
+    <string name="about_intro">HKATE 是一个香港巴士到站预报 App，直接对接各运营商的官方公开数据接口 —— 没有 WebView、没有广告、没有追踪。\n\n打开就看到附近车站的即时班次，支持搜索路线和车站、沿途车站、路线地图、桌面小工具。\n\n只向官方接口发出 HTTPS 请求，定位只用来排序附近车站，不储存、不上传。</string>
+    <string name="index_auto_repair">索引过期或唔完整，开 App 自动重建中…</string>
 </resources>
