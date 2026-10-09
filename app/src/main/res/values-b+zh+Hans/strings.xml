@@ -241,4 +241,9 @@
     <string name="update_ready_hint">点「安装」开始更新</string>
     <string name="update_retry">重试</string>
     <string name="update_title">检查更新</string>
+    <string name="eta_repair_op">修复%s</string>
+    <string name="eta_repair_op_done">%1$s 修复完成：%2$d 条路线 / %3$d 个车站</string>
+    <string name="eta_repair_op_failed">%1$s 修复失败：%2$s</string>
+    <string name="eta_repair_op_progress">修复紧 %1$s…</string>
+    <string name="eta_repair_per_op_hint">觉得哪个运营商的资料唔齐／唔啱，可以净系修复那一个，唔使成个索引重建。</string>
 </resources>
