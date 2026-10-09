@@ -78,12 +78,64 @@ fun StatusBar(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // ---- 左：v版本名 · versionCode · 徽章 ----
+        VersionPill(
+            versionName = versionName,
+            versionCode = versionCode,
+            badge = badge,
+            hasUpdate = hasUpdate,
+            busy = busy,
+            onPillClick = { if (hasUpdate) onCheckUpdate() else onOpenFavorites() },
+            onCheckUpdate = onCheckUpdate,
+            onOpenHistory = onOpenHistory,
+            onCopy = {
+                copyToClipboard(context, "HKETA version", "HKETA v$versionName ($versionCode)")
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.status_version_copied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+}
+
+/**
+ * VersionPill —— 第二張圖嗰個「版本膠囊」。
+ *
+ *   v1.0.0-mobilecode · 1        ⟳   ◷   ▤
+ *
+ * 抽咗出嚟做共用元件，所以：
+ *   - 底部狀態欄用佢
+ *   - 「版本更新」對話框都用佢（全面改為呢個樣式）
+ */
+@Composable
+fun VersionPill(
+    versionName: String,
+    versionCode: Long,
+    badge: Int,
+    hasUpdate: Boolean,
+    busy: Boolean,
+    onPillClick: () -> Unit,
+    onCheckUpdate: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier,
+    showBadge: Boolean = true
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color(0xFF1E1E1E).copy(alpha = 0.85f))
+            .clickable(onClick = onPillClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // ---- 左：v版本名 · versionCode · 圓點 + 數字 ----
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { if (hasUpdate) onCheckUpdate() else onOpenFavorites() }
-                .padding(horizontal = 6.dp, vertical = 4.dp),
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(onClick = onPillClick)
+                .padding(horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -106,23 +158,25 @@ fun StatusBar(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(Modifier.width(6.dp))
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(if (hasUpdate) Color(0xFFFF5252) else Color(0xFF8A8A8A))
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = badge.toString(),
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
+            if (showBadge) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (hasUpdate) Color(0xFFFF5252) else Color(0xFF8A8A8A))
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = badge.toString(),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(10.dp))
 
         // ---- 右：三個掣（對應原版 Sync / History / ContentCopy）----
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -145,25 +199,15 @@ fun StatusBar(
                 res = R.drawable.ic_status_copy,
                 desc = stringResource(R.string.status_copy_version),
                 enabled = true,
-                onClick = {
-                    copyToClipboard(
-                        context,
-                        "HKETA version",
-                        "HKETA v$versionName ($versionCode)"
-                    )
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.status_version_copied),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                onClick = onCopy
             )
         }
     }
 }
 
+/** 狀態欄入面嗰啲 16dp 圖標掣；About 頁面嘅 VersionPill 都重用緊。 */
 @Composable
-private fun StatusIcon(
+fun StatusIcon(
     res: Int,
     desc: String,
     enabled: Boolean,
@@ -185,9 +229,12 @@ private fun StatusIcon(
     }
 }
 
-/** 版本名 + versionCode（versionCode 對應原版 VersionPill 嗰個數字） */
+/**
+ * 版本名 + versionCode（versionCode 對應原版 VersionPill 嗰個數字）。
+ * 公開係因為 About 頁面嘅 VersionPill 都要用。
+ */
 @Composable
-private fun versionInfo(): Pair<String, Long> {
+fun versionInfo(): Pair<String, Long> {
     val ctx = LocalContext.current
     return runCatching {
         @Suppress("DEPRECATION")
@@ -202,7 +249,7 @@ private fun versionInfo(): Pair<String, Long> {
     }.getOrDefault("1.0.0" to 1L)
 }
 
-private fun copyToClipboard(context: Context, label: String, text: String) {
+fun copyToClipboard(context: Context, label: String, text: String) {
     runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText(label, text))

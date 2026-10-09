@@ -119,6 +119,14 @@ fun AppRoot(
                 }
                 if (!url.isNullOrBlank()) openUrl(context, url)
             },
+            onOpenHistory = {
+                showUpdate = false
+                showHistory = true
+            },
+            onCopyVersion = {
+                val (n, c) = com.hketa.app.ui.versionInfo()
+                com.hketa.app.ui.copyToClipboard(context, "HKETA version", "HKETA v$n ($c)")
+            },
             onDismiss = { showUpdate = false }
         )
     }
@@ -317,7 +325,11 @@ fun AppRoot(
             composable(Dest.SETTINGS) {
                 SettingsScreen(
                     vm = vm,
-                    onOpenAbout = { navController.navigate(Dest.ABOUT) }
+                    onOpenAbout = { navController.navigate(Dest.ABOUT) },
+                    onOpenHistory = {
+                        vm.loadVersionHistory()
+                        showHistory = true
+                    }
                 )
             }
         }
