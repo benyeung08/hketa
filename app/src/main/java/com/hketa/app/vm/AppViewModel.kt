@@ -56,6 +56,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         /** 主頁自動重新定位／重整間隔（秒） */
         const val HOME_AUTO_LOCATE_SEC = 60
 
+        /** 索引超過呢個時間就當過期、開 App 自動重建（14 日） */
+        val INDEX_MAX_AGE_MS = 14L * 24 * 60 * 60 * 1000
+
         /**
          * 深度修復嘅並發數。
          * 城巴／小巴要逐條路線抓，串行嘅話幾百條路線要幾十分鐘；
@@ -339,9 +342,75 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 節流用：30 分鐘內唔重複打 GitHub API（手動按掣可以 force 無視） */
     private var lastUpdateCheckAt = 0L
 
+    /** 索引建立嘅 Job —— bootstrap() 要等佢跑完先做體檢，費事同建索引撞車 */
+    private var indexJob: Job? = null
+
     init {
-        viewModelScope.launch { ensureIndex() }
+        indexJob = viewModelScope.launch { ensureIndex() }
         refreshFavorites()
+    }
+
+    // ============ 開 App 全自動流程 ============
+
+    private val _bootstrapped = MutableStateFlow(false)
+    val bootstrapped: StateFlow<Boolean> = _bootstrapped.asStateFlow()
+
+    /**
+     * 開 App 之後嘅全自動流程（**淨係行一次**）：
+     *
+     *   ① 索引（ETA 資料）：冇就建、版本落後就重建
+     *   ② ETA 資料修復：自動體檢，唔健康就重建；健康就補城巴／小巴車站
+     *   ③ 定位搵附近路線：自動請求定位權限，然後啟動自動定位循環
+     *
+     * 以前呢三樣都要用戶自己撳（設定頁「ETA 資料修復」、主頁「用定位搵附近路線」），
+     * 而家開 App 就全部自己做，用戶一入到主頁已經有嘢睇。
+     */
+    fun bootstrap(
+        context: android.content.Context,
+        requestLocation: ((Boolean) -> Unit) -> Unit
+    ) {
+        if (_bootstrapped.value) return
+        _bootstrapped.value = true
+
+        viewModelScope.launch {
+            // 等 init 嗰個 ensureIndex 跑完，唔同佢爭
+            runCatching { indexJob?.join() }
+            // ① + ②：索引 + 自動體檢／修復
+            runCatching { autoRepairIfNeeded() }
+        }
+
+        // ③ 定位：自動請求權限，之後交畀循環（冇授權都照樣跑，會退返手動選點）
+        requestLocation { granted ->
+            _locatePhase.value =
+                if (granted) LocatePhase.LOCATING else LocatePhase.NO_PERMISSION
+            startAutoLocate(context) { LocationProvider.hasPermission(context) }
+        }
+    }
+
+    /**
+     * 索引體檢 —— 「ETA 資料修復」嘅全自動版。
+     *
+     * 判定唔健康（要重建）嘅情況：
+     *   - 冇任何路線／車站／路線-車站對應
+     *   - 索引太舊（超過 [INDEX_MAX_AGE_MS]）
+     *
+     * 健康嘅話就交畀 [maybeAutoRepair] 補城巴／小巴車站。
+     */
+    private suspend fun autoRepairIfNeeded() {
+        val idx = _index.value
+        val unhealthy =
+            idx.routes.isEmpty() ||
+                idx.stops.isEmpty() ||
+                idx.routeStops.isEmpty() ||
+                (idx.builtAt > 0 && System.currentTimeMillis() - idx.builtAt > INDEX_MAX_AGE_MS)
+
+        if (unhealthy) {
+            _indexStatus.value = str(R.string.index_auto_repair)
+            // buildIndex() 尾部已經會叫 maybeAutoRepair()，唔使再叫多次
+            buildIndex()
+            return
+        }
+        maybeAutoRepair()
     }
 
     // ============ 版本更新 ============
