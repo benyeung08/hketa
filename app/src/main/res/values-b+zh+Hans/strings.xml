@@ -250,4 +250,22 @@
     <string name="about_crash_log_copied">崩溃记录已复制，可以贴给开发者</string>
     <string name="about_crash_log_hint">App 闪退过的话，按按钮复制堆栈记录。记录也会写落 文件管理器 ▸ Android/data/com.hketa.app/files/crash_log.txt</string>
     <string name="about_crash_log_none">暂时没崩溃记录 👌</string>
+    <string name="notice_empty">暂时没公告</string>
+    <string name="notice_just_now">刚才</string>
+    <string name="notice_official_title">服务公告</string>
+    <string name="notice_source_app">HKATE</string>
+    <string name="notice_source_official">官方</string>
+    <string name="notice_view">查看详情</string>
+    <string name="rs_tab_notices">公告</string>
+    <string name="rs_tab_stops">车站</string>
+    <string name="rs_tab_timetable">班次</string>
+    <string name="tt_empty">暂时没班次资料（可能已过尾班车）</string>
+    <string name="tt_headway">班次间隔：约 %1$d 分钟</string>
+    <string name="tt_loading">抓取班次资料…</string>
+    <string name="tt_note">班次表由官方即时到站预报构建（第 N 班 = 各站预报的第 N 项）。官方没有公开时刻表接口，所以「营运时段」是观察累积，不是官方公布的头／尾班车。</string>
+    <string name="tt_observed">观察到的营运时段：%1$s – %2$s（%3$d 次记录）</string>
+    <string name="tt_observed_none">仲未睇到班次，累积多几次就有营运时段</string>
+    <string name="tt_reload">重新抓取</string>
+    <string name="tt_title">班次时间表</string>
+    <string name="tt_trip">第 %1$d 班</string>
 </resources>
