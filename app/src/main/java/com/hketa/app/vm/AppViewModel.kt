@@ -711,16 +711,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private var specialStore: SpecialRoutesStore? = null
 
+    /** 掃描結果有效期：過咗就自動重掃（官方會加減特別班次） */
+    private val SPECIAL_SCAN_TTL_MS = 7L * 24 * 60 * 60 * 1000
+
+    private val _specialAutoScanned = MutableStateFlow(false)
+    val specialAutoScanned: StateFlow<Boolean> = _specialAutoScanned.asStateFlow()
+
     /**
-     * 鐵路頁開嗰陣載入上次嘅掃描結果。
-     * 官方冇特別班次清單，掃一次要幾十個請求，所以結果存落本地，
-     * 開頁即刻有得睇，想更新先撳掣再掃。
+     * 鐵路頁開嗰陣載入上次嘅掃描結果，**並且喺需要時自動重掃**。
+     *
+     * 以前要用戶自己撳「掃描特別班次」，唔撳就永遠冇。而家：
+     *   - 有快取且未過期（7 日）→ 即刻顯示，唔發請求
+     *   - 冇快取／已過期       → 自動喺背景掃一次（唔彈訊息、唔阻住用）
+     * 用戶仍然可以撳掣手動即時重掃。
      */
-    fun loadSpecialRoutes(context: android.content.Context) {
+    fun loadSpecialRoutes(context: android.content.Context, autoScan: Boolean = true) {
         if (specialStore == null) specialStore = SpecialRoutesStore(context)
-        val cached = specialStore?.load().orEmpty()
+        val store = specialStore ?: return
+        val cached = store.load()
         if (_specialRoutes.value.isEmpty() && cached.isNotEmpty()) {
             _specialRoutes.value = cached
+        }
+        if (!autoScan) return
+        if (_scanningSpecial.value) return
+        if (_specialAutoScanned.value) return
+
+        val age = System.currentTimeMillis() - store.lastScanAt()
+        val stale = cached.isEmpty() || store.lastScanAt() <= 0L || age > SPECIAL_SCAN_TTL_MS
+        if (stale) {
+            _specialAutoScanned.value = true
+            scanLrSpecialRoutes()
         }
     }
 
