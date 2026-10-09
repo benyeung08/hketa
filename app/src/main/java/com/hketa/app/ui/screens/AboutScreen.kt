@@ -2,8 +2,12 @@ package com.hketa.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -30,17 +35,40 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hketa.app.R
 import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.StatusIcon
+import com.hketa.app.ui.VersionPill
+import com.hketa.app.ui.copyToClipboard
+import com.hketa.app.ui.versionInfo
 import com.hketa.app.vm.AppViewModel
 
+/**
+ * code-to-app 嘅 `VersionPill`（`AboutScreen.kt` 第 386–457 行）原樣移植。
+ *
+ *   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+ *   └── 版本名 · versionCode ──┘   │    │    └─ 複製版本號
+ *                                  │    └─ 版本歷史
+ *                                  └─ 檢查更新（撳成個膠囊都得）
+ *
+ * 原版結構（對照）：
+ *   Row(clip(RoundedCornerShape(999.dp))            ← 膠囊
+ *       .background(surfaceContainerHigh.copy(0.8f)) ← 半透明深灰
+ *       .clickable { 檢查更新 }
+ *       .padding(horizontal=14.dp, vertical=6.dp))
+ *     Text("v$versionName"); Text("·"); Text(versionCode)
+ *     Icon(Sync); Icon(History); Icon(ContentCopy)
+ */
 /**
  * 關於頁面 —— 版面跟 code-to-app 嘅 AboutScreen 一致：
  * 左上角「About」大標題，下面係 app 名，右上角一個齒輪跳去設定。
@@ -50,12 +78,14 @@ import com.hketa.app.vm.AppViewModel
 fun AboutScreen(
     vm: AppViewModel,
     onOpenSettings: () -> Unit,
-    onCheckUpdate: () -> Unit
+    onCheckUpdate: () -> Unit,
+    onOpenHistory: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val updateState by vm.updateState.collectAsState()
     val updateInfo by vm.updateInfo.collectAsState()
     val currentVersion by vm.currentVersion.collectAsState()
+    val busyState by vm.busy.collectAsState()
 
     Scaffold(
         topBar = {
@@ -103,37 +133,62 @@ fun AboutScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ---- 版本更新 ----
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                modifier = Modifier.fillMaxWidth()
+            // ---- 版本更新（改成 code-to-app 嘅 VersionPill 膠囊）----
+            //   v1.0.3 · 4  ● 0        ⟳   ◷   ▤
+            //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
+            val (pkgName, pkgCode) = versionInfo()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(
-                        stringResource(R.string.update_section),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-
-                    val statusText = when (updateState) {
-                        UpdateState.CHECKING -> stringResource(R.string.update_checking)
-                        UpdateState.UP_TO_DATE -> stringResource(R.string.update_latest)
-                        UpdateState.AVAILABLE ->
-                            stringResource(R.string.update_available, updateInfo?.tag_name.orEmpty())
-                        UpdateState.NO_RELEASE -> stringResource(R.string.update_no_release)
-                        UpdateState.ERROR -> stringResource(R.string.update_failed, "")
-                        UpdateState.IDLE -> stringResource(R.string.update_current, currentVersion)
+                VersionPill(
+                    versionName = currentVersion.ifBlank { pkgName },
+                    versionCode = pkgCode,
+                    badge = if (updateState == UpdateState.AVAILABLE) 1 else 0,
+                    hasUpdate = updateState == UpdateState.AVAILABLE,
+                    busy = busyState,
+                    onPillClick = onCheckUpdate,
+                    onCheckUpdate = onCheckUpdate,
+                    onOpenHistory = onOpenHistory,
+                    onCopy = {
+                        copyToClipboard(
+                            context,
+                            "HKETA version",
+                            "HKETA v${currentVersion.ifBlank { pkgName }} ($pkgCode)"
+                        )
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.status_version_copied),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                    Muted(statusText)
-
-                    Spacer(Modifier.height(10.dp))
-                    Button(onClick = onCheckUpdate, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.update_check))
-                    }
-                }
+                )
             }
+
+            Spacer(Modifier.height(10.dp))
+
+            // 狀態文字（放膠囊下面，居中）
+            val statusText = when (updateState) {
+                UpdateState.CHECKING -> stringResource(R.string.update_checking)
+                UpdateState.UP_TO_DATE -> stringResource(R.string.update_latest)
+                UpdateState.AVAILABLE ->
+                    stringResource(R.string.update_available, updateInfo?.tag_name.orEmpty())
+                UpdateState.NO_RELEASE -> stringResource(R.string.update_no_release)
+                UpdateState.ERROR -> stringResource(R.string.update_failed, "")
+                UpdateState.IDLE -> stringResource(R.string.update_current, currentVersion)
+            }
+            val statusColor = if (updateState == UpdateState.AVAILABLE) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            }
+            Text(
+                text = statusText,
+                color = statusColor,
+                fontSize = 12.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.height(20.dp))
             HorizontalDivider()

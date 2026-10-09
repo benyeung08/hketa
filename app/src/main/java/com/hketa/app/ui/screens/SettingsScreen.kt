@@ -2,6 +2,7 @@ package com.hketa.app.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,11 +32,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import com.hketa.app.R
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.VersionPill
+import com.hketa.app.ui.copyToClipboard
+import com.hketa.app.ui.versionInfo
 import com.hketa.app.ui.labelText
 import com.hketa.app.util.AppLocale
 import com.hketa.app.vm.AppViewModel
@@ -43,7 +50,8 @@ import com.hketa.app.vm.AppViewModel
 @Composable
 fun SettingsScreen(
     vm: AppViewModel,
-    onOpenAbout: () -> Unit = {}
+    onOpenAbout: () -> Unit = {},
+    onOpenHistory: () -> Unit = {}
 ) {
     val status by vm.indexStatus.collectAsState()
     val busy by vm.busy.collectAsState()
@@ -208,36 +216,83 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // ---- 版本更新 ----
+        // ---- 版本更新（改為 code-to-app 嘅 VersionPill 膠囊）----
+        //   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+        //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
         Text(
             stringResource(R.string.update_section),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
-        Spacer(Modifier.height(4.dp))
-        Muted(stringResource(R.string.update_current, currentVersion))
+        Spacer(Modifier.height(10.dp))
 
-        Spacer(Modifier.height(8.dp))
+        val (pkgVersionName, pkgVersionCode) = versionInfo()
+        val shownVersion = currentVersion.ifBlank { pkgVersionName }
+        val hasUpdate = updateState == UpdateState.AVAILABLE
 
-        Button(
-            onClick = { vm.checkUpdate(force = true) },
-            enabled = updateState != UpdateState.CHECKING,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            VersionPill(
+                versionName = shownVersion,
+                versionCode = pkgVersionCode,
+                badge = if (hasUpdate) 1 else 0,
+                hasUpdate = hasUpdate,
+                busy = updateState == UpdateState.CHECKING,
+                onPillClick = { vm.checkUpdate(force = true) },
+                onCheckUpdate = { vm.checkUpdate(force = true) },
+                onOpenHistory = onOpenHistory,
+                onCopy = {
+                    copyToClipboard(
+                        context,
+                        "HKETA version",
+                        "HKETA v$shownVersion ($pkgVersionCode)"
+                    )
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.status_version_copied),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // 狀態文字（放膠囊下面，居中）
+        val statusText = when (updateState) {
+            UpdateState.CHECKING -> stringResource(R.string.update_checking)
+            UpdateState.UP_TO_DATE -> stringResource(R.string.update_latest)
+            UpdateState.NO_RELEASE -> stringResource(R.string.update_no_release)
+            UpdateState.ERROR -> stringResource(R.string.update_failed, updateError)
+            UpdateState.IDLE -> stringResource(R.string.update_current, currentVersion)
+            UpdateState.AVAILABLE -> stringResource(
+                R.string.update_available,
+                updateInfo?.tag_name.orEmpty()
+            )
+        }
+        Text(
+            text = statusText,
+            color = if (hasUpdate) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            },
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
-        ) { Text(stringResource(R.string.update_check)) }
+        )
 
         Spacer(Modifier.height(8.dp))
 
+        // 有新版先至顯示下載掣（狀態文字已經喺膠囊下面講咗）
         when (updateState) {
             UpdateState.IDLE -> Unit
-
-            UpdateState.CHECKING -> Muted(stringResource(R.string.update_checking))
-
-            UpdateState.UP_TO_DATE -> Muted(stringResource(R.string.update_latest))
-
-            UpdateState.NO_RELEASE -> Muted(stringResource(R.string.update_no_release))
-
-            UpdateState.ERROR -> Muted(stringResource(R.string.update_failed, updateError))
-
+            UpdateState.CHECKING -> Unit
+            UpdateState.UP_TO_DATE -> Unit
+            UpdateState.NO_RELEASE -> Unit
+            UpdateState.ERROR -> Unit
             UpdateState.AVAILABLE -> {
                 val rel = updateInfo
                 if (rel != null) {
