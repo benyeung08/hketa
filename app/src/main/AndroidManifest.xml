@@ -7,19 +7,20 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
+        android:name=".HketaApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
-        android:theme="@style/Theme.HKETA">
+        android:theme="@style/Theme.HKATE">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.HKETA"
+            android:theme="@style/Theme.HKATE"
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="portrait">
             <!-- Android 17（targetSdk 37）行為變更：
