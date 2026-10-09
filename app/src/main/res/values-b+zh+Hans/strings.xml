@@ -268,4 +268,14 @@
     <string name="tt_reload">重新抓取</string>
     <string name="tt_title">班次时间表</string>
     <string name="tt_trip">第 %1$d 班</string>
+    <string name="search_hint_route_no">输入路线号码</string>
+    <string name="search_route_prefix">%1$s - %2$s</string>
+    <string name="src_ctb_full">城巴 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_gmb_full">专线小巴 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_kmb_full">九龙巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_lrt_full">轻铁 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_bus_full">港铁巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_hr_full">港铁 (资料由DATA.GOV.HK提供)</string>
+    <string name="src_nlb_full">大屿山巴士 (资料由DATA.GOV.HK提供)</string>
+    <string name="route_bound_to_plain">往</string>
 </resources>
