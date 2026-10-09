@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -188,6 +189,15 @@ private fun StopsTab(
 
 // ==================== 班次時間表 ====================
 
+/**
+ * 班次時間表：打直顯示，**淨係顯示最快開出嗰班（第 1 班）**。
+ *
+ * 之前係打橫（每格一個站、可橫向捲），站多嗰陣要捾好耐；
+ * 而家改為一張卡一個站，由上到下就係行車次序，同「車站」分頁一致。
+ *
+ * 構建方式冇變：官方 ETA 本身已按到站先後排好，第 N 項就係第 N 班車，
+ * 所以「第 1 班」= 每個站 ETA 清單嘅第 1 項 —— 係真實資料，唔係估算。
+ */
 @Composable
 private fun TimetableTab(
     vm: AppViewModel,
@@ -195,7 +205,6 @@ private fun TimetableTab(
     busy: Boolean
 ) {
     val route by vm.selectedRoute.collectAsState()
-    val scroll = rememberScrollState()
 
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -224,6 +233,17 @@ private fun TimetableTab(
                 Muted(stringResource(R.string.tt_empty))
             }
             else -> {
+                // ★ 淨係顯示最快開出嗰班
+                val trip = timetable.trips.first()
+
+                // 標題：第1班（最快開出）
+                Text(
+                    stringResource(R.string.tt_next_trip),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+
                 timetable.headwayMin?.let {
                     Text(
                         stringResource(R.string.tt_headway, it),
@@ -236,13 +256,7 @@ private fun TimetableTab(
                 val f = timetable.firstObserved
                 val l = timetable.lastObserved
                 if (f != null && l != null) {
-                    Muted(
-                        stringResource(
-                            R.string.tt_observed,
-                            f, l,
-                            (timetable.trips.firstOrNull()?.cells?.size ?: 0)
-                        )
-                    )
+                    Muted(stringResource(R.string.tt_observed, f, l, timetable.trips.size))
                 } else {
                     Muted(stringResource(R.string.tt_observed_none))
                 }
@@ -251,45 +265,66 @@ private fun TimetableTab(
                 HorizontalDivider()
                 Spacer(Modifier.height(8.dp))
 
-                // 表：每列一班車，每格一個站嘅預計時間
-                // 站多過螢幕闊就橫向捲
-                Column(Modifier.horizontalScroll(scroll)) {
-                    timetable.trips.forEach { trip ->
+                // ★ 打直：一張卡一個站，由上到下就係行車次序
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(
+                        items = trip.cells,
+                        key = { i, _ -> i }
+                    ) { i, cell ->
+                        val name = timetable.stopNames.getOrNull(i) ?: "#${i + 1}"
+                        val mins = cell.minutes
                         Card(
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .padding(vertical = 3.dp)
                         ) {
-                            Column(Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 左：站序
                                 Text(
-                                    stringResource(R.string.tt_trip, trip.seq),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold
+                                    text = "${i + 1}",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(22.dp)
                                 )
-                                Spacer(Modifier.height(6.dp))
-                                Row {
-                                    trip.cells.forEachIndexed { i, cell ->
-                                        if (i > 0) Spacer(Modifier.width(10.dp))
-                                        Column {
-                                            Muted(
-                                                timetable.stopNames.getOrNull(i) ?: "#${i + 1}",
-                                                fontSize = 10
-                                            )
-                                            Text(
-                                                text = when {
-                                                    cell.clock.isNotBlank() -> cell.clock
-                                                    cell.minutes != null ->
-                                                        if (cell.minutes <= 0) "現" else "${cell.minutes}′"
-                                                    else -> "—"
-                                                },
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if ((cell.minutes ?: 99) <= 5)
-                                                    MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
+                                Spacer(Modifier.width(6.dp))
+                                // 中：站名 + 預計到站時刻
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (cell.clock.isNotBlank()) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Muted(
+                                            stringResource(
+                                                R.string.tt_arrive_at,
+                                                cell.clock
+                                            ),
+                                            fontSize = 12
+                                        )
                                     }
                                 }
+                                Spacer(Modifier.width(8.dp))
+                                // 右：仲有幾多分鐘
+                                val near = (mins ?: 99) <= 5
+                                Text(
+                                    text = when {
+                                        mins == null -> "\u2014"
+                                        mins <= 0 -> stringResource(R.string.tt_now)
+                                        else -> stringResource(R.string.tt_in_min, mins)
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    color = if (near) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         }
                     }
