@@ -40,6 +40,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -1412,6 +1415,79 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }.getOrDefault(emptyList())
         return list to alert
+    }
+
+    // ============ APK 下載 + 安裝（移植自 code-to-app ApkUpdateInstaller）============
+
+    private val _downloadState =
+        MutableStateFlow<com.hketa.app.data.ApkInstaller.State>(
+            com.hketa.app.data.ApkInstaller.State.Idle
+        )
+    val downloadState: StateFlow<com.hketa.app.data.ApkInstaller.State> =
+        _downloadState.asStateFlow()
+
+    /**
+     * App 內下載 APK 並自動開安裝器。
+     *
+     * @param sha256 由 CI 生成嘅 `<asset>.sha256`；有就校驗，冇就淨係下載
+     */
+    fun downloadAndInstall(release: com.hketa.app.data.GitHubRelease) {
+        val asset = com.hketa.app.data.UpdateChecker.apkAsset(release) ?: run {
+            _message.value = str(R.string.update_no_asset)
+            return
+        }
+        viewModelScope.launch {
+            // Android 8+ 要用戶先授權「允許安裝未知來源」
+            if (!com.hketa.app.data.ApkInstaller.canInstall(getApplication())) {
+                com.hketa.app.data.ApkInstaller.openInstallPermission(getApplication())
+                _message.value = str(R.string.update_need_install_permission)
+                return@launch
+            }
+            val sha = suspendCatching { fetchSha256(asset.browser_download_url) }
+                .getOrNull()
+            com.hketa.app.data.ApkInstaller.download(
+                context = getApplication(),
+                url = asset.browser_download_url,
+                fileName = asset.name.ifBlank { "HKATE-update.apk" },
+                expectedSha256 = sha
+            ) { _downloadState.value = it }
+        }
+    }
+
+    /** 校驗檔：同 APK 同名加 `.sha256`（CI 生成）。搵唔到就唔校驗，唔會失敗。 */
+    private suspend fun fetchSha256(apkUrl: String): String? =
+        withContext(Dispatchers.IO) {
+            val txt = runCatching {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .build()
+                client.newCall(
+                    okhttp3.Request.Builder().url("$apkUrl.sha256").build()
+                ).execute().use { r ->
+                    if (!r.isSuccessful) return@runCatching null
+                    r.body?.string()
+                }
+            }.getOrNull() ?: return@withContext null
+            // 常見格式：「<hash>  <檔名>」或者淨係 hash
+            txt.trim().lineSequence().firstOrNull()
+                ?.trim()
+                ?.split(Regex("\\s+"))
+                ?.firstOrNull()
+                ?.takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
+        }
+
+    fun cancelDownload() {
+        com.hketa.app.data.ApkInstaller.cancel()
+        _downloadState.value = com.hketa.app.data.ApkInstaller.State.Idle
+    }
+
+    fun resetDownload() {
+        _downloadState.value = com.hketa.app.data.ApkInstaller.State.Idle
+    }
+
+    fun installDownloaded(file: java.io.File) {
+        com.hketa.app.data.ApkInstaller.install(getApplication(), file)
     }
 
     // ============ 班次時間表 + 公告 ============
