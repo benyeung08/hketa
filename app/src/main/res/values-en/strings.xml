@@ -287,4 +287,22 @@
     <string name="about_crash_log_none">No crashes recorded \u2014 all good</string>
     <string name="about_crash_log_copied">Crash log copied \u2014 paste it to the developer</string>
     <string name="about_crash_log_hint">If the app has crashed, tap to copy the stack trace. It is also written to Files \u25b8 Android/data/com.hketa.app/files/crash_log.txt</string>
+    <string name="rs_tab_stops">Stops</string>
+    <string name="rs_tab_timetable">Trips</string>
+    <string name="rs_tab_notices">Notices</string>
+    <string name="tt_title">Trip timetable</string>
+    <string name="tt_trip">Trip %1$d</string>
+    <string name="tt_headway">Frequency: about every %1$d min</string>
+    <string name="tt_observed">Observed service window: %1$s \u2013 %2$s (%3$d samples)</string>
+    <string name="tt_observed_none">No trips seen yet \u2014 the window fills in as you use the app</string>
+    <string name="tt_note">Built from the live official arrivals (trip N = the Nth prediction at each stop). There is no public timetable API, so the service window is accumulated from observations \u2014 not an official first/last bus time.</string>
+    <string name="tt_loading">Loading trips\u2026</string>
+    <string name="tt_empty">No trips right now (possibly after the last bus)</string>
+    <string name="tt_reload">Reload</string>
+    <string name="notice_official_title">Service notice</string>
+    <string name="notice_source_official">Official</string>
+    <string name="notice_source_app">HKATE</string>
+    <string name="notice_just_now">Just now</string>
+    <string name="notice_empty">No notices</string>
+    <string name="notice_view">Details</string>
 </resources>
