@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -131,10 +132,21 @@ fun AboutScreen(
             Spacer(Modifier.height(6.dp))
             Muted("v$currentVersion")
 
+            // ---- 軟體簡介（放喺 app 名下面、版本膠囊上面）----
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.about_intro),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+
             Spacer(Modifier.height(24.dp))
 
             // ---- 版本更新（改成 code-to-app 嘅 VersionPill 膠囊）----
-            //   v1.0.4 · 5  ● 0        ⟳   ◷   ▤
+            //   v1.0.4 · 5        ⟳   ◷   ▤
             //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
             val (pkgName, pkgCode) = versionInfo()
             Row(
@@ -152,8 +164,8 @@ fun AboutScreen(
                     onCopy = {
                         copyToClipboard(
                             context,
-                            "HKETA version",
-                            "HKETA v${currentVersion.ifBlank { pkgName }} ($pkgCode)"
+                            "HKATE version",
+                            "HKATE v${currentVersion.ifBlank { pkgName }} ($pkgCode)"
                         )
                         Toast.makeText(
                             context,
@@ -214,6 +226,50 @@ fun AboutScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = { openUrl(context, "https://github.com/benyeung08/hketa") }) {
                     Text(stringResource(R.string.about_view_source))
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            // ---- 崩潰記錄 ----
+            InfoSection(
+                title = stringResource(R.string.about_crash_log),
+                body = stringResource(R.string.about_crash_log_hint)
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = {
+                    val log = com.hketa.app.util.CrashLog.read(context)
+                    if (log.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.about_crash_log_none),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        copyToClipboard(context, "HKATE crash log", log)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.about_crash_log_copied),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }) {
+                    Text(stringResource(R.string.about_crash_log))
+                }
+                OutlinedButton(onClick = {
+                    com.hketa.app.util.CrashLog.clear(context)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.about_crash_log_none),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }) {
+                    Text(stringResource(R.string.eta_repair_clear))
                 }
             }
 
