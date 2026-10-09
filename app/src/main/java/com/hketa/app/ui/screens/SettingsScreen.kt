@@ -43,7 +43,6 @@ import com.hketa.app.ui.Muted
 import com.hketa.app.ui.labelText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -383,25 +382,10 @@ private fun UpdatePill(
         Spacer(Modifier.width(6.dp))
         Text(
             text = versionCode.toString(),
-            color = Color(0xFFB0B0B0),
+            color = if (hasUpdate) Color(0xFFFF5252) else Color(0xFFB0B0B0),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )
-        Spacer(Modifier.width(6.dp))
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(if (hasUpdate) Color(0xFFFF5252) else Color(0xFF8A8A8A))
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = if (hasUpdate) "1" else "0",
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-
         Spacer(Modifier.width(10.dp))
 
         // ① 檢查更新

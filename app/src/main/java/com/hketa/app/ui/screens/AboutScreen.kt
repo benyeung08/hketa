@@ -56,7 +56,7 @@ import com.hketa.app.vm.AppViewModel
 /**
  * code-to-app 嘅 `VersionPill`（`AboutScreen.kt` 第 386–457 行）原樣移植。
  *
- *   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+ *   v1.0.4 · 5   ● 0        ⟳   ◷   ▤
  *   └── 版本名 · versionCode ──┘   │    │    └─ 複製版本號
  *                                  │    └─ 版本歷史
  *                                  └─ 檢查更新（撳成個膠囊都得）
@@ -134,7 +134,7 @@ fun AboutScreen(
             Spacer(Modifier.height(24.dp))
 
             // ---- 版本更新（改成 code-to-app 嘅 VersionPill 膠囊）----
-            //   v1.0.3 · 4  ● 0        ⟳   ◷   ▤
+            //   v1.0.4 · 5  ● 0        ⟳   ◷   ▤
             //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
             val (pkgName, pkgCode) = versionInfo()
             Row(
@@ -144,7 +144,6 @@ fun AboutScreen(
                 VersionPill(
                     versionName = currentVersion.ifBlank { pkgName },
                     versionCode = pkgCode,
-                    badge = if (updateState == UpdateState.AVAILABLE) 1 else 0,
                     hasUpdate = updateState == UpdateState.AVAILABLE,
                     busy = busyState,
                     onPillClick = onCheckUpdate,
