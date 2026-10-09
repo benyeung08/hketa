@@ -315,4 +315,8 @@
     <string name="src_mtr_hr_full">MTR (data from DATA.GOV.HK)</string>
     <string name="src_lrt_full">Light Rail (data from DATA.GOV.HK)</string>
     <string name="route_bound_to_plain">to</string>
+    <string name="tt_next_trip">Trip 1 \u00b7 next departure</string>
+    <string name="tt_arrive_at">Arrives around %1$s</string>
+    <string name="tt_now">Now</string>
+    <string name="tt_in_min">%1$d min</string>
 </resources>
