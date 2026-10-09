@@ -1,4 +1,4 @@
-name: Build HKETA Release APK
+name: Build HKATE Release APK
 
 # 只出正式版（release）APK —— 一份，簽名固定。
 on:
@@ -126,6 +126,71 @@ jobs:
           for d in values values-zh-rCN values-en; do
             n=$(grep -c '<string name=' "app/src/main/res/$d/strings.xml" || echo 0)
             echo "  $d: $n"
+          done
+
+          # ---- 通用引用完整性：捉「新檔案未上傳」呢類錯 ----
+          # 之前成日出現「某個 .kt 冇傳上去 → unresolved reference」，
+          # 但報錯淨係講符號名，唔講缺邊個檔。呢度直接掃全部
+          # com.hketa.app.* 嘅引用，冇定義就報。
+          echo "--- 引用完整性：import 嘅 com.hketa.app 符號有冇定義 ---"
+          SRC=app/src/main/java/com/hketa/app
+          defs=$(grep -rhoE '^\s*(@[A-Za-z0-9_.]+\s*)*\s*(public |internal |private |data |sealed |enum |abstract |final |value |const )*(class|object|interface|fun|val) [A-Za-z_][A-Za-z0-9_]*' \
+                  "$SRC" --include="*.kt" 2>/dev/null \
+                | sed -E 's/.*(class|object|interface|fun|val) //' | sort -u)
+          syms=$(grep -rhoE '(import )?com\.hketa\.app\.[A-Za-z0-9_.]+' \
+                  "$SRC" --include="*.kt" 2>/dev/null \
+                | sed -E 's/^import //; s/.*\.//' | sort -u)
+          checked=0
+          for sname in $syms; do
+            # 淨係理「首字母大寫但唔係全大寫」＝ class / object / Composable fun
+            printf '%s' "$sname" | grep -qE '^[A-Z][A-Za-z0-9_]*[a-z][A-Za-z0-9_]*$' || continue
+            checked=$((checked+1))
+            if printf '%s\n' "$defs" | grep -qx "$sname"; then
+              echo "  ok  $sname"
+            else
+              echo "::error::引用咗冇定義嘅符號 $sname —— 對應 .kt 檔案可能未上傳"
+              fail=1
+            fi
+          done
+          echo "  （檢查咗 $checked 個符號）"
+
+          # ---- AndroidManifest 引用嘅 class 係咪存在 ----
+          echo "--- AndroidManifest 引用嘅 class 係咪存在 ---"
+          PKG=com/hketa/app
+          for n in $(grep -oE 'android:name="[^"]+"' app/src/main/AndroidManifest.xml \
+                     | sed -E 's/android:name="//; s/"$//'); do
+            case "$n" in
+              .*)                 rel="$PKG/${n#.}" ;;
+              com.hketa.app.*)    rel="$PKG/$(printf '%s' "${n#com.hketa.app.}" | tr '.' '/')" ;;
+              android.*|androidx.*) continue ;;
+              *) continue ;;
+            esac
+            mf="app/src/main/java/$rel.kt"
+            if [ -f "$mf" ]; then
+              echo "  ok  $n"
+            else
+              echo "::error::AndroidManifest 引用咗 $n，但搵唔到 $mf（檔案可能未上傳）"
+              fail=1
+            fi
+          done
+
+          # ---- 四份 strings key 係咪一致 ----
+          echo "--- 四份 strings key 係咪一致 ---"
+          bkeys=$(grep -oE '<string name="[^"]+"' app/src/main/res/values/strings.xml \
+                  | sed -E 's/<string name="//; s/"$//' | sort -u)
+          echo "  values: $(printf '%s\n' "$bkeys" | wc -l)"
+          for d in values-zh-rCN values-en values-b+zh+Hans; do
+            kf="app/src/main/res/$d/strings.xml"
+            if [ ! -f "$kf" ]; then
+              echo "::error::缺少 $kf"; fail=1; continue
+            fi
+            kk=$(grep -oE '<string name="[^"]+"' "$kf" | sed -E 's/<string name="//; s/"$//' | sort -u)
+            echo "  $d: $(printf '%s\n' "$kk" | wc -l)"
+            miss=$(comm -23 <(printf '%s\n' "$bkeys") <(printf '%s\n' "$kk"))
+            if [ -n "$miss" ]; then
+              echo "::error::$d 缺咗 $(printf '%s\n' "$miss" | wc -l) 個 key：$(printf '%s' "$miss" | head -5 | tr '\n' ' ')"
+              fail=1
+            fi
           done
 
           if [ "$fail" -ne 0 ]; then
@@ -312,7 +377,7 @@ jobs:
         run: |
           mkdir -p apk-out
           for f in $(find app/build/outputs/apk -name "*.apk" -type f); do
-            cp "$f" "apk-out/HKETA-release.apk"
+            cp "$f" "apk-out/HKATE-release.apk"
           done
           ls -lh apk-out
           test -n "$(ls -A apk-out)" || { echo "::error::no APK produced"; exit 1; }
@@ -320,7 +385,7 @@ jobs:
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: hketa-release-apk
+          name: hkate-release-apk
           path: apk-out/*.apk
 
       - name: Attach APK to release (tag only)
@@ -402,7 +467,7 @@ jobs:
       - name: Download built APK
         uses: actions/download-artifact@v4
         with:
-          name: hketa-release-apk
+          name: hkate-release-apk
           path: apk-in
 
       - name: Check publish settings
@@ -479,14 +544,14 @@ jobs:
           SRC="$(ls ../apk-in/*.apk | head -1)"
           echo "來源：$SRC"
           VER="${{ needs.build.outputs.version_name || '1.0.0' }}"
-          cp "$SRC" "${{ steps.cfg.outputs.dir }}/hketa-v${VER}-run${{ github.run_number }}.apk"
+          cp "$SRC" "${{ steps.cfg.outputs.dir }}/hkate-v${VER}-run${{ github.run_number }}.apk"
           cp "$SRC" "${{ steps.cfg.outputs.dir }}/latest.apk"
           # 只保留 latest.apk + 最近 5 個版本檔（關咗 keep_history 就只留 latest）
           if [ "${{ github.event.inputs.keep_history || 'true' }}" != "true" ]; then
             # 只保留 latest.apk + 最近 5 個版本檔（sort -V 先啱：run9 < run10）
             ls -1 ${{ steps.cfg.outputs.dir }}/*.apk 2>/dev/null \
               | grep -v '/latest.apk$' \
-              | grep -v '/hketa-v'"$VER"'-run${{ github.run_number }}.apk$' \
+              | grep -v '/hkate-v'"$VER"'-run${{ github.run_number }}.apk$' \
               | sort -V | head -n -5 | xargs -r rm -f
           fi
           ls -lh "${{ steps.cfg.outputs.dir }}"
@@ -535,7 +600,7 @@ jobs:
           {
             echo "## ⚠️ 發布步驟失敗（唔影響 APK）"
             echo
-            echo "APK 仍然喺 **build** job 嘅 artifact \`hketa-release-apk\` 度。"
+            echo "APK 仍然喺 **build** job 嘅 artifact \`hkate-release-apk\` 度。"
             echo
             echo "常見原因："
             echo "1. 分支有 branch protection —— Settings ▸ Branches 解除，或改推去冇保護嘅分支"
