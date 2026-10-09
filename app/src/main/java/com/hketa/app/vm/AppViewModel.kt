@@ -542,6 +542,180 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ============ 逐個營辦商修復 ============
+
+    /**
+     * 港鐵巴士：官方冇全量路線接口（得 getSchedule 按路線名查），
+     * 所以用內置已知路線清單 + 索引入面已經有嘅路線去逐條補車站。
+     * 查唔到嘅會自動跳過，唔會當錯誤。
+     */
+    private val mtrBusKnown = listOf(
+        "K12", "K14", "K17", "K18",
+        "K51", "K51A", "K52", "K53", "K58",
+        "K65", "K66", "K68", "K73", "K74", "K75", "K76"
+    )
+
+    /**
+     * 修復單一營辦商嘅資料 —— 清走佢嘅舊資料，重新抓一次再合併返入索引。
+     *
+     * 以前「ETA 資料修復」得「全部重建」同「修復城巴／修復小巴」兩個掣，
+     * 九巴／嶼巴／港鐵巴士／港鐵／輕鐵出問題就冇得單獨搞，
+     * 要成個索引重建（幾分鐘、又要重新下載全部資料）。
+     */
+    fun repairOperator(op: Operator) {
+        viewModelScope.launch { repairOperatorInternal(op) }
+    }
+
+    private suspend fun repairOperatorInternal(op: Operator) {
+        if (_busy.value) return
+        _busy.value = true
+        _message.value = null
+        _indexStatus.value = str(R.string.eta_repair_op_progress, op.label)
+
+        runCatching {
+            when (op) {
+                Operator.KMB -> {
+                    // 九巴：三個接口（路線 / 路線-車站 / 車站）一次過攞晒
+                    val routes = repo.kmbRoutes()
+                    _indexStatus.value = str(R.string.eta_repair_op_progress, op.label)
+                    val rs = repo.kmbRouteStops()
+                    val stops = repo.kmbStops()
+                    replaceOperator(op, routes, stops, rs)
+                }
+
+                Operator.CTB -> {
+                    // 城巴：官方冇全量車站接口 → 先補路線，再逐條路線抓車站
+                    val routes = suspendCatching { repo.ctbRoutes() }.getOrDefault(emptyList())
+                    replaceOperator(op, routes, emptyList(), emptyList())
+                    if (routes.isNotEmpty()) deepIndexCtbInternal(incremental = false, silent = true)
+                }
+
+                Operator.NLB -> {
+                    val routes = repo.nlbRoutes()
+                    val stops = mutableListOf<StopDef>()
+                    val rs = mutableListOf<RouteStopDef>()
+                    // 分批並發，每批自己返一組結果（唔並發寫同一個 list）
+                    for (batch in routes.chunked(DEEP_INDEX_CONCURRENCY)) {
+                        coroutineScope {
+                            batch.map { r ->
+                                async {
+                                    val ss = suspendCatching { repo.nlbStops(r.routeId) }
+                                        .getOrDefault(emptyList())
+                                    val rss = ss.mapIndexed { i, st ->
+                                        RouteStopDef(
+                                            op = Operator.NLB, route = r.route,
+                                            routeId = r.routeId, seq = i + 1, stopId = st.id
+                                        )
+                                    }
+                                    ss to rss
+                                }
+                            }.awaitAll().forEach { (ss, rss) ->
+                                stops.addAll(ss); rs.addAll(rss)
+                            }
+                        }
+                    }
+                    replaceOperator(op, routes, stops, rs)
+                }
+
+                Operator.GMB -> {
+                    // 專線小巴：三個 region + 官方全量路徑（冇 region）
+                    val routes = mutableListOf<RouteDef>()
+                    var got = 0
+                    for (region in listOf("HKI", "KLN", "NT")) {
+                        val list = suspendCatching { repo.gmbRoutes(region) }.getOrDefault(emptyList())
+                        routes.addAll(list); got += list.size
+                    }
+                    if (got == 0) {
+                        val all = suspendCatching { repo.gmbRoutes("") }.getOrDefault(emptyList())
+                        routes.addAll(all); got += all.size
+                    }
+                    replaceOperator(op, routes, emptyList(), emptyList())
+                    if (got > 0) deepIndexGmbInternal(incremental = false, silent = true)
+                }
+
+                Operator.MTR_BUS -> {
+                    // 港鐵巴士：已知清單 + 索引入面已有嘅路線
+                    val known = (mtrBusKnown + _index.value.routes
+                        .filter { it.op == Operator.MTR_BUS }.map { it.route })
+                        .distinct()
+                    val routes = mutableListOf<RouteDef>()
+                    val stops = mutableListOf<StopDef>()
+                    val rs = mutableListOf<RouteStopDef>()
+                    for (batch in known.chunked(DEEP_INDEX_CONCURRENCY)) {
+                        coroutineScope {
+                            batch.map { name ->
+                                async {
+                                    val ss = suspendCatching { repo.mtrBusStops(name) }
+                                        .getOrDefault(emptyList())
+                                    val rss = ss.mapIndexed { i, st ->
+                                        RouteStopDef(
+                                            op = Operator.MTR_BUS, route = name,
+                                            seq = i + 1, stopId = st.id
+                                        )
+                                    }
+                                    Triple(name, ss, rss)
+                                }
+                            }.awaitAll().forEach { (name, ss, rss) ->
+                                if (ss.isNotEmpty()) {
+                                    routes.add(RouteDef(op = Operator.MTR_BUS, route = name))
+                                    stops.addAll(ss); rs.addAll(rss)
+                                }
+                            }
+                        }
+                    }
+                    replaceOperator(op, routes, stops, rs)
+                }
+
+                Operator.MTR_HR, Operator.LRT -> {
+                    // 港鐵／輕鐵：離線內置（rail.json），修復 = 由 assets 重新載入
+                    val ctx = getApplication<Application>()
+                    val lines = if (op == Operator.MTR_HR) RailData.heavyRail(ctx) else RailData.lightRail(ctx)
+                    replaceOperator(
+                        op,
+                        lines.map { RouteDef(op, route = it.name, routeId = it.id, orig = it.orig, dest = it.dest) },
+                        lines.flatMap { l -> l.stops.map { s -> StopDef(op = op, id = s.id, name = s.name, lat = s.lat, lon = s.lon) } },
+                        lines.flatMap { l ->
+                            l.stops.mapIndexed { i, st ->
+                                RouteStopDef(op = op, route = l.name, routeId = l.id, seq = i + 1, stopId = st.id)
+                            }
+                        }
+                    )
+                }
+            }
+        }.onFailure {
+            _message.value = str(R.string.eta_repair_op_failed, op.label, it.message.orEmpty())
+        }
+
+        val now = _index.value
+        val rc = now.routes.count { it.op == op }
+        val sc = now.stops.count { it.op == op }
+        _indexStatus.value = str(R.string.eta_repair_op_done, op.label, rc, sc)
+        if (_message.value == null) {
+            _message.value = str(R.string.eta_repair_op_done, op.label, rc, sc)
+        }
+        _busy.value = false
+    }
+
+    /** 用新資料成個替換某個營辦商嘅 routes / stops / routeStops */
+    private fun replaceOperator(
+        op: Operator,
+        newRoutes: List<RouteDef>,
+        newStops: List<StopDef>,
+        newRs: List<RouteStopDef>
+    ) {
+        val cur = _index.value
+        val merged = cur.copy(
+            routes = (cur.routes.filter { it.op != op } + newRoutes).distinctBy { it.key },
+            stops = (cur.stops.filter { it.op != op } + newStops)
+                .distinctBy { "${it.op.name}|${it.id}" },
+            routeStops = (cur.routeStops.filter { it.op != op } + newRs)
+                .distinctBy { "${it.op.name}|${it.route}|${it.bound}|${it.routeId}|${it.stopId}" },
+            builtAt = System.currentTimeMillis()
+        )
+        _index.value = merged
+        store.save(merged)
+    }
+
     private suspend fun buildIndex() {
         _indexErrors.value = emptyList()
         _busy.value = true
