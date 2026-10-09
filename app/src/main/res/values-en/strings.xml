@@ -283,4 +283,8 @@
     <string name="eta_repair_op_done">%1$s repaired: %2$d routes / %3$d stops</string>
     <string name="eta_repair_op_failed">%1$s repair failed: %2$s</string>
     <string name="eta_repair_per_op_hint">If one operator looks incomplete or wrong, repair just that one instead of rebuilding the whole index.</string>
+    <string name="about_crash_log">Copy crash log</string>
+    <string name="about_crash_log_none">No crashes recorded \u2014 all good</string>
+    <string name="about_crash_log_copied">Crash log copied \u2014 paste it to the developer</string>
+    <string name="about_crash_log_hint">If the app has crashed, tap to copy the stack trace. It is also written to Files \u25b8 Android/data/com.hketa.app/files/crash_log.txt</string>
 </resources>
