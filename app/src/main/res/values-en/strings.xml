@@ -319,4 +319,10 @@
     <string name="tt_arrive_at">Arrives around %1$s</string>
     <string name="tt_now">Now</string>
     <string name="tt_in_min">%1$d min</string>
+    <string name="update_verifying">Verifying APK\u2026</string>
+    <string name="update_download_failed">Download failed: %1$s</string>
+    <string name="update_install">Install</string>
+    <string name="update_no_asset">This release has no APK attached</string>
+    <string name="update_need_install_permission">Allow \u201cinstall unknown apps\u201d first</string>
+    <string name="update_progress">Downloading %1$d%% (%2$.1f / %3$.1f MB)</string>
 </resources>
