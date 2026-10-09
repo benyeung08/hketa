@@ -38,10 +38,10 @@ object AppLocale {
     fun current(): String {
         val tags = AppCompatDelegate.getApplicationLocales()
         val actual = if (tags.isEmpty) {
-            LocaleListCompat.getDefault()[0] ?: Locale.getDefault()
+            LocaleListCompat.getDefault()[0]
         } else {
-            tags[0]!!
-        }
+            tags[0]
+        } ?: Locale.getDefault()
         return normalize(actual.toLanguageTag())
     }
 
