@@ -1609,13 +1609,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *       係真實官方公告；其他營辦商嘅 ETA 接口冇呢個欄位。
      * App：由 GitHub releases 拉（同「版本更新」同一個來源）。
      */
+    /**
+     * 載入**路線公告**（唔係 App 更新公告）。
+     *
+     * 老實講清楚：香港各巴士營辦商嘅 ETA 接口**冇公告欄位**，
+     * 得港鐵系（`getSchedule`）會一併返 service alert。所以：
+     *
+     *   ① 港鐵系 → 真·官方服務公告（改道／延誤／暫停）
+     *   ② 全部營辦商 → 由官方 ETA 即時數據**推導**嘅路線狀況
+     *      （全線冇班次／部分站冇班次／班次間隔異常／班次極疏）
+     *
+     * ② 嗰啲會標明「由官方數據推導」，絕對唔會冒充官方公告。
+     */
     fun loadRouteNotices(rd: RouteDef) {
         viewModelScope.launch {
             _routeNoticesBusy.value = true
             val out = mutableListOf<com.hketa.app.data.Notice>()
 
-            // ① 官方服務公告（港鐵系先有）
             val stops = _routeStops.value
+
+            // ① 官方服務公告（淨係港鐵系有）
             if (rd.op == Operator.MTR_HR || rd.op == Operator.LRT) {
                 val probe = stops.firstOrNull()?.stop
                 if (probe != null) {
@@ -1633,31 +1646,124 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // ② App 公告（GitHub releases）
-            val releases = suspendCatching {
-                com.hketa.app.data.UpdateChecker.fetchHistory()
-            }.getOrDefault(emptyList())
-            releases.take(5).forEach { r ->
-                val body = com.hketa.app.data.UpdateChecker
-                    .localizeBody(r.body.orEmpty(), com.hketa.app.util.AppLocale.current())
-                    .lineSequence()
-                    .filter { it.isNotBlank() }
-                    .take(6)
-                    .joinToString("\n")
-                out.add(
-                    com.hketa.app.data.Notice(
-                        title = r.name?.takeIf { it.isNotBlank() } ?: (r.tag_name ?: ""),
-                        body = body,
-                        time = r.published_at?.take(10) ?: "",
-                        source = str(R.string.notice_source_app),
-                        url = r.html_url ?: ""
-                    )
-                )
-            }
+            // ② 由官方 ETA 數據推導嘅路線狀況
+            out.addAll(buildRouteConditionNotices(rd, stops))
 
             _routeNotices.value = out
             _routeNoticesBusy.value = false
         }
+    }
+
+    /**
+     * 由官方 ETA 即時數據**推導**路線狀況。
+     *
+     * 呢啲唔係官方公告，係我哋撳官方數據計出嚟嘅觀察值 ——
+     * 所以每條都會標「由官方數據推導」，唔會冒充官方。
+     *
+     * 會搵出四種狀況：
+     *   A. 全線冇班次      → 可能暫停服務／已過尾班車
+     *   B. 部分站冇班次    → 列出邊幾個站冇資料
+     *   C. 班次間隔異常大  → 可能延誤／改道
+     *   D. 班次極疏        → 間隔大過 30 分鐘
+     */
+    private suspend fun buildRouteConditionNotices(
+        rd: RouteDef,
+        stops: List<com.hketa.app.data.StopWithSeq>
+    ): List<com.hketa.app.data.Notice> {
+        val out = mutableListOf<com.hketa.app.data.Notice>()
+        if (stops.isEmpty()) return out
+
+        // 取樣：頭、尾、中間，最多 8 個站（唔好打爆官方接口）
+        val sample = if (stops.size <= 8) stops else listOf(
+            stops.first(),
+            stops[stops.size / 4],
+            stops[stops.size / 2],
+            stops[stops.size * 3 / 4],
+            stops.last(),
+            stops[1],
+            stops[stops.size - 2],
+            stops[stops.size / 3]
+        ).distinctBy { it.stop.id }
+
+        // 並發抓各站 ETA（8 個站一齊發，唔係逐個等）
+        val fetched = coroutineScope {
+            sample.map { ws ->
+                async {
+                    val list = runCatching { etasFor(ws.stop, rd).first }
+                        .getOrDefault(emptyList())
+                    @Suppress("RemoveExplicitTypeArguments")
+                    Pair<com.hketa.app.data.StopDef, List<com.hketa.app.data.EtaEntry>>(
+                        ws.stop, list
+                    )
+                }
+            }.awaitAll()
+        }
+
+        val noData = fetched.filter { it.second.isEmpty() }
+        val all = fetched.flatMap { it.second }
+
+        // A. 全線冇班次
+        if (noData.size == fetched.size && fetched.isNotEmpty()) {
+            out.add(
+                com.hketa.app.data.Notice(
+                    title = str(R.string.notice_line_no_service_title),
+                    body = str(R.string.notice_line_no_service_body),
+                    time = str(R.string.notice_just_now),
+                    source = str(R.string.notice_source_derived)
+                )
+            )
+            return out
+        }
+
+        // B. 部分站冇班次
+        if (noData.isNotEmpty()) {
+            val names = noData.take(3).joinToString("、") {
+                it.first.name.ifBlank { it.first.id }
+            }
+            val more = if (noData.size > 3) str(R.string.notice_and_more, noData.size - 3) else ""
+            out.add(
+                com.hketa.app.data.Notice(
+                    title = str(R.string.notice_partial_no_data_title),
+                    body = str(R.string.notice_partial_no_data_body, names, more),
+                    time = str(R.string.notice_just_now),
+                    source = str(R.string.notice_source_derived)
+                )
+            )
+        }
+
+        // C / D. 班次間隔
+        val mins = all.mapNotNull { it.minutes }.filter { it in 0..180 }.sorted()
+        if (mins.size >= 2) {
+            val gaps = mins.zipWithNext().map { (a, b) -> b - a }.filter { it > 0 }
+            val maxGap = gaps.maxOrNull()
+            if (maxGap != null && maxGap >= 30) {
+                out.add(
+                    com.hketa.app.data.Notice(
+                        title = str(R.string.notice_sparse_title),
+                        body = str(
+                            if (maxGap >= 60) R.string.notice_very_sparse_body
+                            else R.string.notice_sparse_body,
+                            maxGap
+                        ),
+                        time = str(R.string.notice_just_now),
+                        source = str(R.string.notice_source_derived)
+                    )
+                )
+            }
+        }
+
+        // 一切正常 → 明確講「冇異常」，等用戶知道真係查過
+        if (out.isEmpty()) {
+            out.add(
+                com.hketa.app.data.Notice(
+                    title = str(R.string.notice_line_normal_title),
+                    body = str(R.string.notice_line_normal_body),
+                    time = str(R.string.notice_just_now),
+                    source = str(R.string.notice_source_derived)
+                )
+            )
+        }
+        return out
     }
 
     private fun loadEta(stop: StopDef, route: RouteDef?) {
