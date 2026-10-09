@@ -44,6 +44,7 @@ object Changelog {
             titleEn = "Route page gains trip timetable and notices; search page redesigned",
             itemsZhHant = listOf(
                 "路線頁新增「班次」分頁：由官方即時到站預報構建班次表（第 N 班 = 各站預報嘅第 N 項），並推算班次間隔",
+                "班次時間表改為打直顯示：一張卡一個站，由上到下就係行車次序；淨係顯示最快開出嗰班（第 1 班），站名會連埋站號（例如「海麗邨巴士總站 (SS667)」）",
                 "班次表最多顯示 6 班車，沿線超過 12 個站會自動均勻取樣，唔會打爆官方接口",
                 "路線頁新增「公告」分頁：港鐵官方服務提示（改道／延誤／暫停）＋ App 更新公告，可撳「查看詳情」開連結",
                 "增設「觀察到嘅營運時段」：官方冇公開頭／尾班車接口，所以靠日常開 App 慢慢累積，會標明係觀察值而唔係官方公佈",
@@ -54,6 +55,7 @@ object Changelog {
             ),
             itemsZhHans = listOf(
                 "路线页新增「班次」分页：由官方即时到站预报构建班次表（第 N 班 = 各站预报的第 N 项），并推算班次间隔",
+                "班次时间表改为打直显示：一张卡一个站，由上到下就是行车次序；只显示最快开出那班（第 1 班），站名会连埋站号（例如「海丽邨巴士总站 (SS667)」）",
                 "班次表最多显示 6 班车，沿线超过 12 个站会自动均匀取样，不会打爆官方接口",
                 "路线页新增「公告」分页：港铁官方服务提示（改道／延误／暂停）＋ App 更新公告，可点「查看详情」开链接",
                 "增设「观察到的营运时段」：官方没有公开头／尾班车接口，所以靠日常开 App 慢慢累积，会标明是观察值而不是官方公布",
@@ -64,6 +66,7 @@ object Changelog {
             ),
             itemsEn = listOf(
                 "Route page gained a Trips tab: the timetable is built from the live official arrivals (trip N = the Nth prediction at each stop), with the headway derived from it",
+                "The trip timetable is now vertical: one card per stop, top to bottom in travel order, showing only the next departure (trip 1), with stop codes in the name (e.g. \u201cHoi Lai Estate Bus Terminus (SS667)\u201d)",
                 "Shows up to 6 trips; routes with more than 12 stops are sampled evenly so the official endpoints aren\u2019t hammered",
                 "Route page gained a Notices tab: official MTR service alerts (diversion / delay / suspension) plus app announcements, each with a Details link",
                 "Added an \u201cobserved service window\u201d: there is no public first/last-bus API, so it accumulates as you use the app and is labelled as observed rather than official",
