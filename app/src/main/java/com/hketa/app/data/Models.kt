@@ -1,16 +1,23 @@
 package com.hketa.app.data
 
+import com.hketa.app.R
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class Operator(val label: String) {
-    KMB("九巴"),
-    CTB("城巴"),
-    NLB("嶼巴"),
-    GMB("專線小巴"),
-    MTR_BUS("港鐵巴士"),
-    MTR_HR("港鐵"),
-    LRT("輕鐵");
+enum class Operator(
+    val label: String,
+    /** 官方全名，用喺「資料由 DATA.GOV.HK 提供」嗰行 */
+    val officialName: String,
+    /** 呢個營辦商嘅資料來源字串資源 id */
+    val sourceRes: Int = 0
+) {
+    KMB("九巴", "九龍巴士", R.string.src_kmb_full),
+    CTB("城巴", "城巴", R.string.src_ctb_full),
+    NLB("嶼巴", "大嶼山巴士", R.string.src_nlb_full),
+    GMB("專線小巴", "專線小巴", R.string.src_gmb_full),
+    MTR_BUS("港鐵巴士", "港鐵巴士", R.string.src_mtr_bus_full),
+    MTR_HR("港鐵", "港鐵", R.string.src_mtr_hr_full),
+    LRT("輕鐵", "輕鐵", R.string.src_lrt_full);
 }
 
 /** 一條路線（含方向） */
