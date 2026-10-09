@@ -301,9 +301,9 @@
     <string name="tt_reload">重新抓取</string>
     <string name="notice_official_title">服务公告</string>
     <string name="notice_source_official">官方</string>
-    <string name="notice_source_app">HKATE</string>
+    <string name="notice_source_app">HKATE 应用程序</string>
     <string name="notice_just_now">刚才</string>
-    <string name="notice_empty">暂时没公告</string>
+    <string name="notice_empty">暂时没路线公告</string>
     <string name="notice_view">查看详情</string>
     <string name="search_hint_route_no">输入路线号码</string>
     <string name="search_route_prefix">%1$s - %2$s</string>
@@ -325,4 +325,16 @@
     <string name="update_no_asset">这个版本没 APK 附件</string>
     <string name="update_need_install_permission">要先授权「允许安装未知来源」才装到</string>
     <string name="update_progress">下载中 %1$d%%（%2$.1f / %3$.1f MB）</string>
+    <string name="notice_source_derived">由官方数据推导</string>
+    <string name="notice_line_no_service_title">全线暂时没班次</string>
+    <string name="notice_line_no_service_body">沿线所有车站都没返回班次资料。可能是暂停服务、已过尾班车，或者官方接口暂时没资料。</string>
+    <string name="notice_partial_no_data_title">部分车站没班次资料</string>
+    <string name="notice_partial_no_data_body">以下车站没返回班次资料：%1$s%2$s</string>
+    <string name="notice_and_more">（还有 %1$d 个）</string>
+    <string name="notice_sparse_title">班次间隔偏大</string>
+    <string name="notice_sparse_body">最长间隔约 %1$d 分钟，可能受延误或改道影响。</string>
+    <string name="notice_very_sparse_body">最长间隔超过 %1$d 分钟，班次极疏，可能受延误、改道或部分班次暂停影响。</string>
+    <string name="notice_line_normal_title">路线运作正常</string>
+    <string name="notice_line_normal_body">沿线车站都有返回班次资料，没发现异常。</string>
+    <string name="notice_disclaimer">除了港铁系有官方服务公告之外，其他运营商的官方 ETA 接口没公告字段。上面标「由官方数据推导」的项目，是由官方即时到站数据计算出来的观察值，并非官方公告。</string>
 </resources>
