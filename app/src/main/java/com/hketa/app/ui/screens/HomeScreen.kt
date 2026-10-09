@@ -128,9 +128,10 @@ fun HomeScreen(
         )
 
         // 手動選點：唔想授權定位／定位失敗時嘅兜底
-        // 背景補充緊城巴／小巴資料嗰陣提示一下（解釋「點解暫時淨係見到九巴」）
-        val repairDone by vm.autoRepairDone.collectAsState()
-        if (!repairDone) {
+        // 背景補充緊城巴／小巴資料嗰陣提示一下（解釋「點解暫時淨係見到九巴」）。
+        // 淨係「而家補緊」先顯示 —— 補完就收，唔會再長期掛住。
+        val repairing by vm.autoRepairing.collectAsState()
+        if (repairing) {
             Spacer(Modifier.height(8.dp))
             Surface(
                 shape = RoundedCornerShape(10.dp),
