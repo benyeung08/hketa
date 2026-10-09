@@ -275,5 +275,5 @@
 
 
     <string name="home_open_stop">All arrivals at this stop</string>
-
+    <string name="home_repairing_hint">Adding Citybus / GMB stops in the background \u2014 until it finishes, nearby stops are mostly KMB</string>
 </resources>
