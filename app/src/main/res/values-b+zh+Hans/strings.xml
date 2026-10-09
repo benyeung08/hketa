@@ -246,4 +246,8 @@
     <string name="eta_repair_op_failed">%1$s 修复失败：%2$s</string>
     <string name="eta_repair_op_progress">修复紧 %1$s…</string>
     <string name="eta_repair_per_op_hint">觉得哪个运营商的资料唔齐／唔啱，可以净系修复那一个，唔使成个索引重建。</string>
+    <string name="about_crash_log">复制崩溃记录</string>
+    <string name="about_crash_log_copied">崩溃记录已复制，可以贴给开发者</string>
+    <string name="about_crash_log_hint">App 闪退过的话，按按钮复制堆栈记录。记录也会写落 文件管理器 ▸ Android/data/com.hketa.app/files/crash_log.txt</string>
+    <string name="about_crash_log_none">暂时没崩溃记录 👌</string>
 </resources>
