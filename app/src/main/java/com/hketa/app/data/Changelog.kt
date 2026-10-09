@@ -44,6 +44,7 @@ object Changelog {
             titleEn = "Renamed to HKATE, cleaner version pill, tighter background repair",
             itemsZhHant = listOf(
                 "應用程式改名為 HKATE（顯示名「HKATE 巴士到站預報」），關於頁同複製版本號都跟埋改",
+                "路線頁新增「班次」／「公告」兩個分頁：班次表由官方即時預報構建（第 N 班 = 各站預報嘅第 N 項），會推算班次間隔；公告會顯示港鐵官方服務提示同 App 更新公告",
                 "版本膠囊跟足 code-to-app 原版：移除圓點徽章，版面變成「v1.0.5 · 6 + 三個掣」；有新版本時 versionCode 數字會轉紅，唔使靠徽章都睇得出",
                 "底部狀態欄、設定頁、關於頁三處膠囊繼續共用同一個元件，改一處三處都改",
                 "修好「背景補充緊城巴／小巴資料」提示永久掛住唔消失嘅問題：而家淨係「而家補緊」先顯示，補完即收",
@@ -53,6 +54,7 @@ object Changelog {
             ),
             itemsZhHans = listOf(
                 "应用程序改名为 HKATE（显示名「HKATE 巴士到站预报」），关于页同复制版本号都跟着改",
+                "路线页新增「班次」／「公告」两个分页：班次表由官方即时预报构建（第 N 班 = 各站预报的第 N 项），会推算班次间隔；公告会显示港铁官方服务提示同 App 更新公告",
                 "版本胶囊跟足 code-to-app 原版：移除圆点徽章，版面变成「v1.0.5 · 6 + 三个按钮」；有新版本时 versionCode 数字会转红，不用靠徽章都看得出",
                 "底部状态栏、设置页、关于页三处胶囊继续共用同一个元件，改一处三处都改",
                 "修好「背景补充紧城巴／小巴资料」提示永久挂着不消失的问题：现在只有「正在补充」才显示，补充完即收",
@@ -62,6 +64,7 @@ object Changelog {
             ),
             itemsEn = listOf(
                 "The app is now called HKATE (display name \u201cHKATE bus ETA\u201d), including the About page and the copy-version text",
+                "Route page gained Trips / Notices tabs: the trip table is built from live official arrivals (trip N = the Nth prediction at each stop) and derives the headway; Notices shows official MTR service alerts plus app announcements",
                 "The version pill now matches code-to-app exactly: the dot badge is gone, so it reads \u201cv1.0.5 \u00b7 6\u201d plus three icons; when an update exists the version number turns red, so the badge isn\u2019t needed",
                 "The bottom bar, Settings and About still share one pill component, so a change lands in all three at once",
                 "Fixed the \u201cadding Citybus / GMB stops in the background\u201d note never going away: it now shows only while a repair is actually running",
