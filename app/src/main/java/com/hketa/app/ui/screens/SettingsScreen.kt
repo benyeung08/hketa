@@ -33,6 +33,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -249,7 +250,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
 
         // ---- 版本更新（改為 code-to-app 嘅 VersionPill 膠囊）----
-        //   v1.0.4 · 5   ● 0        ⟳   ◷   ▤
+        //   v1.0.4 · 5              ⟳   ◷   ▤
         //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
         Text(
             stringResource(R.string.update_section),
@@ -372,7 +373,7 @@ fun SettingsScreen(
  * 版本膠囊 —— 移植自 code-to-app 嘅 `VersionPill`
  * （`com.webtoapp.ui.screens.AboutScreen` 第 386–457 行）。
  *
- *   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+ *   v1.0.3 · 4              ⟳   ◷   ▤
  *   └── 版本名 · versionCode ──┘   │    │    └─ 複製版本號
  *                                  │    └─ 版本歷史
  *                                  └─ 檢查更新（撳成個膠囊都得）
@@ -394,47 +395,59 @@ private fun UpdatePill(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xFF1E1E1E).copy(alpha = 0.85f))
+            // 背景跟足原版：surfaceContainerHigh @ 80%
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f))
             .clickable(onClick = onCheckUpdate)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "v$versionName",
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.width(6.dp))
-        Text(text = "·", color = Color(0xFF8A8A8A), fontSize = 12.sp)
+        Text(
+            text = "\u00b7",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.outline
+        )
         Spacer(Modifier.width(6.dp))
         Text(
             text = versionCode.toString(),
-            color = if (hasUpdate) Color(0xFFFF5252) else Color(0xFFB0B0B0),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
+            style = MaterialTheme.typography.labelLarge,
+            color = if (hasUpdate) Color(0xFFFF5252)
+                    else MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
 
         // ① 檢查更新
         PillIcon(
             res = R.drawable.ic_status_sync,
             desc = stringResource(R.string.status_check_update),
             enabled = !checking,
+            size = 14.dp,
+            tint = MaterialTheme.colorScheme.primary,
             onClick = onCheckUpdate
         )
+        Spacer(Modifier.width(10.dp))
         // ② 版本歷史
         PillIcon(
             res = R.drawable.ic_status_clock,
             desc = stringResource(R.string.status_version_history),
             enabled = true,
+            size = 15.dp,
+            tint = MaterialTheme.colorScheme.primary,
             onClick = onOpenHistory
         )
+        Spacer(Modifier.width(10.dp))
         // ③ 複製版本號
         PillIcon(
             res = R.drawable.ic_status_copy,
             desc = stringResource(R.string.status_copy_version),
             enabled = true,
+            size = 14.dp,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
             onClick = {
                 runCatching {
                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
@@ -461,16 +474,20 @@ private fun PillIcon(
     res: Int,
     desc: String,
     enabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    /** 原版三個 icon 尺寸唔同：Sync 14 / History 15 / Copy 14 */
+    size: Dp = 16.dp,
+    tint: Color = Color.Unspecified
 ) {
     Icon(
         painter = androidx.compose.ui.res.painterResource(res),
         contentDescription = desc,
-        tint = if (enabled) Color.White else Color(0xFF6A6A6A),
+        tint = if (tint != Color.Unspecified) tint
+               else if (enabled) Color.White else Color(0xFF6A6A6A),
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled) { onClick() }
-            .size(16.dp)
+            .size(size)
             .padding(0.dp)
     )
 }
