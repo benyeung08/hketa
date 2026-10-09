@@ -275,5 +275,5 @@
 
 
     <string name="home_open_stop">查看这个站全部班次</string>
-
+    <string name="home_repairing_hint">背景补充紧城巴／小巴车站资料，完成前附近车站以九巴为主</string>
 </resources>
