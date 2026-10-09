@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,12 +48,13 @@ fun RailScreen(
     val scanning by vm.scanningSpecial.collectAsState()
     val special by vm.specialRoutes.collectAsState()
 
-    // 載入上次嘅掃描結果（存落本地，唔使每次開頁都掃）
+    // 載入上次嘅掃描結果；冇快取／過咗 7 日就**自動喺背景掃一次**
+    // （唔彈訊息、唔阻住用），所以用戶唔使撳掣都有
     val context = LocalContext.current
-    LaunchedEffect(Unit) { vm.loadSpecialRoutes(context) }
+    LaunchedEffect(Unit) { vm.loadSpecialRoutes(context, autoScan = true) }
 
-    // 分清楚「仲未掃」同「掃咗但搵唔到」
-    var hasScanned by remember { mutableStateOf(false) }
+    // 分清楚「仲未掃」同「掃咗但搵唔到」；有結果即代表掃過
+    val hasScanned by remember { derivedStateOf { special.isNotEmpty() } }
 
     LazyColumn(
         modifier = Modifier
@@ -81,7 +83,6 @@ fun RailScreen(
                 routes = special,
                 hasScanned = hasScanned,
                 onScan = {
-                    hasScanned = true
                     vm.scanLrSpecialRoutes()
                 }
             )

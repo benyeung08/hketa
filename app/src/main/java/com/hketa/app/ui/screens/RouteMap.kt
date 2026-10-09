@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -24,8 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.hketa.app.R
 import com.hketa.app.data.StopWithSeq
+import com.hketa.app.data.TileCache
 import kotlin.math.max
 import kotlin.math.min
+
+private val TILE_RE = Regex("""/dark_all/(\d+)/(\d+)/(\d+)(?:@2x)?(?:\.png)?(?:$|\?)""")
 
 /**
  * 路線地圖。
@@ -86,6 +92,20 @@ private fun OsmRouteMap(
     // HTML 只喺 stops 變動時重建，避免每次重組都重新載入地圖
     val html = remember(stops) { buildOsmHtml(stops) }
 
+    // 離線瓦片包：自動喺背景預取呢條路線嘅瓦片，
+    // 睇過一次之後就算冇網都出到真實地圖
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tileCache = remember(stops) { TileCache(context) }
+    LaunchedEffect(stops) {
+        scope.launch {
+            val pts = stops.map { it.stop }.filter { it.lat != 0.0 || it.lon != 0.0 }
+            if (pts.size >= 2) {
+                tileCache.prefetchRoute(pts.map { it.lat }, pts.map { it.lon })
+            }
+        }
+    }
+
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
@@ -103,7 +123,28 @@ private fun OsmRouteMap(
                     cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
                 }
                 setBackgroundColor(AndroidColor.parseColor("#121212"))
+                // 攔截瓦片請求：本地離線包有就用本地，冇先上網。
+                // 所以睇過一次嘅路線，飛機模式都出到真實地圖。
+                val cache = tileCache
                 webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?
+                    ): android.webkit.WebResourceResponse? {
+                        val url = request?.url?.toString() ?: return null
+                        val m = TILE_RE.find(url) ?: return null
+                        val (z, x, y) = Triple(
+                            m.groupValues[1].toIntOrNull() ?: return null,
+                            m.groupValues[2].toIntOrNull() ?: return null,
+                            m.groupValues[3].toIntOrNull() ?: return null
+                        )
+                        val bytes = cache?.bytesOf(z, x, y) ?: return null
+                        return android.webkit.WebResourceResponse(
+                            "image/png", "UTF-8",
+                            java.io.ByteArrayInputStream(bytes)
+                        )
+                    }
+
                     override fun onReceivedError(
                         view: WebView?,
                         errorCode: Int,

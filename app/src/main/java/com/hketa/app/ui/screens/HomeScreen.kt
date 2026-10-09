@@ -128,6 +128,24 @@ fun HomeScreen(
         )
 
         // 手動選點：唔想授權定位／定位失敗時嘅兜底
+        // 背景補充緊城巴／小巴資料嗰陣提示一下（解釋「點解暫時淨係見到九巴」）
+        val repairDone by vm.autoRepairDone.collectAsState()
+        if (!repairDone) {
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Muted(stringResource(R.string.home_repairing_hint))
+                }
+            }
+        }
+
         val manualLoc by vm.manualLocation.collectAsState()
         var showPicker by remember { mutableStateOf(false) }
         if (locatePhase == LocatePhase.NO_PERMISSION || manualLoc != null) {
