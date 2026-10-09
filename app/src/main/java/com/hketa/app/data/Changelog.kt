@@ -37,84 +37,73 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.0.5",
-            date = "2026-10-08",
-            titleZhHant = "Widget 支援全部營辦商 + 自動背景修復",
-            titleZhHans = "Widget 支持全部运营商 + 自动背景修复",
-            titleEn = "Widget supports every operator + automatic background repair",
-            itemsZhHant = listOf(
-                "Widget 支援全部營辦商：之前唔係因為「要逐條路線查」，而係收藏嗰陣冇記低路線。而家收藏會記低路線，Widget 淨係查嗰一條（1 個請求）",
-                "城巴／小巴自動背景修復：索引一建好就自動補車站，唔使再人手撳「修復城巴／修復小巴」",
-                "輕鐵特別班次結果存落本地快取，掃一次之後開鐵路頁即刻顯示",
-                "地圖改咗優先讀快取，睇過嘅路線離線都出到圖"
-            ),
-            itemsZhHans = listOf(
-                "Widget 支持全部运营商：之前不是因为「要逐条路线查」，而是收藏时没记录路线。现在收藏会记录路线，Widget 只查那一条（1 个请求）",
-                "城巴／小巴自动背景修复：索引一建好就自动补车站，不用再手动点「修复城巴／修复小巴」",
-                "轻铁特别班次结果存到本地缓存，扫一次之后开铁路页立即显示",
-                "地图改成优先读缓存，看过的路线离线也能出图"
-            ),
-            itemsEn = listOf(
-                "Widget now supports every operator: the blocker wasn't \"one request per route\" — bookmarks simply never stored a route. They do now, so the widget queries just that one route (a single request)",
-                "Citybus / GMB repair runs automatically in the background once the index is built — no more manual \"Repair Citybus / Repair GMB\"",
-                "Light Rail special-trip scan results are cached locally, so the Rail tab shows them immediately after one scan",
-                "The map now prefers cache, so routes you've already viewed render offline"
-            )
-        ),
-        Entry(
-            version = "1.0.4",
-            date = "2026-10-08",
-            titleZhHant = "附近車站改為「一條班次一張卡」，撳落去睇沿途車站",
-            titleZhHans = "附近车站改为「一条班次一张卡」，点进去看沿途车站",
-            titleEn = "Nearby stops: one card per departure, tap to see the route",
-            itemsZhHant = listOf(
-                "附近車站版面重做：一個站做小標題，下面每條班次一張獨立卡片（路線號膠囊 + 目的地 + 分鐘數）",
-                "撳任何一張班次卡 → 直接打開嗰條路線嘅沿途車站，唔使再經站嘅預報頁",
-                "冇班次（例如過咗尾班車）嘅路線照樣出卡，撳落去睇沿途車站",
-                "5 分鐘內嘅班次分鐘數用主色強調"
-            ),
-            itemsZhHans = listOf(
-                "附近车站版面重做：一个站做小标题，下面每条班次一张独立卡片（路线号胶囊 + 目的地 + 分钟数）",
-                "点任何一张班次卡 → 直接打开那条路线的沿途车站，不用再经站的预报页",
-                "没有班次（例如过了末班车）的路线照样出卡，点进去看沿途车站",
-                "5 分钟内的班次分钟数用主色强调"
-            ),
-            itemsEn = listOf(
-                "Nearby stops redesigned: each stop is a small header, with one card per departure (route badge + destination + minutes)",
-                "Tap any departure card to open that route's stop list directly — no detour through the stop's arrivals page",
-                "Routes with no departures (e.g. after last bus) still get a card so you can view the stop list",
-                "Arrivals within 5 minutes are highlighted in the accent colour"
-            )
-        ),
-        Entry(
             version = "1.0.3",
             date = "2026-10-08",
-            titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、手動選點",
-            titleZhHans = "已知限制大清扫：真实地图、铁路英文名、手动选点",
-            titleEn = "Known-limitations cleanup: real map, rail English names, manual location",
+            titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、自動修復、版面重做",
+            titleZhHans = "已知限制大清扫：真实地图、铁路英文名、自动修复、版面重做",
+            titleEn = "Known-limitations cleanup: real map, rail English names, auto-repair, redesigned nearby",
             itemsZhHant = listOf(
                 "路線地圖改用真實地圖：Leaflet + CARTO 深色瓦片，有底圖有街道、可縮放撳站名，唔使 API key；離線自動退回示意圖",
+                "睇過嘅地圖有快取，離線都出到圖（第一次睇某條路線先要上網）",
                 "鐵路站名加咗官方英文名：重鐵 98 個 + 輕鐵 68 個全部齊，英文介面顯示官方站名（唔係自行翻譯）",
+                "鐵路頁線名喺英文介面下顯示官方英文名（如 Tuen Ma Line）",
                 "新增手動選點：唔想授權定位都可以自己揀區／交通樞紐（16 個預設），主頁照樣搵到附近車站",
-                "輕鐵特別班次（9xx）：鐵路頁加咗「掃描特別班次」，掃各站預報動態搵返出嚟，唔使硬編碼",
-                "城巴／小巴深度修復改咗分批並發 + 增量，時間同請求數大幅減少，唔再一定需要 Wi-Fi",
-                "鐵路頁線名喺英文介面下顯示官方英文名（如 Tuen Ma Line）"
+                "輕鐵特別班次（9xx）：鐵路頁加咗「掃描特別班次」，掃各站預報動態搵返出嚟，唔使硬編碼；結果有快取，掃一次之後開頁即刻顯示",
+                "城巴／小巴深度修復改咗分批並發 + 增量，而且索引一建好就自動喺背景補，唔使人手撳「修復城巴／修復小巴」",
+                "Widget 支援全部營辦商：之前係收藏冇記低路線，而家會記錄，Widget 淨係查嗰一條（1 個請求）",
+                "附近車站版面重做：一個站做小標題，下面每條班次一張卡（路線號膠囊 + 目的地 + 分鐘數）",
+                "撳任何一張班次卡 → 直接打開嗰條路線嘅沿途車站，唔使再經站嘅預報頁",
+                "冇班次（例如過咗尾班車）嘅路線照樣出卡，撳落去睇沿途車站",
+                "支援 Android 17（API 37）：targetSdk 升到 37，面向最新系統",
+                "支援範圍：Android 8 – 17（minSdk 26 / targetSdk 37），Android 8 到 17 全部裝到",
+                "工具鏈升級：AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10（compileSdk 37 嘅硬門檻）",
+                "大屏自適應：Android 17 喺平板上會自動轉為可調整大小，版面唔會爆",
+                "嶼巴站名補返英文：官方接口冇 name_en，內置咗約 90 個大嶼山站名嘅官方英文對照（唔係機器翻譯），查唔到維持中文",
+                "地圖離線包：睇過嘅路線自動預取瓦片存落本地，飛機模式都出到真實地圖（唔再靠 WebView 快取）",
+                "輕鐵特別班次自動掃描：開鐵路頁自動喺背景掃（快取 7 日），唔使撳掣；照樣可手動即時重掃",
+                "主頁會提示「背景補充緊城巴／小巴資料」，唔會再無聲淨係得九巴"
             ),
             itemsZhHans = listOf(
                 "路线地图改用真实地图：Leaflet + CARTO 深色瓦片，有底图有街道、可缩放点站名，不需 API key；离线自动退回示意图",
+                "看过的地图有缓存，离线也能出图（第一次看某条路线才需要上网）",
                 "铁路站名加了官方英文名：重铁 98 个 + 轻铁 68 个全部齐，英文界面显示官方站名（不是自行翻译）",
+                "铁路页线名在英文界面下显示官方英文名（如 Tuen Ma Line）",
                 "新增手动选点：不想授权定位也能自己选区／交通枢纽（16 个预设），主页照样找得到附近车站",
-                "轻铁特别班次（9xx）：铁路页加了「扫描特别班次」，扫各站预报动态找出来，不需硬编码",
-                "城巴／小巴深度修复改成分批并发 + 增量，时间和请求数大幅减少，不再一定需要 Wi-Fi",
-                "铁路页线名在英文界面下显示官方英文名（如 Tuen Ma Line）"
+                "轻铁特别班次（9xx）：铁路页加了「扫描特别班次」，扫各站预报动态找出来，不需硬编码；结果有缓存，扫一次之后开页立即显示",
+                "城巴／小巴深度修复改成分批并发 + 增量，而且索引一建好就自动在背景补，不用手动点「修复城巴／修复小巴」",
+                "Widget 支持全部运营商：之前是收藏没记录路线，现在会记录，Widget 只查那一条（1 个请求）",
+                "附近车站版面重做：一个站做小标题，下面每条班次一张卡（路线号胶囊 + 目的地 + 分钟数）",
+                "点任何一张班次卡 → 直接打开那条路线的沿途车站，不用再经站的预报页",
+                "没有班次（例如过了末班车）的路线照样出卡，点进去看沿途车站",
+                "支持 Android 17（API 37）：targetSdk 升到 37，面向最新系统",
+                "支持范围：Android 8 – 17（minSdk 26 / targetSdk 37），Android 8 到 17 都能装",
+                "工具链升级：AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10（compileSdk 37 的硬门槛）",
+                "大屏自适应：Android 17 在平板上会自动转为可调整大小，版面不会爆",
+                "屿巴站名补回英文：官方接口没有 name_en，内置了约 90 个大屿山站名的官方英文对照（不是机器翻译），查不到维持中文",
+                "地图离线包：看过的路线自动预取瓦片存到本地，飞行模式都能出真实地图（不再靠 WebView 缓存）",
+                "轻铁特别班次自动扫描：开铁路页自动在后台扫（缓存 7 天），不用按键；照样可手动即时重扫",
+                "主页会提示「背景补充紧城巴／小巴资料」，不会再无声只有九巴"
             ),
             itemsEn = listOf(
                 "Route map now shows a real map: Leaflet + CARTO dark tiles with basemap, streets, zoom and tappable stop names — no API key. Falls back to the schematic view offline",
+                "Maps you've already viewed are cached, so they render offline (only the first view of a route needs the network)",
                 "Official English station names added: all 98 heavy-rail and 68 Light Rail stops, shown in the English interface (official names, not translations)",
+                "Rail line names show their official English names (e.g. Tuen Ma Line) in the English interface",
                 "New manual location picker: if you'd rather not grant GPS, pick a district or hub (16 presets) and Home still finds nearby stops",
-                "Light Rail special trips (9xx): the Rail tab can now scan stop arrivals to discover them dynamically — no hardcoded list",
-                "Citybus / GMB deep repair is now batched-concurrent and incremental, so it's much faster and no longer requires Wi-Fi",
-                "Rail line names show their official English names (e.g. Tuen Ma Line) in the English interface"
+                "Light Rail special trips (9xx): the Rail tab can scan stop arrivals to discover them dynamically — no hardcoded list; results are cached so one scan is enough",
+                "Citybus / GMB repair is now batched-concurrent and incremental, and also runs automatically in the background once the index is built — no manual \"Repair Citybus / Repair GMB\"",
+                "Widget now supports every operator: bookmarks never stored a route before, now they do, so the widget queries just that one route (a single request)",
+                "Nearby stops redesigned: each stop is a small header, with one card per departure (route badge + destination + minutes)",
+                "Tap any departure card to open that route's stop list directly — no detour through the stop's arrivals page",
+                "Routes with no departures (e.g. after last bus) still get a card so you can view the stop list",
+                "Android 17 (API 37) support: targetSdk raised to 37, targeting the newest platform",
+                "Support range: Android 8 – 17 (minSdk 26 / targetSdk 37) — installs on everything from Android 8 to 17",
+                "Toolchain upgrade: AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10 — the hard minimum for compileSdk 37",
+                "Large-screen adaptive: Android 17 makes the app resizable on tablets, and the layout holds up",
+                "NLB stops now have English names: the API has no name_en, so ~90 Lantau stops ship with their official English names (not machine-translated); unmatched names stay Chinese",
+                "Offline map pack: viewed routes prefetch their tiles locally, so real maps render even in airplane mode (no longer reliant on the WebView cache)",
+                "Light Rail special trips scan automatically: opening the Rail tab scans in the background (cached 7 days) - no button needed, and you can still rescan manually",
+                "Home now says when Citybus / GMB stops are being added in the background instead of silently showing KMB only"
             )
         ),
         Entry(

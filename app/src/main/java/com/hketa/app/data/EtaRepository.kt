@@ -189,10 +189,14 @@ class EtaRepository {
             val o = e as? JsonObject ?: return@mapNotNull null
             val id = pick(o, "stopId", "stop_id", "id")
             if (id.isBlank()) return@mapNotNull null
+            val zhName = pick(o, "stopName_cn", "stopName", "name_tc", "name")
             StopDef(
                 op = Operator.NLB,
                 id = id,
-                name = pick(o, "stopName_cn", "stopName", "name_tc", "name"),
+                name = zhName,
+                // 官方 NLB 接口冇 name_en，所以喺內置對照表度查。
+                // 查唔到會返 null → 維持中文原名（唔會亂砌英文名）。
+                nameEn = NlbStopNames.englishOf(zhName).orEmpty(),
                 lat = num(pick(o, "latitude", "lat")),
                 lon = num(pick(o, "longitude", "long", "lon", "lng"))
             )
