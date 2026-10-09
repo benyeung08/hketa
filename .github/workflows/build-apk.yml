@@ -113,6 +113,43 @@ jobs:
             absent "app/src/main/java/com/hketa/app/vm/$f.kt"
           done
 
+          # ---- 資源引用完整性：捉「res 檔冇上傳」呢類 AAPT 錯 ----
+          # 之前出現過「style/Theme.HKATE not found」—— 因為 themes.xml 冇上傳，
+          # 但 AAPT 淨係講資源名，唔講缺邊個檔。呢度直接掃全部 XML 嘅
+          # @style / @drawable / @string / @xml … 引用，res 入面冇就報。
+          echo "--- res 引用嘅資源係咪存在 ---"
+          RES=app/src/main/res
+          resfiles=$(find app/src/main/AndroidManifest.xml "$RES" -name "*.xml" -type f 2>/dev/null)
+          echo "  （掃 $(printf '%s\n' "$resfiles" | grep -c .) 個 XML）"
+          refs=$(grep -ohE '@(style|drawable|xml|string|mipmap|color|dimen|layout)/[A-Za-z_][A-Za-z0-9_.]*' \
+                  $resfiles 2>/dev/null | sort -u)
+          refs=$(printf '%s\n' "$refs" | grep -v '^@android' || true)
+          for ref in $refs; do
+            rtyp=${ref#@}; rtyp=${rtyp%%/*}; rname=${ref#*/}
+            [ -z "$rname" ] && continue
+            found=""
+            case "$rtyp" in
+              style|string|color|dimen)
+                found=$(grep -rlE "<(string|style|color|dimen)[^>]*name=\"$rname\"" \
+                        "$RES"/values* 2>/dev/null | head -1) ;;
+              *)
+                for rd in $(find "$RES" -maxdepth 1 -type d -name "$rtyp*" 2>/dev/null); do
+                  for rext in .xml .png .webp .jpg .jpeg ""; do
+                    if [ -f "$rd/$rname$rext" ]; then found="$rd/$rname$rext"; break 2; fi
+                  done
+                done ;;
+            esac
+            if [ -n "$found" ]; then
+              echo "  ok  $ref"
+            else
+              echo "::error::引用咗 $ref，但 res 入面搵唔到 —— 對應資源檔可能未上傳"
+              fail=1
+            fi
+          done
+          echo "  （檢查咗 $(printf '%s\n' "$refs" | grep -c .) 個資源引用）"
+          # themes.xml 係最常漏傳嘅（Manifest 引用 android:theme）
+          need "$RES/values/themes.xml"
+
           echo "--- 有冇同名 .kt（會 Redeclaration）---"
           dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
           if [ -n "$dup" ]; then
