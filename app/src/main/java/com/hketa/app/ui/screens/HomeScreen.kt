@@ -92,14 +92,10 @@ fun HomeScreen(
     var trigger by remember { mutableIntStateOf(0) }
 
     // 自動：一入主頁就請求定位並開始定時重整（唔使撳掣）
+    // 定位權限由 AppRoot 嘅 bootstrap() 喺開 App 嗰陣統一請求一次，
+    // 呢度淨係確保自動定位循環喺跑（唔會再彈多次權限對話框）。
     LaunchedEffect(Unit) {
-        onNeedLocation { granted ->
-            if (granted) {
-                vm.startAutoLocate(context) {
-                    LocationProvider.hasPermission(context)
-                }
-            }
-        }
+        vm.startAutoLocate(context) { LocationProvider.hasPermission(context) }
     }
 
     LaunchedEffect(trigger) {
