@@ -287,4 +287,22 @@
     <string name="about_crash_log_none">暫時冇崩潰記錄 👌</string>
     <string name="about_crash_log_copied">崩潰記錄已複製，可以貼畀開發者</string>
     <string name="about_crash_log_hint">App 閃退過嘅話，撳掣複製堆疊記錄。記錄亦會寫落 檔案管理器 ▸ Android/data/com.hketa.app/files/crash_log.txt</string>
+    <string name="rs_tab_stops">車站</string>
+    <string name="rs_tab_timetable">班次</string>
+    <string name="rs_tab_notices">公告</string>
+    <string name="tt_title">班次時間表</string>
+    <string name="tt_trip">第 %1$d 班</string>
+    <string name="tt_headway">班次間隔：約 %1$d 分鐘</string>
+    <string name="tt_observed">觀察到嘅營運時段：%1$s – %2$s（%3$d 次記錄）</string>
+    <string name="tt_observed_none">仲未睇到班次，累積多幾次就有營運時段</string>
+    <string name="tt_note">班次表由官方即時到站預報構建（第 N 班 = 各站預報嘅第 N 項）。官方冇公開時刻表接口，所以「營運時段」係觀察累積，唔係官方公佈嘅頭／尾班車。</string>
+    <string name="tt_loading">抓取班次資料…</string>
+    <string name="tt_empty">暫時冇班次資料（可能已過尾班車）</string>
+    <string name="tt_reload">重新抓取</string>
+    <string name="notice_official_title">服務公告</string>
+    <string name="notice_source_official">官方</string>
+    <string name="notice_source_app">HKATE</string>
+    <string name="notice_just_now">剛才</string>
+    <string name="notice_empty">暫時冇公告</string>
+    <string name="notice_view">查看詳情</string>
 </resources>
