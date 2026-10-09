@@ -77,6 +77,7 @@ object Changelog {
                 "Route page gained a Notices tab: official MTR service alerts (diversion / delay / suspension) plus app announcements, each with a Details link",
                 "Added an \u201cobserved service window\u201d: there is no public first/last-bus API, so it accumulates as you use the app and is labelled as observed rather than official",
                 "Search page redesigned: a primary-coloured Search title bar and a white field reading \u201cEnter a route number\u201d",
+                "Fixed the search keyboard not appearing: the results list had no weight, so the content overflowed and pushed the keyboard off-screen; the list now uses weight(1f), the keyboard stays pinned at the bottom and routes show above it",
                 "Results are now one row each \u2014 route number, destination, chevron \u2014 and a tap opens the stop list",
                 "Non-KMB routes show \u201cdestination - operator\u201d (e.g. \u201cTai O - NLB\u201d) with the official name and the DATA.GOV.HK credit underneath",
                 "The route keypad is now blue-grey, with clearer contrast on the digit and round letter keys"
