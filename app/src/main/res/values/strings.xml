@@ -305,4 +305,14 @@
     <string name="notice_just_now">剛才</string>
     <string name="notice_empty">暫時冇公告</string>
     <string name="notice_view">查看詳情</string>
+    <string name="search_hint_route_no">輸入路線號碼</string>
+    <string name="search_route_prefix">%1$s - %2$s</string>
+    <string name="src_nlb_full">大嶼山巴士 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_kmb_full">九龍巴士 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_ctb_full">城巴 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_gmb_full">專線小巴 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_bus_full">港鐵巴士 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_mtr_hr_full">港鐵 (資料由DATA.GOV.HK提供)</string>
+    <string name="src_lrt_full">輕鐵 (資料由DATA.GOV.HK提供)</string>
+    <string name="route_bound_to_plain">往</string>
 </resources>
