@@ -319,4 +319,10 @@
     <string name="tt_arrive_at">預計 %1$s 到站</string>
     <string name="tt_now">現</string>
     <string name="tt_in_min">%1$d 分鐘</string>
+    <string name="update_verifying">校驗緊 APK…</string>
+    <string name="update_download_failed">下載失敗：%1$s</string>
+    <string name="update_install">安裝</string>
+    <string name="update_no_asset">呢個版本冇 APK 附件</string>
+    <string name="update_need_install_permission">要先授權「允許安裝未知來源」先裝到</string>
+    <string name="update_progress">下載中 %1$d%%（%2$.1f / %3$.1f MB）</string>
 </resources>
