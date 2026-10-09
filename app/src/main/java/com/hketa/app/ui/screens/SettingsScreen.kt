@@ -40,10 +40,15 @@ import com.hketa.app.R
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.VersionPill
-import com.hketa.app.ui.copyToClipboard
-import com.hketa.app.ui.versionInfo
 import com.hketa.app.ui.labelText
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import com.hketa.app.util.AppLocale
 import com.hketa.app.vm.AppViewModel
 
@@ -217,7 +222,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
 
         // ---- 版本更新（改為 code-to-app 嘅 VersionPill 膠囊）----
-        //   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+        //   v1.0.4 · 5   ● 0        ⟳   ◷   ▤
         //   撳膠囊 = 檢查更新；右邊三個掣 = 檢查更新 / 版本歷史 / 複製版本號
         Text(
             stringResource(R.string.update_section),
@@ -226,7 +231,17 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(10.dp))
 
-        val (pkgVersionName, pkgVersionCode) = versionInfo()
+        val (pkgVersionName, pkgVersionCode) = runCatching {
+            val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+            val n = pi.versionName ?: "1.0.0"
+            @Suppress("DEPRECATION")
+            val c = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pi.longVersionCode
+            } else {
+                pi.versionCode.toLong()
+            }
+            n to c
+        }.getOrDefault("1.0.0" to 1L)
         val shownVersion = currentVersion.ifBlank { pkgVersionName }
         val hasUpdate = updateState == UpdateState.AVAILABLE
 
@@ -234,27 +249,13 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
-            VersionPill(
+            UpdatePill(
                 versionName = shownVersion,
                 versionCode = pkgVersionCode,
-                badge = if (hasUpdate) 1 else 0,
                 hasUpdate = hasUpdate,
-                busy = updateState == UpdateState.CHECKING,
-                onPillClick = { vm.checkUpdate(force = true) },
+                checking = updateState == UpdateState.CHECKING,
                 onCheckUpdate = { vm.checkUpdate(force = true) },
-                onOpenHistory = onOpenHistory,
-                onCopy = {
-                    copyToClipboard(
-                        context,
-                        "HKETA version",
-                        "HKETA v$shownVersion ($pkgVersionCode)"
-                    )
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.status_version_copied),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                onOpenHistory = onOpenHistory
             )
         }
 
@@ -338,6 +339,128 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+/**
+ * 版本膠囊 —— 移植自 code-to-app 嘅 `VersionPill`
+ * （`com.webtoapp.ui.screens.AboutScreen` 第 386–457 行）。
+ *
+ *   v1.0.3 · 4   ● 0        ⟳   ◷   ▤
+ *   └── 版本名 · versionCode ──┘   │    │    └─ 複製版本號
+ *                                  │    └─ 版本歷史
+ *                                  └─ 檢查更新（撳成個膠囊都得）
+ *
+ * **寫死喺呢個檔案入面**（唔共用 StatusBar 嗰份），係因為一次次上傳失敗
+ * —— 自包含嘅話，淨係傳呢一個檔案就生效，唔使同時傳 StatusBar.kt。
+ */
+@Composable
+private fun UpdatePill(
+    versionName: String,
+    versionCode: Long,
+    hasUpdate: Boolean,
+    checking: Boolean,
+    onCheckUpdate: () -> Unit,
+    onOpenHistory: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color(0xFF1E1E1E).copy(alpha = 0.85f))
+            .clickable(onClick = onCheckUpdate)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "v$versionName",
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(text = "·", color = Color(0xFF8A8A8A), fontSize = 12.sp)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = versionCode.toString(),
+            color = Color(0xFFB0B0B0),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.width(6.dp))
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (hasUpdate) Color(0xFFFF5252) else Color(0xFF8A8A8A))
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = if (hasUpdate) "1" else "0",
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+
+        Spacer(Modifier.width(10.dp))
+
+        // ① 檢查更新
+        PillIcon(
+            res = R.drawable.ic_status_sync,
+            desc = stringResource(R.string.status_check_update),
+            enabled = !checking,
+            onClick = onCheckUpdate
+        )
+        // ② 版本歷史
+        PillIcon(
+            res = R.drawable.ic_status_clock,
+            desc = stringResource(R.string.status_version_history),
+            enabled = true,
+            onClick = onOpenHistory
+        )
+        // ③ 複製版本號
+        PillIcon(
+            res = R.drawable.ic_status_copy,
+            desc = stringResource(R.string.status_copy_version),
+            enabled = true,
+            onClick = {
+                runCatching {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    cm.setPrimaryClip(
+                        android.content.ClipData.newPlainText(
+                            "HKETA version",
+                            "HKETA v$versionName ($versionCode)"
+                        )
+                    )
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.status_version_copied),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun PillIcon(
+    res: Int,
+    desc: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Icon(
+        painter = androidx.compose.ui.res.painterResource(res),
+        contentDescription = desc,
+        tint = if (enabled) Color.White else Color(0xFF6A6A6A),
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .size(16.dp)
+            .padding(0.dp)
+    )
 }
 
 /** 用瀏覽器打開下載／Release 頁面 */
