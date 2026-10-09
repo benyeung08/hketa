@@ -275,5 +275,5 @@
 
 
     <string name="home_open_stop">查看呢個站全部班次</string>
-
+    <string name="home_repairing_hint">背景補充緊城巴／小巴車站資料，完成前附近車站以九巴為主</string>
 </resources>
