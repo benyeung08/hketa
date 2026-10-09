@@ -41,8 +41,8 @@ android {
         minSdk = 26
         // 面向 Android 17：Google Play 由 2027 年 8 月起要求 target API 37
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.1.1"
+        versionCode = 9
+        versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
