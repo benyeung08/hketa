@@ -39,6 +39,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import com.hketa.app.R
 import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.UpdateChecker
@@ -64,6 +70,21 @@ import com.hketa.app.util.AppLocale
  *   - Release notes 會按目前語言自動揀（見 [UpdateChecker.localizeBody]）
  *   - 下載中會鎖住「撳外面關閉」，避免誤觸中斷
  */
+/**
+ * 版本更新 —— 全面改為「版本膠囊」樣式（即第二張圖嗰個 VersionPill）。
+ *
+ * 之前係普通 AlertDialog（標題「版本更新」+ 一句狀態 + 撳掣），
+ * 而家主視覺直接係膠囊：
+ *
+ *   ┌──────────────────────────────────┐
+ *   │ v1.0.3 · 4  ● 1      ⟳   ◷   ▤   │  ← VersionPill
+ *   └──────────────────────────────────┘
+ *   已經係最新版本
+ *   [        檢查更新        ]            ← 淺紫膠囊掣
+ *
+ * 四態（檢查中 / 有新版本 / 已是最新 / 失敗）嘅說明文字放喺膠囊下面，
+ * 有新版本嗰陣會多一段 Release notes。
+ */
 @Composable
 fun UpdateDialog(
     state: UpdateState,
@@ -73,35 +94,57 @@ fun UpdateDialog(
     notes: String,
     errorMessage: String,
     onDownload: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenHistory: () -> Unit = {},
+    onCopyVersion: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val lang = AppLocale.current()
     val localizedNotes = remember(notes, lang) { UpdateChecker.localizeBody(notes, lang) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                painterResource(R.drawable.ic_status_sync),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-        },
-        title = { Text(stringResource(R.string.update_title)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    // 由 PackageManager 讀版本名 / versionCode，同狀態欄完全一致
+    val (versionName, versionCode) = com.hketa.app.ui.versionInfo()
+    val hasUpdate = state == UpdateState.AVAILABLE
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF161616),
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // ★ 主視覺：版本膠囊（第二張圖嘅樣式）
+                com.hketa.app.ui.VersionPill(
+                    versionName = versionName,
+                    versionCode = versionCode,
+                    badge = if (hasUpdate) 1 else 0,
+                    hasUpdate = hasUpdate,
+                    busy = state == UpdateState.CHECKING,
+                    onPillClick = onDismiss,
+                    onCheckUpdate = onDismiss,
+                    onOpenHistory = onOpenHistory,
+                    onCopy = onCopyVersion,
+                    showBadge = true
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // 狀態說明（放喺膠囊下面）
                 when (state) {
                     UpdateState.CHECKING -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(14.dp),
                                 strokeWidth = 2.dp
                             )
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text(
                                 stringResource(R.string.update_checking),
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -112,10 +155,10 @@ fun UpdateDialog(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             stringResource(R.string.update_new_version, latestVersion),
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodySmall
                         )
                         Text(
                             stringResource(R.string.update_current_version, currentVersion),
@@ -129,32 +172,11 @@ fun UpdateDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        if (localizedNotes.isNotBlank()) {
-                            Spacer(Modifier.height(12.dp))
-                            HorizontalDivider()
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                stringResource(R.string.update_notes),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = localizedNotes,
-                                style = MaterialTheme.typography.bodySmall,
-                                lineHeight = 17.sp
-                            )
-                        }
                     }
 
                     UpdateState.UP_TO_DATE -> {
                         Text(
                             stringResource(R.string.update_latest),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "v$currentVersion",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -178,27 +200,60 @@ fun UpdateDialog(
 
                     UpdateState.IDLE -> Unit
                 }
-            }
-        },
-        confirmButton = {
-            if (state == UpdateState.AVAILABLE) {
-                TextButton(onClick = onDownload) {
-                    Text(stringResource(R.string.update_download))
+
+                // Release notes（有新版本先顯示）
+                if (state == UpdateState.AVAILABLE && localizedNotes.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.update_notes),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = localizedNotes,
+                        style = MaterialTheme.typography.bodySmall,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.heightIn(max = 180.dp).verticalScroll(
+                            rememberScrollState()
+                        )
+                    )
                 }
-            } else {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.update_close))
+
+                Spacer(Modifier.height(14.dp))
+
+                // 主掣：淺紫膠囊（同第一張圖嗰個掣一致）
+                Button(
+                    onClick = if (state == UpdateState.AVAILABLE) onDownload else onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(999.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        stringResource(
+                            if (state == UpdateState.AVAILABLE) R.string.update_download
+                            else R.string.update_check
+                        )
+                    )
                 }
-            }
-        },
-        dismissButton = {
-            if (state == UpdateState.AVAILABLE) {
+
+                Spacer(Modifier.height(6.dp))
+
                 TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.update_close))
+                    Text(
+                        stringResource(R.string.update_close),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
-    )
+    }
 }
 
 /**

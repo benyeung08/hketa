@@ -102,6 +102,11 @@ fun AppRoot(
 
     // 檢查更新結果對話框
     if (showUpdate) {
+        // 喺 @Composable 作用域讀版本資料 —— 唔可以喺普通 lambda 入面叫
+        // @Composable 嘅 versionInfo()，否則會報
+        // "@Composable invocations can only happen from the context of a @Composable function"
+        val (navVersionName, navVersionCode) = com.hketa.app.ui.versionInfo()
+
         UpdateDialog(
             state = vm.updateState.collectAsState().value,
             latestVersion = vm.updateInfo.collectAsState().value?.tag_name.orEmpty(),
@@ -124,8 +129,11 @@ fun AppRoot(
                 showHistory = true
             },
             onCopyVersion = {
-                val (n, c) = com.hketa.app.ui.versionInfo()
-                com.hketa.app.ui.copyToClipboard(context, "HKETA version", "HKETA v$n ($c)")
+                com.hketa.app.ui.copyToClipboard(
+                    context,
+                    "HKETA version",
+                    "HKETA v$navVersionName ($navVersionCode)"
+                )
             },
             onDismiss = { showUpdate = false }
         )
