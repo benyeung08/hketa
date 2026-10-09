@@ -346,8 +346,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var indexJob: Job? = null
 
     init {
-        indexJob = viewModelScope.launch { ensureIndex() }
-        refreshFavorites()
+        // runCatching：索引出問題（例如快取損壞）唔好令成個 App 崩，
+        // 淨係當「冇索引」，之後 autoRepairIfNeeded() 會自動重建
+        indexJob = viewModelScope.launch { runCatching { ensureIndex() } }
+        runCatching { refreshFavorites() }
     }
 
     // ============ 開 App 全自動流程 ============
@@ -380,9 +382,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         // ③ 定位：自動請求權限，之後交畀循環（冇授權都照樣跑，會退返手動選點）
-        requestLocation { granted ->
-            _locatePhase.value =
-                if (granted) LocatePhase.LOCATING else LocatePhase.NO_PERMISSION
+        //
+        // runCatching 係必要嘅：requestLocation 會觸發系統權限對話框，
+        // 喺少數裝置／極早期嘅 composition 階段 call ActivityResultLauncher
+        // 會丟 IllegalStateException。以前係直接崩，而家 fail 咗都照樣
+        // 啟動循環（退返手動選點），唔會影響用戶揾車。
+        runCatching {
+            requestLocation { granted ->
+                _locatePhase.value =
+                    if (granted) LocatePhase.LOCATING else LocatePhase.NO_PERMISSION
+                startAutoLocate(context) { LocationProvider.hasPermission(context) }
+            }
+        }.onFailure {
+            // 權限對話框開唔到 → 照樣啟動循環，用上次位置／手動選點兜底
+            _locatePhase.value = LocatePhase.NO_PERMISSION
             startAutoLocate(context) { LocationProvider.hasPermission(context) }
         }
     }
