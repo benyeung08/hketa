@@ -161,6 +161,34 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(8.dp))
 
+        // ---- 逐個營辦商修復（九巴／城巴／嶼巴／專線小巴／港鐵巴士／港鐵／輕鐵）----
+        Spacer(Modifier.height(4.dp))
+        Text(
+            stringResource(R.string.settings_eta_repair),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        Muted(stringResource(R.string.eta_repair_per_op_hint))
+
+        Spacer(Modifier.height(8.dp))
+
+        com.hketa.app.data.Operator.values().toList().chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { op ->
+                    OutlinedButton(
+                        onClick = { vm.repairOperator(op) },
+                        enabled = !busy,
+                        modifier = if (row.size == 1) Modifier.fillMaxWidth() else Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(R.string.eta_repair_op, op.labelText()))
+                    }
+                    if (op != row.last()) Spacer(Modifier.width(8.dp))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         OutlinedButton(
             onClick = { vm.clearEtaCache() },
             enabled = !busy,
@@ -413,8 +441,8 @@ private fun UpdatePill(
                         as android.content.ClipboardManager
                     cm.setPrimaryClip(
                         android.content.ClipData.newPlainText(
-                            "HKETA version",
-                            "HKETA v$versionName ($versionCode)"
+                            "HKATE version",
+                            "HKATE v$versionName ($versionCode)"
                         )
                     )
                     Toast.makeText(
