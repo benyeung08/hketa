@@ -154,7 +154,8 @@ private fun LetterKey(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
+            // 圖50 嗰個鍵盤：字母係明顯嘅紫色圓鍵
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
