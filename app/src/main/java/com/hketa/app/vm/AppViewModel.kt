@@ -1468,7 +1468,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             _busy.value = false
 
-            val names = results.map { (st, _) -> st.name.ifBlank { st.id } }
+            // 站名連站號（跟班次表版面：「海麗邨巴士總站 (SS667)」）
+            val names = results.map { (st, _) ->
+                val base = if (com.hketa.app.util.AppLocale.isEnglish() && st.nameEn.isNotBlank())
+                    st.nameEn else st.name.ifBlank { st.id }
+                val code = st.id.trim()
+                if (code.isNotBlank() && code.length <= 12) "$base ($code)" else base
+            }
             // 以「最多班次嗰個站」決定有幾多班
             val tripCount = results.maxOfOrNull { it.second.size } ?: 0
             if (tripCount == 0) {
