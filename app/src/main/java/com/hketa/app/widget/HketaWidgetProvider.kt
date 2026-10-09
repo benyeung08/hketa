@@ -16,6 +16,7 @@ import com.hketa.app.data.EtaRepository
 import com.hketa.app.data.FavoritesStore
 import com.hketa.app.data.Operator
 import com.hketa.app.data.RailData
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +38,16 @@ class HketaWidgetProvider : AppWidgetProvider() {
         private const val MAX_ROWS = 5
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * 加咗 CoroutineExceptionHandler：launch 入面丟出嚟嘅異常唔會再
+     * 交畀 Thread 嘅 default handler（即係唔會「程式已停止」），
+     * 只會記低就算。Widget 係背景廣播，失敗咗頂多唔更新，唔值得拖垮成個 App。
+     */
+    private val widgetErrorHandler = CoroutineExceptionHandler { _, t ->
+        android.util.Log.w("HketaWidget", "widget update failed", t)
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + widgetErrorHandler)
 
     override fun onUpdate(
         context: Context,
