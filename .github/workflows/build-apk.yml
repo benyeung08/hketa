@@ -66,6 +66,74 @@ jobs:
       # runner 預裝嘅 cmdline-tools 通常太舊，**根本唔知有 android-37 呢個包**，
       # 所以要先升 cmdline-tools；升完都冇就**自動降級**到最高可用嘅 platform，
       # 等 build 照出到 APK（黃色警告），好過直接紅。
+      # 預檢：喺開 build 之前逐項核對，缺乜講乜。
+      # 之前幾次 CI 紅，都係「檔案未上傳成功」或「舊檔殘留」造成，
+      # 但 Gradle 嘅報錯好難直接對返邊個檔案 —— 呢步會一次過講清楚。
+      - name: Preflight - verify required files
+        run: |
+          set -u
+          fail=0
+          need() {
+            if [ ! -f "$1" ]; then
+              echo "::error::缺少檔案 $1"
+              fail=1
+            else
+              echo "  ok  $1"
+            fi
+          }
+          absent() {
+            if [ -f "$1" ]; then
+              echo "::error::殘留舊檔（應該刪） $1"
+              fail=1
+            else
+              echo "  ok  無殘留 $1"
+            fi
+          }
+
+          echo "--- 必需嘅源碼 ---"
+          need app/build.gradle.kts
+          need build.gradle.kts
+          need settings.gradle.kts
+          need app/src/main/AndroidManifest.xml
+          need app/src/main/java/com/hketa/app/data/Changelog.kt
+          need app/src/main/java/com/hketa/app/ui/screens/AboutScreen.kt
+
+          echo "--- widget 資源（AndroidManifest 會引用）---"
+          need app/src/main/res/xml/hketa_widget_info.xml
+          need app/src/main/res/layout/widget_hketa.xml
+          need app/src/main/res/layout/widget_row.xml
+          need app/src/main/res/drawable/widget_bg.xml
+          need app/src/main/res/drawable/ic_settings.xml
+
+          echo "--- 唔應該存在嘅舊檔 ---"
+          absent app/src/main/java/com/hketa/app/vm/Changelog.kt
+          for f in EtaScreen FavoritesScreen HomeScreen SearchScreen SettingsScreen \
+                   RailScreen NearbyScreen RouteStopsScreen AboutScreen; do
+            absent "app/src/main/java/com/hketa/app/data/$f.kt"
+            absent "app/src/main/java/com/hketa/app/vm/$f.kt"
+          done
+
+          echo "--- 有冇同名 .kt（會 Redeclaration）---"
+          dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
+          if [ -n "$dup" ]; then
+            echo "::error::有同名 .kt 檔：$dup"
+            fail=1
+          else
+            echo "  ok  無同名 .kt"
+          fi
+
+          echo "--- 三語 strings 係咪對齊 ---"
+          for d in values values-zh-rCN values-en; do
+            n=$(grep -c '<string name=' "app/src/main/res/$d/strings.xml" || echo 0)
+            echo "  $d: $n"
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::預檢失敗 —— 上面列出嘅檔案要先處理"
+            exit 1
+          fi
+          echo "預檢全部通過 ✔"
+
       - name: Install Android SDK components
         env:
           WANT_PLATFORM: "37"
@@ -263,6 +331,18 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 失敗時把完整 log 印落 step log（唔使下載 artifact 都睇到），
+      # 並抽出「最有用嗰 60 行」—— 冇 log 就好難判斷錯乜。
+      - name: Dump build log on failure
+        if: failure() && hashFiles('/tmp/release-build.log') != ''
+        run: |
+          echo "=============== 完整 release-build.log ==============="
+          cat /tmp/release-build.log || true
+          echo
+          echo "=============== 錯誤摘要（頭 60 行）==============="
+          grep -nE 'e: |error: |FAILED|FAILURE:|\* What went wrong|Caused by|Execution failed' \
+            /tmp/release-build.log | head -60 || true
 
       - name: Write errors to job summary
         if: failure()
