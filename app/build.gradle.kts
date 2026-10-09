@@ -117,13 +117,18 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    // ⚠️ 關鍵：Compose Compiler 版本必須同 Kotlin 一致（AGP 9.1.1 內置 KGP 2.2.10，
+    // 所以 compiler plugin 係 2.2.10）。而 compiler 2.2.x 要求嘅 Compose runtime
+    // 係 1.9.x —— 即 BOM 要 2025.09 或以上。
+    // 之前用 2024.10.01（runtime 1.7.x）會拋
+    //   IncompatibleComposeRuntimeVersionException
+    val composeBom = platform("androidx.compose:compose-bom:2025.09.01")
 
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
 
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -131,7 +136,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation("androidx.navigation:navigation-compose:2.9.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
