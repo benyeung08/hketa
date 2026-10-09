@@ -1,0 +1,654 @@
+name: Build HKATE Release APK
+
+# 只出正式版（release）APK —— 一份，簽名固定。
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '把 APK 提交到 builds 目錄'
+        type: boolean
+        default: true
+      target_repo:
+        description: '目標 repo（預設＝本 repo；跨 repo 先需要 PUBLISH_TOKEN）'
+        type: string
+        default: ''
+      target_branch:
+        description: '目標分支'
+        type: string
+        default: 'apk'
+      target_dir:
+        description: '目標目錄（repo 內）'
+        type: string
+        default: 'builds'
+      keep_history:
+        description: '保留舊 APK（關＝只保留 latest.apk + 本次版本檔）'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
+    # （寫咗會報 "A mapping was not expected"）
+    outputs:
+      version_name: ${{ steps.ver.outputs.value }}
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read versionName
+        id: ver
+        run: |
+          v=$(grep -m1 'versionName' app/build.gradle.kts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          echo "value=${v:-1.0.0}" >> "$GITHUB_OUTPUT"
+          echo "versionName = ${v:-1.0.0}"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # Android 17 (API 37) 需要 platforms;android-37 + build-tools;36.0.0。
+      # runner 預裝嘅 cmdline-tools 通常太舊，**根本唔知有 android-37 呢個包**，
+      # 所以要先升 cmdline-tools；升完都冇就**自動降級**到最高可用嘅 platform，
+      # 等 build 照出到 APK（黃色警告），好過直接紅。
+      # 預檢：喺開 build 之前逐項核對，缺乜講乜。
+      # 之前幾次 CI 紅，都係「檔案未上傳成功」或「舊檔殘留」造成，
+      # 但 Gradle 嘅報錯好難直接對返邊個檔案 —— 呢步會一次過講清楚。
+      - name: Preflight - verify required files
+        run: |
+          set -u
+          fail=0
+          need() {
+            if [ ! -f "$1" ]; then
+              echo "::error::缺少檔案 $1"
+              fail=1
+            else
+              echo "  ok  $1"
+            fi
+          }
+          absent() {
+            if [ -f "$1" ]; then
+              echo "::error::殘留舊檔（應該刪） $1"
+              fail=1
+            else
+              echo "  ok  無殘留 $1"
+            fi
+          }
+
+          echo "--- 必需嘅源碼 ---"
+          need app/build.gradle.kts
+          need build.gradle.kts
+          need settings.gradle.kts
+          need app/src/main/AndroidManifest.xml
+          need app/src/main/java/com/hketa/app/data/Changelog.kt
+          need app/src/main/java/com/hketa/app/ui/screens/AboutScreen.kt
+
+          echo "--- widget 資源（AndroidManifest 會引用）---"
+          need app/src/main/res/xml/hketa_widget_info.xml
+          need app/src/main/res/layout/widget_hketa.xml
+          need app/src/main/res/layout/widget_row.xml
+          need app/src/main/res/drawable/widget_bg.xml
+          need app/src/main/res/drawable/ic_settings.xml
+
+          echo "--- 唔應該存在嘅舊檔 ---"
+          absent app/src/main/java/com/hketa/app/vm/Changelog.kt
+          for f in EtaScreen FavoritesScreen HomeScreen SearchScreen SettingsScreen \
+                   RailScreen NearbyScreen RouteStopsScreen AboutScreen; do
+            absent "app/src/main/java/com/hketa/app/data/$f.kt"
+            absent "app/src/main/java/com/hketa/app/vm/$f.kt"
+          done
+
+          # ---- 資源引用完整性：捉「res 檔冇上傳」呢類 AAPT 錯 ----
+          # 之前出現過「style/Theme.HKATE not found」—— 因為 themes.xml 冇上傳，
+          # 但 AAPT 淨係講資源名，唔講缺邊個檔。呢度直接掃全部 XML 嘅
+          # @style / @drawable / @string / @xml … 引用，res 入面冇就報。
+          echo "--- res 引用嘅資源係咪存在 ---"
+          RES=app/src/main/res
+          resfiles=$(find app/src/main/AndroidManifest.xml "$RES" -name "*.xml" -type f 2>/dev/null)
+          echo "  （掃 $(printf '%s\n' "$resfiles" | grep -c .) 個 XML）"
+          refs=$(grep -ohE '@(style|drawable|xml|string|mipmap|color|dimen|layout)/[A-Za-z_][A-Za-z0-9_.]*' \
+                  $resfiles 2>/dev/null | sort -u)
+          refs=$(printf '%s\n' "$refs" | grep -v '^@android' || true)
+          for ref in $refs; do
+            rtyp=${ref#@}; rtyp=${rtyp%%/*}; rname=${ref#*/}
+            [ -z "$rname" ] && continue
+            found=""
+            case "$rtyp" in
+              style|string|color|dimen)
+                found=$(grep -rlE "<(string|style|color|dimen)[^>]*name=\"$rname\"" \
+                        "$RES"/values* 2>/dev/null | head -1) ;;
+              *)
+                for rd in $(find "$RES" -maxdepth 1 -type d -name "$rtyp*" 2>/dev/null); do
+                  for rext in .xml .png .webp .jpg .jpeg ""; do
+                    if [ -f "$rd/$rname$rext" ]; then found="$rd/$rname$rext"; break 2; fi
+                  done
+                done ;;
+            esac
+            if [ -n "$found" ]; then
+              echo "  ok  $ref"
+            else
+              echo "::error::引用咗 $ref，但 res 入面搵唔到 —— 對應資源檔可能未上傳"
+              fail=1
+            fi
+          done
+          echo "  （檢查咗 $(printf '%s\n' "$refs" | grep -c .) 個資源引用）"
+          # themes.xml 係最常漏傳嘅（Manifest 引用 android:theme）
+          need "$RES/values/themes.xml"
+
+          echo "--- 有冇同名 .kt（會 Redeclaration）---"
+          dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
+          if [ -n "$dup" ]; then
+            echo "::error::有同名 .kt 檔：$dup"
+            fail=1
+          else
+            echo "  ok  無同名 .kt"
+          fi
+
+          echo "--- 三語 strings 係咪對齊 ---"
+          for d in values values-zh-rCN values-en; do
+            n=$(grep -c '<string name=' "app/src/main/res/$d/strings.xml" || echo 0)
+            echo "  $d: $n"
+          done
+
+          # ---- 通用引用完整性：捉「新檔案未上傳」呢類錯 ----
+          # 之前成日出現「某個 .kt 冇傳上去 → unresolved reference」，
+          # 但報錯淨係講符號名，唔講缺邊個檔。呢度直接掃全部
+          # com.hketa.app.* 嘅引用，冇定義就報。
+          echo "--- 引用完整性：import 嘅 com.hketa.app 符號有冇定義 ---"
+          SRC=app/src/main/java/com/hketa/app
+          defs=$(grep -rhoE '^\s*(@[A-Za-z0-9_.]+\s*)*\s*(public |internal |private |data |sealed |enum |abstract |final |value |const )*(class|object|interface|fun|val) [A-Za-z_][A-Za-z0-9_]*' \
+                  "$SRC" --include="*.kt" 2>/dev/null \
+                | sed -E 's/.*(class|object|interface|fun|val) //' | sort -u)
+          syms=$(grep -rhoE '(import )?com\.hketa\.app\.[A-Za-z0-9_.]+' \
+                  "$SRC" --include="*.kt" 2>/dev/null \
+                | sed -E 's/^import //; s/.*\.//' | sort -u)
+          checked=0
+          for sname in $syms; do
+            # 淨係理「首字母大寫但唔係全大寫」＝ class / object / Composable fun
+            printf '%s' "$sname" | grep -qE '^[A-Z][A-Za-z0-9_]*[a-z][A-Za-z0-9_]*$' || continue
+            checked=$((checked+1))
+            if printf '%s\n' "$defs" | grep -qx "$sname"; then
+              echo "  ok  $sname"
+            else
+              echo "::error::引用咗冇定義嘅符號 $sname —— 對應 .kt 檔案可能未上傳"
+              fail=1
+            fi
+          done
+          echo "  （檢查咗 $checked 個符號）"
+
+          # ---- AndroidManifest 引用嘅 class 係咪存在 ----
+          echo "--- AndroidManifest 引用嘅 class 係咪存在 ---"
+          PKG=com/hketa/app
+          for n in $(grep -oE 'android:name="[^"]+"' app/src/main/AndroidManifest.xml \
+                     | sed -E 's/android:name="//; s/"$//'); do
+            case "$n" in
+              .*)                 rel="$PKG/${n#.}" ;;
+              com.hketa.app.*)    rel="$PKG/$(printf '%s' "${n#com.hketa.app.}" | tr '.' '/')" ;;
+              android.*|androidx.*) continue ;;
+              *) continue ;;
+            esac
+            mf="app/src/main/java/$rel.kt"
+            if [ -f "$mf" ]; then
+              echo "  ok  $n"
+            else
+              echo "::error::AndroidManifest 引用咗 $n，但搵唔到 $mf（檔案可能未上傳）"
+              fail=1
+            fi
+          done
+
+          # ---- 四份 strings key 係咪一致 ----
+          echo "--- 四份 strings key 係咪一致 ---"
+          bkeys=$(grep -oE '<string name="[^"]+"' app/src/main/res/values/strings.xml \
+                  | sed -E 's/<string name="//; s/"$//' | sort -u)
+          echo "  values: $(printf '%s\n' "$bkeys" | wc -l)"
+          for d in values-zh-rCN values-en values-b+zh+Hans; do
+            kf="app/src/main/res/$d/strings.xml"
+            if [ ! -f "$kf" ]; then
+              echo "::error::缺少 $kf"; fail=1; continue
+            fi
+            kk=$(grep -oE '<string name="[^"]+"' "$kf" | sed -E 's/<string name="//; s/"$//' | sort -u)
+            echo "  $d: $(printf '%s\n' "$kk" | wc -l)"
+            miss=$(comm -23 <(printf '%s\n' "$bkeys") <(printf '%s\n' "$kk"))
+            if [ -n "$miss" ]; then
+              echo "::error::$d 缺咗 $(printf '%s\n' "$miss" | wc -l) 個 key：$(printf '%s' "$miss" | head -5 | tr '\n' ' ')"
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::預檢失敗 —— 上面列出嘅檔案要先處理"
+            exit 1
+          fi
+          echo "預檢全部通過 ✔"
+
+      - name: Install Android SDK components
+        env:
+          WANT_PLATFORM: "37"
+          WANT_BUILD_TOOLS: "36.0.0"
+        run: |
+          set -x
+          ls "$ANDROID_HOME" || true
+
+          # ① 升 cmdline-tools（舊 sdkmanager 認唔到新 platform）
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "cmdline-tools;latest" || true
+          # 新裝嘅命令行工具自己帶一份 sdkmanager，優先佢
+          LATEST_CLT=$(ls -d "$ANDROID_HOME"/cmdline-tools/latest/bin 2>/dev/null | head -1)
+          SM=sdkmanager
+          if [ -n "$LATEST_CLT" ] && [ -x "$LATEST_CLT/sdkmanager" ]; then
+            SM="$LATEST_CLT/sdkmanager"
+          fi
+          echo "using sdkmanager: $SM"
+          echo "SM=$SM" >> "$GITHUB_ENV"
+
+          yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+
+          # ② 試裝目標 platform + build-tools
+          yes | "$SM" --sdk_root="$ANDROID_HOME" \
+            --install "platforms;android-$WANT_PLATFORM" "build-tools;$WANT_BUILD_TOOLS" || true
+
+          echo "--- installed platforms ---"
+          ls "$ANDROID_HOME/platforms" || true
+          echo "--- installed build-tools ---"
+          ls "$ANDROID_HOME/build-tools" || true
+
+          # ③ 搵最高可用嘅 platform（已裝嗰啲入面揀）
+          highest_available() {
+            ls "$ANDROID_HOME/platforms" 2>/dev/null \
+              | grep -oE '^android-[0-9]+$' \
+              | grep -oE '[0-9]+' | sort -n | tail -1
+          }
+          PLAT=""
+          if [ -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
+            PLAT="$WANT_PLATFORM"
+          else
+            PLAT=$(highest_available)
+            if [ -n "$PLAT" ]; then
+              echo "::warning::platforms;android-$WANT_PLATFORM unavailable - falling back to android-$PLAT"
+            fi
+          fi
+          if [ -z "$PLAT" ]; then
+            # 連一個 platform 都冇 —— 印出 sdkmanager 見到啲乜，方便診斷
+            echo "::error::no Android platform installed, cannot build"
+            echo "--- sdkmanager --list (platforms) ---"
+            "$SM" --sdk_root="$ANDROID_HOME" --list 2>/dev/null | grep -E 'platforms;android-' | head -20 || true
+            exit 1
+          fi
+          echo "PLATFORM=$PLAT" >> "$GITHUB_ENV"
+          echo "使用 platform: android-$PLAT"
+
+          # ④ build-tools：AGP 9.1.1 預設要 36.0.0；冇就降到最高可用嗰份
+          BT=""
+          if [ -d "$ANDROID_HOME/build-tools/$WANT_BUILD_TOOLS" ]; then
+            BT="$WANT_BUILD_TOOLS"
+          else
+            # 試埋幾個常見版本
+            for cand in "36.0.0" "35.0.1" "35.0.0" "34.0.0"; do
+              yes | "$SM" --sdk_root="$ANDROID_HOME" --install "build-tools;$cand" > /dev/null 2>&1 || true
+              if [ -d "$ANDROID_HOME/build-tools/$cand" ]; then BT="$cand"; break; fi
+            done
+            if [ -z "$BT" ]; then
+              BT=$(ls "$ANDROID_HOME/build-tools" 2>/dev/null | sort -V | tail -1)
+            fi
+            [ -n "$BT" ] && echo "::warning::build-tools;$WANT_BUILD_TOOLS unavailable - using $BT"
+          fi
+          if [ -z "$BT" ]; then
+            echo "::error::no build-tools available, cannot build"
+            exit 1
+          fi
+          echo "BUILD_TOOLS=$BT" >> "$GITHUB_ENV"
+          echo "使用 build-tools: $BT"
+
+      # 如果裝唔到 android-37，就自動把 compileSdk / targetSdk 降到最高可用嗰個，
+      # 等 APK 照出得到（降級會寫明喺摘要度）。
+      - name: Align SDK versions with what is installed
+        run: |
+          set -e
+          PLAT="${PLATFORM:-37}"
+          cur_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          cur_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          echo "build.gradle.kts: compileSdk=$cur_compile targetSdk=$cur_target ; runner platform=$PLAT"
+          if [ "$PLAT" != "$cur_compile" ]; then
+            echo "::warning::降級 compileSdk $cur_compile -> $PLAT（runner 冇 android-$cur_compile）"
+            sed -i "s/^[[:space:]]*compileSdk[[:space:]]*=[[:space:]]*[0-9]*/    compileSdk = $PLAT/" app/build.gradle.kts
+          fi
+          if [ "$cur_target" -gt "$PLAT" ]; then
+            echo "::warning::降級 targetSdk $cur_target -> $PLAT"
+            sed -i "s/^[[:space:]]*targetSdk[[:space:]]*=[[:space:]]*[0-9]*/        targetSdk = $PLAT/" app/build.gradle.kts
+          fi
+          # build-tools：AGP 會自動揀，但如果降咗級就明確指定，免得佢搵唔到又想上網下載
+          BT="${BUILD_TOOLS:-36.0.0}"
+          cur_bt=$(grep -m1 'buildToolsVersion' app/build.gradle.kts | grep -oE '[0-9]+(\.[0-9]+)*' | head -1)
+          if [ "$BT" != "36.0.0" ]; then
+            if [ -n "$cur_bt" ]; then
+              sed -i "s/buildToolsVersion[[:space:]]*=[[:space:]]*\"[0-9.]*\"/buildToolsVersion = \"$BT\"/" app/build.gradle.kts
+            else
+              sed -i "s/^[[:space:]]*compileSdk[[:space:]]*=[[:space:]]*[0-9]*/    compileSdk = $PLAT\n    buildToolsVersion = \"$BT\"/" app/build.gradle.kts
+            fi
+            echo "::warning::指定 buildToolsVersion = $BT"
+          fi
+          echo "--- final ---"
+          grep -nE 'compileSdk|buildToolsVersion|minSdk|targetSdk' app/build.gradle.kts
+
+      # AGP 9.1.1（compileSdk 37 嘅硬門檻）要求最低 Gradle 9.3.1。
+      # runner 預裝嘅 Gradle 可能係 8.9 —— 淨係靠 PATH 唔穩陣，所以：
+      #   ① 裝落 /opt/gradle-9.3.1
+      #   ② 用**絕對路徑**叫 gradle，唔經 PATH
+      #   ③ 開 build 前硬驗版本，唔啱即刻紅（唔好等 AGP 報 cryptic 嘅 version-check 錯）
+      - name: Install Gradle 9.3.1
+        run: |
+          set -e
+          if [ ! -x /opt/gradle-9.3.1/bin/gradle ]; then
+            curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+            sudo unzip -q -o /tmp/gradle.zip -d /opt
+            sudo chmod +x /opt/gradle-9.3.1/bin/gradle
+          fi
+          echo "GRADLE_BIN=/opt/gradle-9.3.1/bin/gradle" >> "$GITHUB_ENV"
+
+      - name: Verify Gradle version
+        run: |
+          set -e
+          echo "GRADLE_BIN = ${GRADLE_BIN}"
+          java -version
+          "$GRADLE_BIN" --version | head -12
+          v=$("$GRADLE_BIN" --version | grep -m1 '^Gradle' | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          echo "detected gradle = $v"
+          major=$(echo "$v" | cut -d. -f1)
+          minor=$(echo "$v" | cut -d. -f2)
+          if [ "$major" -lt 9 ] || { [ "$major" -eq 9 ] && [ "$minor" -lt 3 ]; }; then
+            echo "::error::Gradle $v is too old - AGP 9.1.1 needs >= 9.3.1 (compileSdk 37)"
+            exit 1
+          fi
+          echo "gradle OK (>= 9.3.1)"
+
+      # 固定簽名：GitHub runner 每次都係全新機器，若然用系統自動產生嘅 debug key，
+      # 每次簽名都唔同，用戶裝新版會彈「套件與現有的套件發生衝突」。
+      # 呢度確保 keystore/hketa.jks 存在（冇就由 base64 文字檔還原）。
+      - name: Ensure signing keystore
+        run: |
+          mkdir -p keystore
+          if [ -s keystore/hketa.jks ]; then
+            echo "keystore/hketa.jks already present"
+          elif [ -s keystore/hketa.jks.b64 ]; then
+            base64 -d keystore/hketa.jks.b64 > keystore/hketa.jks
+            echo "restored from hketa.jks.b64"
+          else
+            echo "::warning::no fixed keystore found - APK signature will differ between builds"
+          fi
+          if [ -s keystore/hketa.jks ]; then
+            keytool -list -keystore keystore/hketa.jks -storepass hketa2026 -alias hketa > /dev/null 2>&1 \
+              && echo "keystore verified" \
+              || { echo "::error::keystore is invalid"; exit 1; }
+          fi
+
+      # 一定要 set -o pipefail：淨係寫 `gradle ... | tee log` 嘅話，
+      # 管道退出碼係 tee（永遠 0），gradle 失敗會被吞掉、步驟顯示綠剔。
+      - name: Build Release APK
+        run: |
+          set -o pipefail
+          # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
+          "$GRADLE_BIN" :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee /tmp/release-build.log
+
+      - name: Show build outputs
+        run: |
+          echo "--- app/build/outputs ---"
+          find app/build/outputs -maxdepth 4 2>/dev/null || echo "(none)"
+          echo "--- all apk ---"
+          find app/build -name "*.apk" 2>/dev/null || true
+
+      - name: Collect release APK
+        run: |
+          mkdir -p apk-out
+          for f in $(find app/build/outputs/apk -name "*.apk" -type f); do
+            cp "$f" "apk-out/HKATE-release.apk"
+            # SHA-256 校驗檔：App 內下載嗰陣會自動攞嚟對比
+            # 格式「<hash>  <檔名>」，淨係取第一行 hash 就得
+            (cd apk-out && sha256sum HKATE-release.apk > HKATE-release.apk.sha256)
+          done
+          ls -lh apk-out
+          test -n "$(ls -A apk-out)" || { echo "::error::no APK produced"; exit 1; }
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hkate-release-apk
+          path: apk-out/*.apk
+
+      - name: Attach APK to release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apk-out/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 失敗時把完整 log 印落 step log（唔使下載 artifact 都睇到），
+      # 並抽出「最有用嗰 60 行」—— 冇 log 就好難判斷錯乜。
+      - name: Dump build log on failure
+        if: failure() && hashFiles('/tmp/release-build.log') != ''
+        run: |
+          echo "=============== 完整 release-build.log ==============="
+          cat /tmp/release-build.log || true
+          echo
+          echo "=============== 錯誤摘要（頭 60 行）==============="
+          grep -nE 'e: |error: |FAILED|FAILURE:|\* What went wrong|Caused by|Execution failed' \
+            /tmp/release-build.log | head -60 || true
+
+      - name: Write errors to job summary
+        if: failure()
+        run: |
+          {
+            echo "## Build failed"
+            echo
+            echo "### Error excerpt"
+            echo '```'
+            grep -h -E "^(e: |error: |FAILURE: |.*What went wrong)" -A 4 /tmp/*-build.log 2>/dev/null | head -80 || echo "(no error lines captured)"
+            echo '```'
+            echo
+            echo "Full log: download the **build-log** artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/*-build.log
+          if-no-files-found: ignore
+
+  # =====================================================================
+  # 把 APK 提交到 repo 嘅 apk 分支 / builds 目錄，
+  # 令 APK 可以直接喺 repo 檔案列表度撳 latest.apk 下載
+  # （同 ci-bot 上傳嘅做法一樣）。
+  #
+  # 默認係「本 repo」，內置 GITHUB_TOKEN 就夠，唔使另外設定 PAT。
+  #       只有想推去「另一個」repo 時先需要 PUBLISH_TOKEN：
+  #       Settings ▸ Developer settings ▸ Personal access tokens 開一個
+  #       classic token（scope 揀 repo），再加落本 repo 嘅
+  #       Settings ▸ Secrets ▸ Actions。
+  # =====================================================================
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # 關鍵：發布失敗唔應該拖垮成個 workflow —— APK 已經喺 build job 嘅
+    # artifact 度，呢度只係額外抄一份去 apk 分支。開咗 continue-on-error 之後，
+    # 就算 git push 失敗（shallow 被拒 / 分支保護 / token 權限），Actions 只會
+    # 顯示黃色警告，成個 run 仍然係綠色。
+    continue-on-error: true
+    # 點解會「This job was skipped」：
+    #   之前淨係喺 workflow_dispatch 或 push tag 時先跑，
+    #   所以 push 去 main 嗰陣成個表達式係 false → job 被跳過。
+    #   而家三種情況都會發布：
+    #     ① push 去 main
+    #     ② push v* tag
+    #     ③ 手動 Run workflow 且 inputs.publish 係 true
+    #   註：唔加 always() 係刻意嘅 —— build 失敗時就唔應該發布，
+    #   needs 關係會令呢個 job 自動取消，唔會浪費時間。
+    if: >-
+      ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+          || github.event_name == 'workflow_dispatch' && inputs.publish }}
+
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: hkate-release-apk
+          path: apk-in
+
+      - name: Check publish settings
+        id: tok
+        run: |
+          TARGET="${{ github.event.inputs.target_repo || github.repository }}"
+          SELF="${{ github.repository }}"
+          echo "目標 repo：$TARGET（本 repo：$SELF）"
+          if [ "$TARGET" = "$SELF" ] || [ -n "${{ secrets.PUBLISH_TOKEN }}" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            if [ "$TARGET" = "$SELF" ]; then
+              echo "同 repo 推送 —— 用內置 GITHUB_TOKEN"
+            else
+              echo "跨 repo 推送 —— 用 PUBLISH_TOKEN"
+            fi
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::跨 repo 推送需要 PUBLISH_TOKEN，今次跳過（APK 仍然喺 Actions artifact 度）"
+          fi
+
+      - name: Resolve target settings
+        if: steps.tok.outputs.skip == 'false'
+        id: cfg
+        run: |
+          # 用 ${VAR:-default} 而唔係 `[ -z x ] && x=...`：
+          # 後者喺 `set -e` 之下，當變數非空時會返回非零、直接成個 step 失敗
+          repo="${{ github.event.inputs.target_repo || github.repository }}"
+          br="${{ github.event.inputs.target_branch || 'apk' }}"
+          dir="${{ github.event.inputs.target_dir || 'builds' }}"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "branch=$br" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "目標：$repo （分支 $br，目錄 $dir）"
+
+      - name: Clone target repo
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          # 同 repo 用內置 GITHUB_TOKEN 就夠；只有跨 repo 先需要 PAT（PUBLISH_TOKEN）
+          TOKEN="${{ secrets.PUBLISH_TOKEN || github.token }}"
+          export TOKEN
+          BR="${{ steps.cfg.outputs.branch }}"
+
+          rm -rf target-repo && mkdir target-repo && cd target-repo
+          git init -q
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git"
+
+          # 睇下目標分支存唔存在（pipefail 必要：唔係 ls-remote 失敗會被 grep 吞掉）
+          set -o pipefail
+          if git ls-remote --heads origin "$BR" 2>/dev/null | grep -q "refs/heads/$BR$"; then
+            set +o pipefail
+            echo "分支 $BR 已存在 → fetch 佢"
+            # 重點：一定要寫「全 refspec」。
+            # 淨係寫 `git fetch origin apk` 只會放落 FETCH_HEAD，
+            # 唔會建立 refs/remotes/origin/apk，下一句 checkout 就會報
+            # fatal: 'origin/apk' is not a commit
+            git fetch --depth 1 origin "refs/heads/$BR:refs/remotes/origin/$BR"
+            git checkout -q -B "$BR" "refs/remotes/origin/$BR"
+          else
+            set +o pipefail
+            echo "分支 $BR 唔存在 → 開 orphan（唔會掝走 main 嘅歷史）"
+            git checkout -q --orphan "$BR"
+            git rm -rf --cached . -q || true
+          fi
+
+      - name: Copy APK into target repo
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          cd target-repo
+          mkdir -p "${{ steps.cfg.outputs.dir }}"
+          SRC="$(ls ../apk-in/*.apk | head -1)"
+          echo "來源：$SRC"
+          VER="${{ needs.build.outputs.version_name || '1.0.0' }}"
+          cp "$SRC" "${{ steps.cfg.outputs.dir }}/hkate-v${VER}-run${{ github.run_number }}.apk"
+          cp "$SRC" "${{ steps.cfg.outputs.dir }}/latest.apk"
+          (cd "${{ steps.cfg.outputs.dir }}" && sha256sum latest.apk > latest.apk.sha256)
+          # 只保留 latest.apk + 最近 5 個版本檔（關咗 keep_history 就只留 latest）
+          if [ "${{ github.event.inputs.keep_history || 'true' }}" != "true" ]; then
+            # 只保留 latest.apk + 最近 5 個版本檔（sort -V 先啱：run9 < run10）
+            ls -1 ${{ steps.cfg.outputs.dir }}/*.apk 2>/dev/null \
+              | grep -v '/latest.apk$' \
+              | grep -v '/hkate-v'"$VER"'-run${{ github.run_number }}.apk$' \
+              | sort -V | head -n -5 | xargs -r rm -f
+          fi
+          ls -lh "${{ steps.cfg.outputs.dir }}"
+
+      - name: Commit and push
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          set -e
+          cd target-repo
+          git add -A "${{ steps.cfg.outputs.dir }}"
+          if git diff --cached --quiet; then
+            echo "冇變化，唔使提交"
+            exit 0
+          fi
+          git commit -m "APK run ${{ github.run_number }} (${{ github.sha }})"
+
+          # shallow clone 有機會被 server 以 "shallow update not allowed" 拒絕，
+          # 咁就攞完整歷史再推一次
+          if git push origin "HEAD:${{ steps.cfg.outputs.branch }}" 2>/tmp/push.err; then
+            echo "推送成功"
+          else
+            echo "第一次推送失敗，攞完整歷史重試："
+            tail -3 /tmp/push.err 2>/dev/null || true
+            git fetch --unshallow origin || true
+            git push origin "HEAD:${{ steps.cfg.outputs.branch }}"
+            echo "重試成功"
+          fi
+          echo "已推送 → ${{ steps.cfg.outputs.repo }}#${{ steps.cfg.outputs.branch }}/${{ steps.cfg.outputs.dir }}"
+
+      - name: Summary
+        if: steps.tok.outputs.skip == 'false'
+        run: |
+          {
+            echo "## APK 已提交"
+            echo
+            echo "- Repo：**${{ steps.cfg.outputs.repo }}**"
+            echo "- 分支：\`${{ steps.cfg.outputs.branch }}\`"
+            echo "- 路徑：\`${{ steps.cfg.outputs.dir }}/latest.apk\`"
+            echo
+            echo "直接喺 repo 檔案列表撳 \`latest.apk\` → Download 就可以裝。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnose push failure
+        if: failure() && steps.tok.outputs.skip == 'false'
+        run: |
+          {
+            echo "## ⚠️ 發布步驟失敗（唔影響 APK）"
+            echo
+            echo "APK 仍然喺 **build** job 嘅 artifact \`hkate-release-apk\` 度。"
+            echo
+            echo "常見原因："
+            echo "1. 分支有 branch protection —— Settings ▸ Branches 解除，或改推去冇保護嘅分支"
+            echo "2. shallow clone 被拒 —— 已自動 \`--unshallow\` 重試"
+            echo "3. Token 權限唔夠 —— 同 repo 要 \`contents: write\`，跨 repo 要 PAT"
+            echo
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -20 /tmp/push.err 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+          echo '\`' >> "$GITHUB_STEP_SUMMARY"
