@@ -348,6 +348,11 @@ private fun NoticesTab(
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold
         )
+        Spacer(Modifier.height(4.dp))
+
+        // ★ 講清楚呢啲唔係官方公告（除咗港鐵系）
+        Muted(stringResource(R.string.notice_disclaimer), fontSize = 11)
+
         Spacer(Modifier.height(8.dp))
 
         when {
