@@ -251,15 +251,19 @@ OkHttp 4.12 + kotlinx.serialization, Coroutines/Flow + AndroidViewModel, Play Se
 | Citybus / GMB needed a manual repair | **Fixed**: repair now runs **automatically in the background** as soon as the index is built (incremental + concurrent, no toast, doesn't block you). It runs once and remembers; the manual buttons remain |
 | Light Rail specials needed rescanning | **Improved**: scan results are **cached locally** (`filesDir/hketa_lr_special.json`), so the Rail tab shows them immediately after one scan |
 | Viewed maps went blank offline | **Improved**: the WebView uses `LOAD_CACHE_ELSE_NETWORK`, so routes you've already viewed (Leaflet + tiles) render offline |
+| Offline maps relied on the unreliable WebView cache | **Fixed**: `data/TileCache.kt` now manages its own **offline tile pack**. Showing a map prefetches zoom 12–16 tiles into `filesDir/hketa_tiles/` in the background, and the WebView's `shouldInterceptRequest` serves tiles from disk when available — so **a route you've viewed once renders a real map even in airplane mode** |
+| NLB had no English stop names | **Fixed**: the API has no `name_en`, so `data/NlbStopNames.kt` bundles ~90 Lantau stop names with their **official English names** (government gazetteer + NLB signage) — **not machine-translated**. Anything unmatched stays Chinese rather than being invented |
+| Light Rail specials needed a manual scan | **Fixed**: opening the Rail tab **scans automatically in the background** (cached 7 days, rescans when stale) — no button press needed. The manual rescan button remains |
 
 ### Limitations that remain
 
-- **NLB has no English stop names**: the official endpoint (`rt.data.gov.hk/.../nlb`) returns Chinese names only, with no `name_en` field.
-  We **won't machine-translate these** — invented English names won't match the official signs, which makes finding your stop harder.
-  NLB stop names stay Chinese in the English interface (KMB, Citybus, GMB and rail all have official English names).
-- **The real map needs a network on first view**: viewed routes are cached and render offline, but viewing a route for the very first time still needs to fetch tiles and Leaflet.
-  Fully offline maps would mean bundling tiles and a much larger APK, so that's not planned.
-- **Light Rail specials need a scan first**: there's no official list endpoint, so the first scan is manual, and results reflect only what was running at scan time.
+- **NLB English names cover major stops only**: ~90 common Lantau stop names are bundled with official English names;
+  obscure village stops may not match — **unmatched names stay Chinese** rather than getting a plausible-looking invention.
+  KMB, Citybus, GMB and rail all use the official `name_en`; only NLB relies on this table.
+- **The real map needs a network on first view**: tiles are prefetched *while you view*, so seeing a route for the first time still needs network for tiles and Leaflet.
+  After that the offline pack exists and works in airplane mode. Making unviewed routes offline too would mean pre-bundling tiles (a much larger APK), so that's not planned.
+- **Light Rail special results age**: scan results are cached for 7 days and reflect what was running at scan time.
+  There's no official special-trips endpoint, so scanning is the only way to discover them.
 - **Nearby-stop coverage**: after the automatic background repair, Citybus and GMB stops are included. On a very first index build you'll see KMB first, with Citybus / GMB appearing once the background repair finishes (usually a minute or two).
 
 ## Privacy
