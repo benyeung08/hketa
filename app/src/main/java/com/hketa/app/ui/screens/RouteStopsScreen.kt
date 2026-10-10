@@ -205,6 +205,9 @@ private fun TimetableTab(
     busy: Boolean
 ) {
     val route by vm.selectedRoute.collectAsState()
+    // 離線快取：冇網／抓取失敗嗰陣顯示嘅係上次嗰份
+    val offline by vm.timetableOffline.collectAsState()
+    val cacheAt by vm.timetableCacheAt.collectAsState()
 
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -222,6 +225,20 @@ private fun TimetableTab(
 
         // 說明：講清楚呢份表係點嚟嘅，唔會令人以為係官方紙本時刻表
         Muted(stringResource(R.string.tt_note))
+
+        // ★ 離線提示：呢份係冇網時由本地快取顯示嘅，要講明唔係即時
+        if (offline && cacheAt > 0L) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                stringResource(
+                    R.string.tt_offline,
+                    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                        .format(java.util.Date(cacheAt))
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
 
         Spacer(Modifier.height(10.dp))
 

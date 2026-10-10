@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.hketa.app.R
 import com.hketa.app.data.StopWithSeq
+import com.hketa.app.data.AssetCache
 import com.hketa.app.data.TileCache
 import kotlin.math.max
 import kotlin.math.min
@@ -97,12 +98,17 @@ private fun OsmRouteMap(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val tileCache = remember(stops) { TileCache(context) }
+    // 靜態資源離線包：第一次攞到 Leaflet 嘅 JS／CSS 就存落機，
+    // 之後連 JS 都唔使再上網 —— 睇過一次就真正離線出到真實地圖
+    val assetCache = remember { AssetCache(context) }
     LaunchedEffect(stops) {
         scope.launch {
             val pts = stops.map { it.stop }.filter { it.lat != 0.0 || it.lon != 0.0 }
             if (pts.size >= 2) {
                 tileCache.prefetchRoute(pts.map { it.lat }, pts.map { it.lon })
             }
+            // 冇本地副本就喺背景下載（有就直接返，唔發請求）
+            if (!assetCache.isComplete()) assetCache.ensureDownloaded()
         }
     }
 
@@ -132,6 +138,19 @@ private fun OsmRouteMap(
                         request: android.webkit.WebResourceRequest?
                     ): android.webkit.WebResourceResponse? {
                         val url = request?.url?.toString() ?: return null
+
+                        // ① 靜態資源（Leaflet JS／CSS）：本地有就用本地 ——
+                        //    呢個係「離線都出到真實地圖」嘅關鍵
+                        if (assetCache.handles(url)) {
+                            val f = assetCache.localFor(url) ?: return null
+                            return android.webkit.WebResourceResponse(
+                                assetCache.mimeFor(url), "UTF-8",
+                                runCatching { f.inputStream() }.getOrNull()
+                                    ?: return null
+                            )
+                        }
+
+                        // ② 瓦片：本地離線包有就用本地
                         val m = TILE_RE.find(url) ?: return null
                         val (z, x, y) = Triple(
                             m.groupValues[1].toIntOrNull() ?: return null,
