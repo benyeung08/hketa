@@ -56,6 +56,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         /** 到站預報自動刷新間隔（秒）—— 同底部狀態欄嘅倒數一致 */
         const val ETA_AUTO_REFRESH_SEC = 20
 
+        /** 路線號輸入上限：最多 3 個數字 + 最多 2 個英文 */
+        private const val ROUTE_MAX_DIGITS = 3
+        private const val ROUTE_MAX_LETTERS = 2
+
         /** 主頁自動重新定位／重整間隔（秒） */
         const val HOME_AUTO_LOCATE_SEC = 60
 
@@ -1135,6 +1139,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ============ 搜尋 ============
+
+    /**
+     * 路線號嘅輸入上限：**最多 3 個數字 + 最多 2 個英文**（合計最多 5 個字元）。
+     *
+     * 香港路線號實際嘅樣：
+     *   1A、6、12、101、691（純數字，最多 3 位）
+     *   K51、N691、N241（1 個英文字 + 數字）
+     *   B3X、P960、W3、R11、T6（英文喺頭或尾）
+     *   1D、2H、51M、2E（數字 + 1 個英文字）
+     */
+    /**
+     * 由鍵盤追加一個字元。
+     *
+     * ★ 重點：**一定要喺 ViewModel 讀 `_query.value`，唔可以喺 UI 嗰邊用
+     *   `query + it`**。因為 `setQuery` 會即時過濾 2099 條路線（喺主線程），
+     *   令畫面重組慢咗；如果 UI 嗰邊攞住畫面上嘅 `query`，連撳兩下嗰陣
+     *   第二下可能仲讀到舊值，結果「1」再撳「2」會變「2」而唔係「12」
+     *   —— 即係「淨係入到一個數字」嘅現象。
+     *
+     *   喺 ViewModel 讀 `_query.value` 一定係最新值，連撳幾快都唔會食字。
+     */
+    fun appendQueryChar(ch: String) {
+        val cur = _query.value
+        if (cur.length >= ROUTE_MAX_DIGITS + ROUTE_MAX_LETTERS) return
+        val ok = if (ch.isNotEmpty() && ch[0].isDigit()) {
+            cur.count { it.isDigit() } < ROUTE_MAX_DIGITS
+        } else {
+            cur.count { it.isLetter() } < ROUTE_MAX_LETTERS
+        }
+        if (ok) setQuery(cur + ch)
+    }
+
+    /** 刪除最後一個字元（同理，喺 ViewModel 讀最新值）*/
+    fun deleteQueryChar() {
+        setQuery(_query.value.dropLast(1))
+    }
 
     fun setQuery(q: String) {
         _query.value = q
