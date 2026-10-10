@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HKATE 巴士到站预报</string>
+    <string name="app_name">HKATE</string>
 
     <!-- 底部导航 -->
     <string name="tab_search">搜索</string>
@@ -38,7 +38,7 @@
     <string name="tab_settings">设置</string>
 
     <!-- 页首标题 -->
-    <string name="title_search">HKATE 巴士到站预报</string>
+    <string name="title_search">HKATE</string>
     <string name="title_rail">铁路</string>
     <string name="title_route">沿途车站</string>
     <string name="title_eta">到站预报</string>
@@ -305,7 +305,7 @@
     <string name="notice_just_now">刚才</string>
     <string name="notice_empty">暂时没路线公告</string>
     <string name="notice_view">查看详情</string>
-    <string name="search_hint_route_no">输入路线号码</string>
+    <string name="search_hint_route_no">输入路线号码，如 1A、6、K51、N691</string>
     <string name="search_route_prefix">%1$s - %2$s</string>
     <string name="src_nlb_full">大屿山巴士 (资料由DATA.GOV.HK提供)</string>
     <string name="src_kmb_full">九龙巴士 (资料由DATA.GOV.HK提供)</string>
