@@ -98,12 +98,8 @@ fun AppRoot(
             error = null,
             currentVersion = vm.currentVersion.collectAsState().value,
             localEntries = com.hketa.app.data.Changelog.forLang(AppLocale.current()),
-            onDownload = { release ->
-                val url = release.assets.firstOrNull {
-                    it.browser_download_url.endsWith(".apk", ignoreCase = true)
-                }?.browser_download_url
-                if (!url.isNullOrBlank()) openUrl(context, url)
-            },
+            // ★ 由「開瀏覽器下載」改為「App 內下載 + 校驗 + 安裝」
+            onDownload = { release -> vm.downloadAndInstall(release) },
             onDismiss = { showHistory = false }
         )
     }
@@ -378,13 +374,3 @@ fun Muted(
     )
 }
 
-/** 用瀏覽器開 APK 下載連結（GitHub release asset） */
-private fun openUrl(context: android.content.Context, url: String) {
-    runCatching {
-        val intent = android.content.Intent(
-            android.content.Intent.ACTION_VIEW,
-            android.net.Uri.parse(url)
-        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-    }
-}
