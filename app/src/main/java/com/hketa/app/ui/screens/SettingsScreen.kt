@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import com.hketa.app.R
 import com.hketa.app.data.ApkInstaller
+import com.hketa.app.ui.UpdateDialog
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
@@ -67,6 +68,8 @@ fun SettingsScreen(
     val updateInfo by vm.updateInfo.collectAsState()
     val updateError by vm.updateError.collectAsState()
     val downloadState by vm.downloadState.collectAsState()
+    // ★ 撳版本膠囊 → 彈出「檢查更新」對話框（第二張圖嗰個）
+    var showUpdateDialog by remember { mutableStateOf(false) }
 
     // 一入設定頁就靜默檢查一次（節流；手動撳掣可以即時再查）
     LaunchedEffect(Unit) { vm.checkUpdate() }
@@ -285,8 +288,50 @@ fun SettingsScreen(
                 versionCode = pkgVersionCode,
                 hasUpdate = hasUpdate,
                 checking = updateState == UpdateState.CHECKING,
-                onCheckUpdate = { vm.checkUpdate(force = true) },
+                // 撳膠囊 = 檢查更新並彈出結果對話框（跟 code-to-app 原版行為）
+                onCheckUpdate = {
+                    vm.checkUpdate(force = true)
+                    showUpdateDialog = true
+                },
                 onOpenHistory = onOpenHistory
+            )
+        }
+
+        // 檢查更新對話框（第二大張圖嗰個版面：版本膠囊 + 最新／目前版本 + 大小
+        // + Release notes + 關閉／下載）
+        if (showUpdateDialog) {
+            val rel = updateInfo
+            UpdateDialog(
+                state = updateState,
+                latestVersion = rel?.tag_name.orEmpty(),
+                currentVersion = shownVersion,
+                sizeMb = UpdateChecker.sizeMb(
+                    rel?.let { UpdateChecker.apkAsset(it) }
+                ),
+                notes = rel?.body.orEmpty(),
+                errorMessage = updateError,
+                onDownload = {
+                    if (rel != null) vm.downloadAndInstall(rel)
+                },
+                onDismiss = { showUpdateDialog = false },
+                onOpenHistory = {
+                    showUpdateDialog = false
+                    onOpenHistory()
+                },
+                onCopyVersion = {
+                    val text = "HKATE v$shownVersion ($pkgVersionCode)"
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("HKATE version", text))
+                    android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+                },
+                downloadState = downloadState,
+                onCancelDownload = vm::cancelDownload,
+                onInstall = {
+                    // local val：delegated property 唔可以 smart cast
+                    val ds = downloadState
+                    if (ds is ApkInstaller.State.Done) vm.installDownloaded(ds.file)
+                }
             )
         }
 
