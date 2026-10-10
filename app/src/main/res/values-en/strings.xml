@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HKATE — HK Transport ETA</string>
+    <string name="app_name">HKATE</string>
 
     <!-- Bottom navigation -->
     <string name="tab_search">Search</string>
@@ -38,7 +38,7 @@
     <string name="tab_settings">Settings</string>
 
     <!-- Screen titles -->
-    <string name="title_search">HKATE Transport ETA</string>
+    <string name="title_search">HKATE</string>
     <string name="title_rail">Rail</string>
     <string name="title_route">Route stops</string>
     <string name="title_eta">Arrival times</string>
@@ -305,7 +305,7 @@
     <string name="notice_just_now">Just now</string>
     <string name="notice_empty">No route notices</string>
     <string name="notice_view">Details</string>
-    <string name="search_hint_route_no">Enter a route number</string>
+    <string name="search_hint_route_no">Route no., e.g. 1A, 6, K51, N691</string>
     <string name="search_route_prefix">%1$s - %2$s</string>
     <string name="src_nlb_full">New Lantao Bus (data from DATA.GOV.HK)</string>
     <string name="src_kmb_full">KMB (data from DATA.GOV.HK)</string>
