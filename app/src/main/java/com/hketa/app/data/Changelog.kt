@@ -37,6 +37,35 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.1.3",
+            date = "2026-10-09",
+            titleZhHant = "路線號打得齊：最多 3 數字 + 2 英文",
+            titleZhHans = "路线号打得齐：最多 3 数字 + 2 英文",
+            titleEn = "Type any route: up to 3 digits plus 2 letters",
+            itemsZhHant = listOf(
+                "搜尋路線號而家支援「最多 3 個數字 + 最多 2 個英文」：鍵盤字母由 9 個補到 15 個（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 呢啲因為無 D、H、M、P、W、R、T 而**根本打唔到**；而家全部打到",
+                "輸入框加咗長度上限：**最多 3 個數字 + 最多 2 個英文**（合計 5 個字元）。以前冇上限，可以一直撳落去砌個永遠搜唔到嘅長字串；而家會數住數字同英文嘅數量，砌唔出嘅組合唔會再接受（例如 1234 淨收 123、1ABC 淨收 1AB）",
+                "輸入框提示改為「輸入路線號碼，如 1A、6、K51、N691」，一眼就知可以點打",
+                "App 名簡化：由「HKATE 巴士到站預報」改為淨係「HKATE」（桌面圖示下面、關於頁都係）；順手修好設定頁版本號硬編碼顯示「1.0.0」嘅 bug，而家會顯示實際版本",
+                "修好「連撳會食字、結果淨係入到一個數字」嘅 bug：以前鍵盤係 `vm.setQuery(query + it)`，`query` 係撳嗰刻**畫面上**嘅值；而 setQuery 會即時過濾 2099 條路線（喺主線程）拖慢重組，連撳兩下第二下會讀到舊值，「1」再撳「2」變咗「2」。而家改為 `appendQueryChar()`，喺 ViewModel 直接讀 `_query.value`（一定係最新值），連撳幾快都唔會食字；刪除鍵同理"
+            ),
+            itemsZhHans = listOf(
+                "搜索路线号现在支持「最多 3 个数字 + 最多 2 个英文」：键盘字母由 9 个补到 15 个（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 这些因为没有 D、H、M、P、W、R、T 而**根本打不到**；现在全部打得到",
+                "输入框加了长度上限：**最多 3 个数字 + 最多 2 个英文**（合计 5 个字符）。以前没有上限，可以一直按下去拼出一个永远搜不到的长字符串；现在会数着数字和英文的数量，拼不出的组合不会再接受（例如 1234 只收 123、1ABC 只收 1AB）",
+                "输入框提示改为「输入路线号码，如 1A、6、K51、N691」，一眼就知道可以怎么打",
+                "App 名简化：由「HKATE 巴士到站预报」改为只有「HKATE」（桌面图标下面、关于页都是）；顺手修好设置页版本号硬编码显示「1.0.0」的 bug，现在会显示实际版本",
+                "修好「连按会吞字、结果只能输入一个数字」的 bug：以前键盘是 `vm.setQuery(query + it)`，`query` 是按下那一刻**画面上**的值；而 setQuery 会即时过滤 2099 条路线（在主线程）拖慢重组，连按两下第二下会读到旧值，「1」再按「2」变成了「2」。现在改为 `appendQueryChar()`，在 ViewModel 直接读 `_query.value`（一定是最新的值），连按多快都不会吞字；删除键同理"
+            ),
+            itemsEn = listOf(
+                "Route-number entry now supports up to 3 digits plus 2 letters. The keyboard went from 9 letters to 15 (A B C D E H K / M N P R S T W X) \u2014 routes like 1D, 2H, 51M, 2E, P960, W3, R11 and T6 were previously **impossible to type** because D, H, M, P, W, R and T were missing",
+                "The field now caps input at **3 digits and 2 letters** (5 characters). Nothing used to stop you building an endlessly long string that could never match; the field counts digits and letters and rejects impossible combinations (e.g. 1234 keeps only 123, 1ABC keeps only 1AB)",
+                "The field hint now reads \u201cRoute no., e.g. 1A, 6, K51, N691\u201d so the accepted format is obvious at a glance",
+                "Simplified the app name: \u201cHKATE \u2013 HK bus arrivals\u201d becomes just \u201cHKATE\u201d (both under the launcher icon and on the About page). Also fixed the Settings page hard-coding version 1.0.0 \u2014 it now shows the real version",
+                "Fixed characters being swallowed on fast key presses (which made it look like you could only type one digit): the keyboard called `vm.setQuery(query + it)` where `query` was the value **on screen** at that moment, and setQuery filters 2,099 routes on the main thread, delaying recomposition \u2014 so a second quick press still read the stale value and \u201c1\u201d then \u201c2\u201d became just \u201c2\u201d. It now calls `appendQueryChar()`, which reads `_query.value` inside the ViewModel (always current), so no press is lost however fast you type; the delete key works the same way"
+            ),
+        ),
+
+        Entry(
             version = "1.1.2",
             date = "2026-10-09",
             titleZhHant = "效能大優化：開 App 唔再卡",
@@ -51,7 +80,7 @@ object Changelog {
                 "性能：附近车站以前每找一个站都要扫完所有 63150 条路线-车站对应（50 个站 = 约 315 万次），现在建成一次索引表，之后 O(1) 查表；实测路线扫描由 454 万次减到 6.3 万次，缓存命中后每次重整的计算由 352 ms 减到 6 ms（约 58 倍）"
             ),
             itemsEn = listOf(
-                "Performance: the ~7 MB index JSON was read and written **on the main thread**, stalling app start (measured 187 ms load + 342 ms save; roughly 2.6 s on a low-end phone). It now runs on the IO thread with streaming codecs and an atomic temp-file rename, so a crash mid-write can no longer corrupt the index",
+                "Performance: the ~7 MB index JSON was read and written \u201c**on the main thread**\u201d, stalling app start (measured 187 ms load + 342 ms save; roughly 2.6 s on a low-end phone). It now runs on the IO thread with streaming codecs and an atomic temp-file rename, so a crash mid-write can no longer corrupt the index",
                 "Performance: finding nearby stops used to scan all 63,150 route-stop rows once per stop (50 stops = about 3.15 M iterations). It now builds the lookup once and resolves each stop in O(1): measured route scanning drops from 4.55 M to 63 K iterations, and with the cache warm each refresh costs 6 ms instead of 352 ms (about 58x)"
             ),
         ),
