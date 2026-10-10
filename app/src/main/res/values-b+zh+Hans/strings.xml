@@ -165,10 +165,10 @@
     <string name="index_no_ctb">尚未取得城巴路线，请先重建索引</string>
     <string name="index_no_gmb">尚未取得小巴路线，请先重建索引</string>
     <string name="index_mtrbus_hint">即时向港铁巴士查询</string>
-    <string name="about_app_name">hkate app</string>
+    <string name="about_app_name">HKATE</string>
     <string name="about_data_source">数据来源</string>
     <string name="about_data_source_desc">直接对接九巴、城巴、屿巴、专线小巴、港铁的官方公开数据接口，没有 WebView、没有网页外壳。</string>
-    <string name="about_desc">香港巴士到站预报 · 原生 Android App</string>
+    <string name="about_desc">原生 Android App · 香港巴士到站资料</string>
     <string name="about_intro">HKATE 是一个香港巴士到站预报 App，直接对接各运营商的官方公开数据接口 —— 没有 WebView、没有广告、没有追踪。\n\n打开就看到附近车站的即时班次，支持搜索路线和车站、沿途车站、路线地图、桌面小工具。\n\n只向官方接口发出 HTTPS 请求，定位只用来排序附近车站，不储存、不上传。</string>
     <string name="about_open_settings">设置</string>
     <string name="about_open_source">开源</string>
@@ -260,6 +260,7 @@
     <string name="rs_tab_stops">车站</string>
     <string name="rs_tab_timetable">班次</string>
     <string name="tt_empty">暂时没班次资料（可能已过尾班车）</string>
+    <string name="tt_offline">離線資料 · %1$s 抓取（唔係即時班次）</string>
     <string name="tt_headway">班次间隔：约 %1$d 分钟</string>
     <string name="tt_loading">抓取班次资料…</string>
     <string name="tt_note">班次表由官方即时到站预报构建（第 N 班 = 各站预报的第 N 项）。官方没有公开时刻表接口，所以「营运时段」是观察累积，不是官方公布的头／尾班车。</string>
