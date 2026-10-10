@@ -240,8 +240,8 @@
 
     <!-- About screen -->
     <string name="about_title">About</string>
-    <string name="about_app_name">hkate app</string>
-    <string name="about_desc">Hong Kong bus arrivals · a native Android app</string>
+    <string name="about_app_name">HKATE</string>
+    <string name="about_desc">Native Android app · Hong Kong transport data</string>
     <string name="about_open_settings">Settings</string>
     <string name="about_data_source">Data sources</string>
     <string name="about_data_source_desc">Talks directly to the official open-data endpoints of KMB, Citybus, NLB, GMB and MTR — no WebView, no web wrapper.</string>
@@ -298,6 +298,7 @@
     <string name="tt_note">Built from the live official arrivals (trip N = the Nth prediction at each stop). There is no public timetable API, so the service window is accumulated from observations \u2014 not an official first/last bus time.</string>
     <string name="tt_loading">Loading trips\u2026</string>
     <string name="tt_empty">No trips right now (possibly after the last bus)</string>
+    <string name="tt_offline">Offline data \u00b7 fetched at %1$s (not live)</string>
     <string name="tt_reload">Reload</string>
     <string name="notice_official_title">Service notice</string>
     <string name="notice_source_official">Official</string>
