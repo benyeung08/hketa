@@ -37,19 +37,41 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.1.3.1",
+            date = "2026-10-10",
+            titleZhHant = "撳版本膠囊即睇更新內容",
+            titleZhHans = "按版本胶囊即看更新内容",
+            titleEn = "Tap the version pill to see what's new",
+            itemsZhHant = listOf(
+                "設定頁撳版本膠囊（或者撳 ⟳）而家會**彈出「檢查更新」對話框**（跟 code-to-app 原版行為）：對話框入面有版本膠囊、最新版本／目前版本、APK 大小、Release notes，底部係「關閉」同「下載」兩個掣；撳「下載」直接喺 App 內開始下載。以前撳完淨係喺膠囊下面換行狀態文字，睇唔到更新內容",
+                "修好**撳底部狀態欄嗰個版本膠囊會無啦啦跳去收藏頁**嘅問題：以前係 `if (hasUpdate) onCheckUpdate() else onOpenFavorites()` —— 即係冇新版嗰陣撳落去淨係跳頁，永遠唔會顯示更新內容。而家三處膠囊（底部狀態欄 / 設定頁 / 關於頁）**一律撳落去就檢查更新並彈出「檢查更新」對話框**",
+                "技術：版本號比較以前淨睇 3 段（`1.1.3.1` 會被當成 `1.1.3`），會令第 4 段嘅版本永遠唔會彈「有新版本」。而家 `Version` 支援第 4 段，`1.1.3.1` 正確咁新過 `1.1.3`；舊嘅三段同 `-beta` 寫法完全唔受影響"
+            ),
+            itemsZhHans = listOf(
+                "设置页按版本胶囊（或者按 ⟳）现在会**弹出「检查更新」对话框**（跟 code-to-app 原版行为）：对话框里面有版本胶囊、最新版本／当前版本、APK 大小、Release notes，底部是「关闭」和「下载」两个按钮；按「下载」直接在 App 内开始下载。以前按完只是在胶囊下面换一行状态文字，看不到更新内容",
+                "修好**按底部状态栏那个版本胶囊会无缘无故跳到收藏页**的问题：以前是 `if (hasUpdate) onCheckUpdate() else onOpenFavorites()` —— 也就是没有新版本时按下去只是跳页，永远不会显示更新内容。现在三处胶囊（底部状态栏 / 设置页 / 关于页）**一律按下去就检查更新并弹出「检查更新」对话框**",
+                "技术：版本号比较以前只看 3 段（`1.1.3.1` 会被当成 `1.1.3`），会让第 4 段的版本永远不弹「有新版本」。现在 `Version` 支持第 4 段，`1.1.3.1` 正确地新于 `1.1.3`；旧的三段和 `-beta` 写法完全不受影响"
+            ),
+            itemsEn = listOf(
+                "Tapping the version pill on the Settings page (or the ⟳ icon) now **opens the Check for updates dialog** (matching code-to-app): it shows the version pill, latest and current version, APK size and release notes, with Close and Download at the bottom \u2014 and Download starts the in-app download. Previously it only swapped the status line under the pill, so you never saw what was new",
+                "Fixed the **bottom-bar version pill jumping to Favourites instead of showing updates**: it read `if (hasUpdate) onCheckUpdate() else onOpenFavorites()`, so with no update pending the press only navigated away and you never saw the release notes. All three pills (bottom bar / Settings / About) now **always check for updates and open the Check for updates dialog**",
+                "Technical: version comparison only read 3 segments, so `1.1.3.1` collapsed to `1.1.3` and a fourth-segment release would never trigger the \"update available\" prompt. `Version` now reads the 4th segment, so `1.1.3.1` is correctly newer than `1.1.3`; existing three-segment and `-beta` forms are unaffected"
+            ),
+        ),
+
+        Entry(
             version = "1.1.3",
             date = "2026-10-09",
-            titleZhHant = "路線號打得齊：最多 3 數字 + 2 英文",
-            titleZhHans = "路线号打得齐：最多 3 数字 + 2 英文",
-            titleEn = "Type any route: up to 3 digits plus 2 letters",
+            titleZhHant = "路線號打得齊 + App 名簡化",
+            titleZhHans = "路线号打得齐 + App 名简化",
+            titleEn = "Route entry fixed and app name simplified",
             itemsZhHant = listOf(
                 "搜尋路線號而家支援「最多 3 個數字 + 最多 2 個英文」：鍵盤字母由 9 個補到 15 個（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 呢啲因為無 D、H、M、P、W、R、T 而**根本打唔到**；而家全部打到",
                 "輸入框加咗長度上限：**最多 3 個數字 + 最多 2 個英文**（合計 5 個字元）。以前冇上限，可以一直撳落去砌個永遠搜唔到嘅長字串；而家會數住數字同英文嘅數量，砌唔出嘅組合唔會再接受（例如 1234 淨收 123、1ABC 淨收 1AB）",
                 "輸入框提示改為「輸入路線號碼，如 1A、6、K51、N691」，一眼就知可以點打",
                 "App 名簡化：由「HKATE 巴士到站預報」改為淨係「HKATE」（桌面圖示下面、關於頁都係）；順手修好設定頁版本號硬編碼顯示「1.0.0」嘅 bug，而家會顯示實際版本",
                 "修好「連撳會食字、結果淨係入到一個數字」嘅 bug：以前鍵盤係 `vm.setQuery(query + it)`，`query` 係撳嗰刻**畫面上**嘅值；而 setQuery 會即時過濾 2099 條路線（喺主線程）拖慢重組，連撳兩下第二下會讀到舊值，「1」再撳「2」變咗「2」。而家改為 `appendQueryChar()`，喺 ViewModel 直接讀 `_query.value`（一定係最新值），連撳幾快都唔會食字；刪除鍵同理",
-                "更新功能改為**完全喺 App 內下載**，唔再開瀏覽器：設定頁同版本歷史嘅「下載」掣以前係 `openUrl()` 開外部瀏覽器，而家統一改為 `vm.downloadAndInstall()` —— App 內下載 APK、顯示進度條（%／MB）、校驗 SHA-256，下載完個掣變「安裝」直接開系統安裝器；撳掣可以取消，失敗可以重試",
-                "設定頁撳版本膠囊（或者撳 ⟳）而家會**彈出「檢查更新」對話框**（跟 code-to-app 原版行為）：對話框入面有版本膠囊、最新版本／目前版本、APK 大小、Release notes，底部係「關閉」同「下載」兩個掣；撳「下載」直接喺 App 內開始下載。以前撳完淨係喺膠囊下面換行狀態文字，睇唔到更新內容"
+                "更新功能改為**完全喺 App 內下載**，唔再開瀏覽器：設定頁同版本歷史嘅「下載」掣以前係 `openUrl()` 開外部瀏覽器，而家統一改為 `vm.downloadAndInstall()` —— App 內下載 APK、顯示進度條（%／MB）、校驗 SHA-256，下載完個掣變「安裝」直接開系統安裝器；撳掣可以取消，失敗可以重試"
             ),
             itemsZhHans = listOf(
                 "搜索路线号现在支持「最多 3 个数字 + 最多 2 个英文」：键盘字母由 9 个补到 15 个（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 这些因为没有 D、H、M、P、W、R、T 而**根本打不到**；现在全部打得到",
@@ -57,8 +79,7 @@ object Changelog {
                 "输入框提示改为「输入路线号码，如 1A、6、K51、N691」，一眼就知道可以怎么打",
                 "App 名简化：由「HKATE 巴士到站预报」改为只有「HKATE」（桌面图标下面、关于页都是）；顺手修好设置页版本号硬编码显示「1.0.0」的 bug，现在会显示实际版本",
                 "修好「连按会吞字、结果只能输入一个数字」的 bug：以前键盘是 `vm.setQuery(query + it)`，`query` 是按下那一刻**画面上**的值；而 setQuery 会即时过滤 2099 条路线（在主线程）拖慢重组，连按两下第二下会读到旧值，「1」再按「2」变成了「2」。现在改为 `appendQueryChar()`，在 ViewModel 直接读 `_query.value`（一定是最新的值），连按多快都不会吞字；删除键同理",
-                "更新功能改为**完全在 App 内下载**，不再开浏览器：设置页和版本历史的「下载」按钮以前是 `openUrl()` 打开外部浏览器，现在统一改为 `vm.downloadAndInstall()` —— 在 App 内下载 APK、显示进度条（%／MB）、校验 SHA-256，下载完按钮变「安装」直接打开系统安装器；可以取消，失败可以重试",
-                "设置页按版本胶囊（或者按 ⟳）现在会**弹出「检查更新」对话框**（跟 code-to-app 原版行为）：对话框里面有版本胶囊、最新版本／当前版本、APK 大小、Release notes，底部是「关闭」和「下载」两个按钮；按「下载」直接在 App 内开始下载。以前按完只是在胶囊下面换一行状态文字，看不到更新内容"
+                "更新功能改为**完全在 App 内下载**，不再开浏览器：设置页和版本历史的「下载」按钮以前是 `openUrl()` 打开外部浏览器，现在统一改为 `vm.downloadAndInstall()` —— 在 App 内下载 APK、显示进度条（%／MB）、校验 SHA-256，下载完按钮变「安装」直接打开系统安装器；可以取消，失败可以重试"
             ),
             itemsEn = listOf(
                 "Route-number entry now supports up to 3 digits plus 2 letters. The keyboard went from 9 letters to 15 (A B C D E H K / M N P R S T W X) \u2014 routes like 1D, 2H, 51M, 2E, P960, W3, R11 and T6 were previously **impossible to type** because D, H, M, P, W, R and T were missing",
@@ -66,8 +87,7 @@ object Changelog {
                 "The field hint now reads \u201cRoute no., e.g. 1A, 6, K51, N691\u201d so the accepted format is obvious at a glance",
                 "Simplified the app name: \u201cHKATE \u2013 HK bus arrivals\u201d becomes just \u201cHKATE\u201d (both under the launcher icon and on the About page). Also fixed the Settings page hard-coding version 1.0.0 \u2014 it now shows the real version",
                 "Fixed characters being swallowed on fast key presses (which made it look like you could only type one digit): the keyboard called `vm.setQuery(query + it)` where `query` was the value **on screen** at that moment, and setQuery filters 2,099 routes on the main thread, delaying recomposition \u2014 so a second quick press still read the stale value and \u201c1\u201d then \u201c2\u201d became just \u201c2\u201d. It now calls `appendQueryChar()`, which reads `_query.value` inside the ViewModel (always current), so no press is lost however fast you type; the delete key works the same way",
-                "Updates now download **entirely inside the app** \u2014 no browser: the Download buttons on the Settings page and in version history used to call `openUrl()` and hand off to an external browser; they now go through `vm.downloadAndInstall()`, which fetches the APK in-app with a progress bar (%/MB), verifies SHA-256, then turns the button into Install to open the system installer. Tapping again cancels, and failures can be retried",
-                "Tapping the version pill on the Settings page (or the ⟳ icon) now **opens the Check for updates dialog** (matching code-to-app): it shows the version pill, latest and current version, APK size and release notes, with Close and Download at the bottom \u2014 and Download starts the in-app download. Previously it only swapped the status line under the pill, so you never saw what was new"
+                "Updates now download **entirely inside the app** \u2014 no browser: the Download buttons on the Settings page and in version history used to call `openUrl()` and hand off to an external browser; they now go through `vm.downloadAndInstall()`, which fetches the APK in-app with a progress bar (%/MB), verifies SHA-256, then turns the button into Install to open the system installer. Tapping again cancels, and failures can be retried"
             ),
         ),
 

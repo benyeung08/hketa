@@ -16,16 +16,23 @@ data class Version(
     val major: Int,
     val minor: Int,
     val patch: Int,
+    /** 第 4 段（可選）：畀 `1.1.3.1` 呢類版本用；缺省 = 0 */
+    val build: Int = 0,
     val pre: String = ""
 ) : Comparable<Version> {
 
     override fun toString(): String =
-        "$major.$minor.$patch" + if (pre.isNotBlank()) "-$pre" else ""
+        "$major.$minor.$patch" +
+            (if (build > 0) ".$build" else "") +
+            if (pre.isNotBlank()) "-$pre" else ""
 
     override fun compareTo(other: Version): Int {
         if (major != other.major) return major - other.major
         if (minor != other.minor) return minor - other.minor
         if (patch != other.patch) return patch - other.patch
+        // ★ 第 4 段：冇呢個比較嘅話，`1.1.3.1` 會被當成 `1.1.3`，
+        //   結果「有新版本」永遠唔會彈 —— 用戶攞唔到更新
+        if (build != other.build) return build - other.build
         if (pre == other.pre) return 0
         // 同一核心版本下，正式版永遠排喺任何預發布版之上
         if (pre.isBlank()) return 1
@@ -59,7 +66,8 @@ data class Version(
             val major = parts.getOrNull(0)?.toIntOrNull() ?: return null
             val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
             val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
-            return Version(major, minor, patch, pre)
+            val build = parts.getOrNull(3)?.toIntOrNull() ?: 0
+            return Version(major, minor, patch, build, pre)
         }
 
         /** latest 係咪新過 current */
