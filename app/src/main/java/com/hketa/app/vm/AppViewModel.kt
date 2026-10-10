@@ -1537,6 +1537,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val routeTimetable: StateFlow<com.hketa.app.data.RouteTimetable?> =
         _routeTimetable.asStateFlow()
 
+    /**
+     * 班次表離線快取 —— 解決「班次表一定要聯網」。
+     * 有網抓新嘅並更新快取；冇網／失敗就退返上次嗰份（標「離線資料」）。
+     */
+    private var timetableCache: com.hketa.app.data.TimetableCache? = null
+    private fun ensureTimetableCache(): com.hketa.app.data.TimetableCache {
+        val c = timetableCache
+            ?: com.hketa.app.data.TimetableCache(getApplication()).also { timetableCache = it }
+        return c
+    }
+
+    /** 班次表係咪離線快取（true = 冇網／抓取失敗，顯示嘅係上次嗰份） */
+    private val _timetableOffline = MutableStateFlow(false)
+    val timetableOffline: StateFlow<Boolean> = _timetableOffline.asStateFlow()
+
+    /** 離線快取嘅抓取時間（epoch ms；0 = 冇） */
+    private val _timetableCacheAt = MutableStateFlow(0L)
+    val timetableCacheAt: StateFlow<Long> = _timetableCacheAt.asStateFlow()
+
     private val _routeNotices =
         MutableStateFlow<List<com.hketa.app.data.Notice>>(emptyList())
     val routeNotices: StateFlow<List<com.hketa.app.data.Notice>> =
@@ -1563,6 +1582,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadRouteTimetable(rd: RouteDef) {
         viewModelScope.launch {
             _routeTimetable.value = null
+            _timetableOffline.value = false
+            _timetableCacheAt.value = 0L
             val stops = _routeStops.value
             if (stops.isEmpty()) return@launch
 
@@ -1594,6 +1615,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // 以「最多班次嗰個站」決定有幾多班
             val tripCount = results.maxOfOrNull { it.second.size } ?: 0
             if (tripCount == 0) {
+                // ★ 冇班次（／冇網）：唔再淨係顯示「已過尾班車」——
+                //   先試離線快取，有就顯示上次嗰份並標「離線資料」
+                val key = "${rd.op.name}|${rd.route}|${rd.bound}|${rd.serviceType}"
+                val hit = ensureTimetableCache().get(key)
+                if (hit != null && hit.table.trips.isNotEmpty()) {
+                    _routeTimetable.value = hit.table
+                    _timetableOffline.value = true
+                    _timetableCacheAt.value = hit.atMs
+                    return@launch
+                }
                 _routeTimetable.value = com.hketa.app.data.RouteTimetable(
                     stopNames = names,
                     state = com.hketa.app.data.ServiceState.ENDED.name
@@ -1631,7 +1662,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 allClocks
             )
 
-            _routeTimetable.value = com.hketa.app.data.RouteTimetable(
+            val table = com.hketa.app.data.RouteTimetable(
                 trips = trips,
                 headwayMin = headway,
                 firstObserved = rec.firstSeen.ifBlank { null },
@@ -1639,6 +1670,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 state = com.hketa.app.data.ServiceState.RUNNING.name,
                 stopNames = names
             )
+            // 抓到就寫落離線快取，下次冇網都睇到
+            ensureTimetableCache().put(
+                "${rd.op.name}|${rd.route}|${rd.bound}|${rd.serviceType}",
+                table
+            )
+            _timetableOffline.value = false
+            _timetableCacheAt.value = 0L
+            _routeTimetable.value = table
         }
     }
 
