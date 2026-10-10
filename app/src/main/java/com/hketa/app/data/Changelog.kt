@@ -37,6 +37,26 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.1.4",
+            date = "2026-10-10",
+            titleZhHant = "地圖同班次表都可以離線",
+            titleZhHans = "地图和班次表都可以离线",
+            titleEn = "Maps and trip tables go offline",
+            itemsZhHant = listOf(
+                "**真實地圖而家可以完全離線**（解決「第一次之後都要聯網攞 JS」）：以前就算瓦片有離線包，每次開地圖都仲要上 `unpkg.com` 攞 Leaflet 嘅 JS／CSS —— 一冇網就載唔到，直接退回示意圖。而家新增 `AssetCache`：第一次成功攞到就存落機並校驗內容（CSS 要有 `.leaflet-`、JS 要有 `L.map`，錯誤頁唔會當正貨），之後攔截請求直接用本地副本。所以**睇過一次地圖之後，飛機模式都出到真實地圖**",
+                "**班次表有離線快取**（解決「班次表一定要聯網」）：每條路線最新一次成功抓到嘅班次表會存落機。有網照舊抓新嘅；**冇網或者抓取失敗就自動顯示上次嗰份**，並用紅字標明「離線資料 · HH:mm 抓取（唔係即時班次）」，唔會再淨係彈一句「要連網先睇到」"
+            ),
+            itemsZhHans = listOf(
+                "**真实地图现在可以完全离线**（解决「第一次之后都要联网取 JS」）：以前就算瓦片有离线包，每次开地图都还要上 `unpkg.com` 取 Leaflet 的 JS／CSS —— 一没网就载不到，直接退回示意图。现在新增 `AssetCache`：第一次成功取到就存到本机并校验内容（CSS 要有 `.leaflet-`、JS 要有 `L.map`，错误页不会当正货），之后拦截请求直接用本地副本。所以**看过一次地图之后，飞行模式都能显示真实地图**",
+                "**班次表有离线缓存**（解决「班次表一定要联网」）：每条路线最新一次成功抓到的班次表会存到本机。有网照旧抓新的；**没网或者抓取失败就自动显示上次那份**，并用红字标明「离线资料 · HH:mm 抓取（不是实时班次）」，不会再只弹一句「要联网才看得到」"
+            ),
+            itemsEn = listOf(
+                "**The real map now works fully offline** (fixes \"still needed the network for JS after the first view\"): even with the tile pack in place, every map open still fetched Leaflet's JS/CSS from `unpkg.com` — offline that failed and fell back to the schematic. A new `AssetCache` now caches both files on first success and validates them (CSS must contain `.leaflet-`, JS must contain `L.map`, so error pages are rejected), then serves them by intercepting the request. Result: **after viewing a map once, it renders fully in airplane mode**",
+                "**The trip table has an offline cache** (fixes \"the trip table always needed a network\"): the last successfully fetched table for each route is stored on device. Online it still fetches fresh data; **offline or on failure it falls back to the last one**, clearly labelled in red as \"Offline data - fetched at HH:mm (not live)\" instead of just saying a network is required"
+            ),
+        ),
+
+        Entry(
             version = "1.1.3.1",
             date = "2026-10-10",
             titleZhHant = "撳版本膠囊即睇更新內容",

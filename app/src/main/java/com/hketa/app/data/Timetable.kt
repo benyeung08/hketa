@@ -133,3 +133,65 @@ class TimetableStore(context: Context) {
 
     fun get(routeKey: String): Record? = load()[routeKey]
 }
+
+/**
+ * 班次表離線快取 —— **解決「班次表一定要聯網」呢個限制**。
+ *
+ * 每一條路線最新一次成功抓到嘅班次表會寫落
+ * `filesDir/hketa_timetable_cache/{key}.json`，連抓取時間一齊記低。
+ *
+ * 所以：
+ * - 有網 → 照舊抓新嘅，抓到就更新快取
+ * - **冇網／抓取失敗 → 顯示上次嗰份**，並標明「離線資料 · XX:XX」，
+ *   唔會再彈一句「要連網先睇到」就算
+ *
+ * 過咗 [MAX_AGE_MS] 嘅快取會照顯示但標「可能過時」，
+ * 因為班次表本身就係即時資料，舊咗只係參考。
+ */
+class TimetableCache(context: Context) {
+
+    @Serializable
+    data class Entry(
+        val table: RouteTimetable,
+        /** 抓取時間（epoch ms） */
+        val atMs: Long = 0L
+    )
+
+    private val dir = File(context.filesDir, "hketa_timetable_cache").apply { mkdirs() }
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true
+    }
+
+    /** 超過呢個時間就當「可能過時」（仍然會顯示，只係加提示） */
+    val maxAgeMs: Long get() = MAX_AGE_MS
+
+    fun keyOf(routeKey: String): String =
+        routeKey.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(120)
+
+    fun get(routeKey: String): Entry? = runCatching {
+        val f = File(dir, keyOf(routeKey) + ".json")
+        if (!f.exists()) return null
+        json.decodeFromString<Entry>(f.readText())
+    }.getOrNull()
+
+    fun put(routeKey: String, table: RouteTimetable) {
+        runCatching {
+            val f = File(dir, keyOf(routeKey) + ".json")
+            val tmp = File(dir, keyOf(routeKey) + ".tmp")
+            tmp.writeText(json.encodeToString(Entry(table, System.currentTimeMillis())))
+            tmp.renameTo(f)
+        }
+    }
+
+    /** 快取係唔係已經過時 */
+    fun isStale(entry: Entry): Boolean =
+        System.currentTimeMillis() - entry.atMs > MAX_AGE_MS
+
+    private companion object {
+        // 2 小時：班次表係即時資料，舊過 2 個鐘只可作參考
+        const val MAX_AGE_MS = 2 * 60 * 60 * 1000L
+    }
+}
