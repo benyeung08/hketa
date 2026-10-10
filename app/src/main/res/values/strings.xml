@@ -240,8 +240,8 @@
 
     <!-- 關於頁面 -->
     <string name="about_title">關於</string>
-    <string name="about_app_name">hkate app</string>
-    <string name="about_desc">香港巴士到站預報 · 原生 Android App</string>
+    <string name="about_app_name">HKATE</string>
+    <string name="about_desc">原生 Android App · 香港巴士到站資料</string>
     <string name="about_open_settings">設定</string>
     <string name="about_data_source">資料來源</string>
     <string name="about_data_source_desc">直接對接九巴、城巴、嶼巴、專線小巴、港鐵嘅官方公開資料接口，冇 WebView、冇網頁外殼。</string>
@@ -298,6 +298,7 @@
     <string name="tt_note">班次表由官方即時到站預報構建（第 N 班 = 各站預報嘅第 N 項）。官方冇公開時刻表接口，所以「營運時段」係觀察累積，唔係官方公佈嘅頭／尾班車。</string>
     <string name="tt_loading">抓取班次資料…</string>
     <string name="tt_empty">暫時冇班次資料（可能已過尾班車）</string>
+    <string name="tt_offline">離線資料 · %1$s 抓取（唔係即時班次）</string>
     <string name="tt_reload">重新抓取</string>
     <string name="notice_official_title">服務公告</string>
     <string name="notice_source_official">官方</string>
