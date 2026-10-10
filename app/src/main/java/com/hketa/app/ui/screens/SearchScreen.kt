@@ -168,7 +168,9 @@ fun SearchScreen(
                 if (query.isNotBlank() && results.isEmpty() && !busy) {
                     Muted(stringResource(R.string.search_empty))
                 }
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                // ★ weight(1f)：列表食晒剩餘空間並可捲動，
+                //   鍵盤先至有固定高度留喺底（唔加會被擠出螢幕外）
+                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     if (results.isNotEmpty()) {
                         item {
                             Text(
@@ -187,7 +189,7 @@ fun SearchScreen(
                 if (stopQuery.isNotBlank() && stopResults.isEmpty() && !busy) {
                     Muted(stringResource(R.string.search_stops_empty))
                 }
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     if (stopResults.isNotEmpty()) {
                         item {
                             Text(
@@ -207,11 +209,14 @@ fun SearchScreen(
             Spacer(Modifier.height(8.dp))
 
             // ---- ④ 鍵盤 ----
+            // ---- ④ 鍵盤：固定喺底（上面嘅列表已用 weight(1f) 食晒剩餘空間）----
             if (tab == 0) {
                 if (showKeyboard) {
                     RouteKeyboard(
-                        onKey = { vm.setQuery(query + it) },
-                        onDelete = { vm.setQuery(query.dropLast(1)) },
+                        // ★ 一定要經 ViewModel（appendQueryChar 入面讀 _query.value），
+                        //   唔可以喺呢度寫 `query + it` —— 連撳會食字（詳見 AppViewModel 註解）
+                        onKey = vm::appendQueryChar,
+                        onDelete = vm::deleteQueryChar,
                         onDone = { showKeyboard = false }
                     )
                 } else {

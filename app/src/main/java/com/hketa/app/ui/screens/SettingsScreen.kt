@@ -244,7 +244,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
 
         Muted(stringResource(R.string.settings_rail_builtin))
-        Muted(stringResource(R.string.settings_version, "1.0.0"))
+        Muted(stringResource(R.string.settings_version, currentVersion))
         Muted(stringResource(R.string.settings_privacy))
 
         Spacer(Modifier.height(16.dp))
