@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import com.hketa.app.R
+import com.hketa.app.data.ApkInstaller
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.Muted
@@ -46,6 +47,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -64,6 +66,7 @@ fun SettingsScreen(
     val updateState by vm.updateState.collectAsState()
     val updateInfo by vm.updateInfo.collectAsState()
     val updateError by vm.updateError.collectAsState()
+    val downloadState by vm.downloadState.collectAsState()
 
     // 一入設定頁就靜默檢查一次（節流；手動撳掣可以即時再查）
     LaunchedEffect(Unit) { vm.checkUpdate() }
@@ -334,23 +337,82 @@ fun SettingsScreen(
 
                     val asset = UpdateChecker.apkAsset(rel)
                     val sizeMb = UpdateChecker.sizeMb(asset)
-                    val dlUrl = asset?.browser_download_url.orEmpty()
 
                     Spacer(Modifier.height(8.dp))
 
-                    Row(Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { openUrl(context, dlUrl.ifBlank { rel.html_url }) },
-                            enabled = dlUrl.isNotBlank() || rel.html_url.isNotBlank(),
-                            modifier = Modifier.weight(1f)
-                        ) { Text(stringResource(R.string.update_download)) }
-                        Spacer(Modifier.height(1.dp))
-                        OutlinedButton(
-                            onClick = { openUrl(context, rel.html_url) },
-                            enabled = rel.html_url.isNotBlank(),
-                            modifier = Modifier.weight(1f)
-                        ) { Text(stringResource(R.string.update_view_release)) }
+                    // ★ App 內下載（唔再開瀏覽器）：
+                    //   撳「下載」→ App 內下載 APK + 校驗 SHA-256 → 撳「安裝」開系統安裝器
+                    //   掣面文字按狀態切換：下載 / 取消 / 安裝 / 重試
+                    Button(
+                        onClick = {
+                            // local val：delegated property 唔可以 smart cast
+                            when (val ds = downloadState) {
+                                is ApkInstaller.State.Done -> vm.installDownloaded(ds.file)
+                                is ApkInstaller.State.Failed -> vm.downloadAndInstall(rel)
+                                is ApkInstaller.State.Downloading,
+                                is ApkInstaller.State.Verifying -> vm.cancelDownload()
+                                else -> vm.downloadAndInstall(rel)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            stringResource(
+                                when (downloadState) {
+                                    is ApkInstaller.State.Done -> R.string.update_install
+                                    is ApkInstaller.State.Failed -> R.string.update_retry
+                                    is ApkInstaller.State.Downloading -> R.string.update_cancel
+                                    is ApkInstaller.State.Verifying -> R.string.update_cancel
+                                    else -> R.string.update_download
+                                }
+                            )
+                        )
                     }
+
+                    // 下載進度條
+                    when (val ds = downloadState) {
+                        is ApkInstaller.State.Downloading -> {
+                            Spacer(Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = { ds.percent / 100f },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Muted(
+                                stringResource(
+                                    R.string.update_progress,
+                                    ds.percent,
+                                    ds.receivedMb,
+                                    ds.totalMb
+                                )
+                            )
+                        }
+                        is ApkInstaller.State.Verifying -> {
+                            Spacer(Modifier.height(8.dp))
+                            Muted(stringResource(R.string.update_verifying))
+                        }
+                        is ApkInstaller.State.Done -> {
+                            Spacer(Modifier.height(8.dp))
+                            Muted(stringResource(R.string.update_ready_hint))
+                        }
+                        is ApkInstaller.State.Failed -> {
+                            Spacer(Modifier.height(8.dp))
+                            Muted(
+                                stringResource(
+                                    R.string.update_download_failed,
+                                    ds.message
+                                )
+                            )
+                        }
+                        else -> Unit
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = { openUrl(context, rel.html_url) },
+                        enabled = rel.html_url.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(stringResource(R.string.update_view_release)) }
 
                     if (sizeMb > 0f) Muted(stringResource(R.string.update_size, sizeMb))
 
