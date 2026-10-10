@@ -56,7 +56,8 @@ import com.hketa.app.vm.AppViewModel
 fun StatusBar(
     vm: AppViewModel,
     onCheckUpdate: () -> Unit,
-    onOpenFavorites: () -> Unit,
+    /** 保留參數：膠囊唔再跳收藏，一律開「檢查更新」對話框 */
+    @Suppress("UNUSED_PARAMETER") onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit
 ) {
     val context = LocalContext.current
@@ -82,7 +83,10 @@ fun StatusBar(
             versionCode = versionCode,
             hasUpdate = hasUpdate,
             busy = busy,
-            onPillClick = { if (hasUpdate) onCheckUpdate() else onOpenFavorites() },
+            // ★ 撳膠囊一律 = 檢查更新並彈出「檢查更新」對話框。
+            //   以前係「有新版先檢查，否則跳去收藏頁」——撳落去會無啦啦跳頁，
+            //   而唔係顯示更新內容（第二張圖）。而家三處膠囊行為一致。
+            onPillClick = onCheckUpdate,
             onCheckUpdate = onCheckUpdate,
             onOpenHistory = onOpenHistory,
             onCopy = {
