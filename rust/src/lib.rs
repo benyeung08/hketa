@@ -1,0 +1,655 @@
+//! # HKETA 索引儲存（Rust）
+//!
+//! ## 點解要用 Rust
+//!
+//! 索引規模：2099 條路線 / 7250 個車站 / 63150 筆路線-車站對應。
+//!
+//! 放喺 JVM heap 會有兩個問題：
+//!
+//! 1. **物件開銷**：每個 `RouteStopDef` 係一個物件（16 bytes header）＋ 4 個
+//!    `String` 引用，而每個 `String` 又係一個物件（header ＋ `byte[]`）→
+//!    63150 筆實際佔用遠大於佢嘅資料量
+//! 2. **字串重複**：`kotlinx.serialization` 反序列化 JSON 時**唔會**幫你
+//!    interning，所以同一個站名出現 100 次就有 100 個獨立 `String` 實例
+//!
+//! ## 呢度做咗咩
+//!
+//! * **字串去重（interning）**：全索引淨係得一份字串表，所有記錄用 `u32`
+//!   索引指向佢 → JVM 側可以共用同一個 `String` 實例
+//! * **緊湊二進制格式**：自訂格式 ＋ varint，7.20 MB JSON → 1.04 MB
+//! * **查詢放喺 Rust 側**：附近車站（bounding box 預篩 ＋ haversine）、
+//!   車站→路線索引，都唔使喺 JVM 度遍歷物件
+//!
+//! ## 檔案格式
+//!
+//! ```text
+//! "HKIX"           4 bytes  magic
+//! version          u32 LE
+//! built_at         i64 LE
+//! strings          u32 count, then for each: u16 len + UTF-8 bytes
+//! routes           u32 count, then for each:
+//!                    op u8, 7 × varint (route/routeId/orig/origEn/dest/destEn/serviceType), bound u8
+//! stops            u32 count, then for each:
+//!                    op u8, 3 × varint (id/name/nameEn), lat f64 LE, lon f64 LE
+//! route_stops      u32 count, then for each:
+//!                    op u8, 4 × varint (route/serviceType/stopId/routeId), bound u8, seq u16 LE
+//! ```
+//!
+//! Varint 係標準 LEB128（7 bits/byte，高位 continuation）。
+
+use std::collections::HashMap;
+use std::io::{self, Read, Write};
+
+use serde::Deserialize;
+
+pub const MAGIC: [u8; 4] = *b"HKIX";
+pub const FORMAT_VERSION: u32 = 2;
+
+/// 營辦商順序要同 Kotlin `Operator` enum 一致
+pub const OPS: [&str; 7] = ["KMB", "CTB", "NLB", "GMB", "MTR_BUS", "MTR_HR", "LRT"];
+
+pub fn op_index(name: &str) -> u8 {
+    match OPS.iter().position(|o| *o == name) {
+        Some(i) => i as u8,
+        None => 0,
+    }
+}
+
+/// Kotlin `bound` 係 String（"O" / "I" / ""），壓縮成 u8
+pub fn bound_u8(b: &str) -> u8 {
+    match b {
+        "O" => 1,
+        "I" => 2,
+        _ => 0,
+    }
+}
+
+pub fn bound_str(b: u8) -> &'static str {
+    match b {
+        1 => "O",
+        2 => "I",
+        _ => "",
+    }
+}
+
+// ---------------------------------------------------------------- 資料結構
+
+/// 全部欄位都係 `Copy` —— 可以放喺一條連續嘅 `Vec` 入面，冇指標開銷
+#[derive(Clone, Copy)]
+pub struct Route {
+    pub op: u8,
+    pub bound: u8,
+    pub route: u32,
+    pub route_id: u32,
+    pub orig: u32,
+    pub orig_en: u32,
+    pub dest: u32,
+    pub dest_en: u32,
+    pub service_type: u32,
+}
+
+#[derive(Clone, Copy)]
+pub struct Stop {
+    pub op: u8,
+    pub id: u32,
+    pub name: u32,
+    pub name_en: u32,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Clone, Copy)]
+pub struct RouteStop {
+    pub op: u8,
+    pub bound: u8,
+    pub seq: u16,
+    pub route: u32,
+    pub service_type: u32,
+    pub stop_id: u32,
+    /// NLB / GMB 內部路線 id（Kotlin `RouteStopDef.routeId`）
+    pub route_id: u32,
+}
+
+// ---------------------------------------------------------------- JSON 輸入
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonIndex {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    built_at: i64,
+    #[serde(default)]
+    routes: Vec<JsonRoute>,
+    #[serde(default)]
+    stops: Vec<JsonStop>,
+    #[serde(default)]
+    route_stops: Vec<JsonRouteStop>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonRoute {
+    op: String,
+    #[serde(default)]
+    route: Option<String>,
+    #[serde(default)]
+    bound: Option<String>,
+    #[serde(default)]
+    service_type: Option<String>,
+    #[serde(default)]
+    route_id: Option<String>,
+    #[serde(default)]
+    orig: Option<String>,
+    #[serde(default)]
+    orig_en: Option<String>,
+    #[serde(default)]
+    dest: Option<String>,
+    #[serde(default)]
+    dest_en: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonStop {
+    op: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    name_en: Option<String>,
+    #[serde(default)]
+    lat: f64,
+    #[serde(default)]
+    lon: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonRouteStop {
+    op: String,
+    #[serde(default)]
+    route_id: Option<String>,
+    #[serde(default)]
+    route: Option<String>,
+    #[serde(default)]
+    bound: Option<String>,
+    #[serde(default)]
+    service_type: Option<String>,
+    #[serde(default)]
+    stop_id: Option<String>,
+    #[serde(default)]
+    seq: u16,
+}
+
+// ---------------------------------------------------------------- Index
+
+pub struct Index {
+    pub version: u32,
+    pub built_at: i64,
+    /// 字串表（去重）—— 所有記錄用 u32 指向呢度
+    pub strings: Vec<String>,
+    pub routes: Vec<Route>,
+    pub stops: Vec<Stop>,
+    pub route_stops: Vec<RouteStop>,
+    /// `(op, stop_id_string_idx) -> route_name_string_idx list`
+    /// key 打包成 u64：`(op as u64) << 32 | stop_id as u64`
+    routes_by_stop: Option<HashMap<u64, Vec<u32>>>,
+    /// 字串 → 索引嘅反查表（懶建）—— 唔係嘅話查一個站要線性掃 25770 條字串
+    string_index: Option<HashMap<String, u32>>,
+}
+
+/// 字串去重：淨係保存一份，返回索引
+fn intern_key(v: &str, intern: &mut HashMap<String, u32>, strings: &mut Vec<String>) -> u32 {
+    if let Some(i) = intern.get(v) {
+        return *i;
+    }
+    let i = strings.len() as u32;
+    strings.push(v.to_string());
+    intern.insert(v.to_string(), i);
+    i
+}
+
+fn s(opt: &Option<String>) -> &str {
+    match opt {
+        Some(v) => v.as_str(),
+        None => "",
+    }
+}
+
+impl Index {
+    pub fn empty() -> Self {
+        Index {
+            version: FORMAT_VERSION,
+            built_at: 0,
+            strings: Vec::new(),
+            routes: Vec::new(),
+            stops: Vec::new(),
+            route_stops: Vec::new(),
+            routes_by_stop: None,
+            string_index: None,
+        }
+    }
+
+    /// 由 Kotlin 側嘅 JSON 建立（第一次建索引嗰陣用；之後一律行二進制）
+    pub fn from_json(json: &str) -> Result<Index, String> {
+        let j: JsonIndex =
+            serde_json::from_str(json).map_err(|e| format!("json parse failed: {e}"))?;
+        let mut idx = Index::empty();
+        idx.version = if j.version == 0 { FORMAT_VERSION } else { j.version };
+        idx.built_at = j.built_at;
+
+        let mut intern: HashMap<String, u32> = HashMap::with_capacity(j.stops.len() * 4);
+        let mut strings: Vec<String> = Vec::new();
+
+        idx.routes.reserve(j.routes.len());
+        for r in &j.routes {
+            idx.routes.push(Route {
+                op: op_index(&r.op),
+                bound: bound_u8(s(&r.bound)),
+                route: intern_key(s(&r.route), &mut intern, &mut strings),
+                route_id: intern_key(s(&r.route_id), &mut intern, &mut strings),
+                orig: intern_key(s(&r.orig), &mut intern, &mut strings),
+                orig_en: intern_key(s(&r.orig_en), &mut intern, &mut strings),
+                dest: intern_key(s(&r.dest), &mut intern, &mut strings),
+                dest_en: intern_key(s(&r.dest_en), &mut intern, &mut strings),
+                service_type: intern_key(s(&r.service_type), &mut intern, &mut strings),
+            });
+        }
+
+        idx.stops.reserve(j.stops.len());
+        for st in &j.stops {
+            idx.stops.push(Stop {
+                op: op_index(&st.op),
+                id: intern_key(s(&st.id), &mut intern, &mut strings),
+                name: intern_key(s(&st.name), &mut intern, &mut strings),
+                name_en: intern_key(s(&st.name_en), &mut intern, &mut strings),
+                lat: st.lat,
+                lon: st.lon,
+            });
+        }
+
+        idx.route_stops.reserve(j.route_stops.len());
+        for rs in &j.route_stops {
+            idx.route_stops.push(RouteStop {
+                op: op_index(&rs.op),
+                bound: bound_u8(s(&rs.bound)),
+                seq: rs.seq,
+                route: intern_key(s(&rs.route), &mut intern, &mut strings),
+                service_type: intern_key(s(&rs.service_type), &mut intern, &mut strings),
+                stop_id: intern_key(s(&rs.stop_id), &mut intern, &mut strings),
+                route_id: intern_key(s(&rs.route_id), &mut intern, &mut strings),
+            });
+        }
+
+        idx.strings = strings;
+        Ok(idx)
+    }
+
+    // ------------------------------------------------------------ 二進制
+
+    pub fn write_to<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        w.write_all(&MAGIC)?;
+        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        w.write_all(&self.built_at.to_le_bytes())?;
+
+        w.write_all(&(self.strings.len() as u32).to_le_bytes())?;
+        for st in &self.strings {
+            let b = st.as_bytes();
+            w.write_all(&(b.len() as u16).to_le_bytes())?;
+            w.write_all(b)?;
+        }
+
+        w.write_all(&(self.routes.len() as u32).to_le_bytes())?;
+        for r in &self.routes {
+            w.write_all(&[r.op])?;
+            put_varint(w, r.route)?;
+            put_varint(w, r.route_id)?;
+            put_varint(w, r.orig)?;
+            put_varint(w, r.orig_en)?;
+            put_varint(w, r.dest)?;
+            put_varint(w, r.dest_en)?;
+            put_varint(w, r.service_type)?;
+            w.write_all(&[r.bound])?;
+        }
+
+        w.write_all(&(self.stops.len() as u32).to_le_bytes())?;
+        for st in &self.stops {
+            w.write_all(&[st.op])?;
+            put_varint(w, st.id)?;
+            put_varint(w, st.name)?;
+            put_varint(w, st.name_en)?;
+            w.write_all(&st.lat.to_le_bytes())?;
+            w.write_all(&st.lon.to_le_bytes())?;
+        }
+
+        w.write_all(&(self.route_stops.len() as u32).to_le_bytes())?;
+        for rs in &self.route_stops {
+            w.write_all(&[rs.op])?;
+            put_varint(w, rs.route)?;
+            put_varint(w, rs.service_type)?;
+            put_varint(w, rs.stop_id)?;
+            put_varint(w, rs.route_id)?;
+            w.write_all(&[rs.bound])?;
+            w.write_all(&rs.seq.to_le_bytes())?;
+        }
+        Ok(())
+    }
+
+    pub fn save(&self, path: &str) -> io::Result<()> {
+        // 寫 .tmp 再 rename —— 寫到一半崩潰都唔會損壞原有索引
+        let tmp = format!("{path}.tmp");
+        {
+            let f = std::fs::File::create(&tmp)?;
+            let mut bw = std::io::BufWriter::new(f);
+            self.write_to(&mut bw)?;
+            bw.flush()?;
+        }
+        std::fs::rename(&tmp, path)
+    }
+
+    pub fn read_from<R: Read>(r: &mut R) -> Result<Index, String> {
+        let mut magic = [0u8; 4];
+        r.read_exact(&mut magic).map_err(|e| e.to_string())?;
+        if magic != MAGIC {
+            return Err("bad magic".to_string());
+        }
+        let mut b4 = [0u8; 4];
+        let mut b8 = [0u8; 8];
+        r.read_exact(&mut b4).map_err(|e| e.to_string())?;
+        let version = u32::from_le_bytes(b4);
+        r.read_exact(&mut b8).map_err(|e| e.to_string())?;
+        let built_at = i64::from_le_bytes(b8);
+
+        // 一次讀晒入 memory 再解析 —— 比逐個 read_exact 快好多
+        let mut rest = Vec::new();
+        r.read_to_end(&mut rest).map_err(|e| e.to_string())?;
+        let mut o = 0usize;
+        let need = |n: usize, o: &mut usize| -> Result<(), String> {
+            if *o + n > rest.len() {
+                return Err("truncated".to_string());
+            }
+            *o += n;
+            Ok(())
+        };
+
+        need(4, &mut o)?;
+        let n_str = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        let mut strings: Vec<String> = Vec::with_capacity(n_str);
+        for _ in 0..n_str {
+            need(2, &mut o)?;
+            let l = u16::from_le_bytes(rest[o - 2..o].try_into().unwrap()) as usize;
+            need(l, &mut o)?;
+            strings.push(
+                String::from_utf8_lossy(&rest[o - l..o]).into_owned(),
+            );
+        }
+
+        need(4, &mut o)?;
+        let n_routes = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        let mut routes: Vec<Route> = Vec::with_capacity(n_routes);
+        for _ in 0..n_routes {
+            need(1, &mut o)?;
+            let op = rest[o - 1];
+            let mut ids = [0u32; 7];
+            for k in 0..7 {
+                let (v, no) = read_varint(&rest, o)?;
+                o = no;
+                ids[k] = v;
+            }
+            need(1, &mut o)?;
+            routes.push(Route {
+                op,
+                bound: rest[o - 1],
+                route: ids[0],
+                route_id: ids[1],
+                orig: ids[2],
+                orig_en: ids[3],
+                dest: ids[4],
+                dest_en: ids[5],
+                service_type: ids[6],
+            });
+        }
+
+        need(4, &mut o)?;
+        let n_stops = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        let mut stops: Vec<Stop> = Vec::with_capacity(n_stops);
+        for _ in 0..n_stops {
+            need(1, &mut o)?;
+            let op = rest[o - 1];
+            let (id, no) = read_varint(&rest, o)?;
+            o = no;
+            let (name, no) = read_varint(&rest, o)?;
+            o = no;
+            let (name_en, no) = read_varint(&rest, o)?;
+            o = no;
+            need(16, &mut o)?;
+            let lat = f64::from_le_bytes(rest[o - 16..o - 8].try_into().unwrap());
+            let lon = f64::from_le_bytes(rest[o - 8..o].try_into().unwrap());
+            stops.push(Stop { op, id, name, name_en, lat, lon });
+        }
+
+        need(4, &mut o)?;
+        let n_rs = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        let mut route_stops: Vec<RouteStop> = Vec::with_capacity(n_rs);
+        for _ in 0..n_rs {
+            need(1, &mut o)?;
+            let op = rest[o - 1];
+            let (route, no) = read_varint(&rest, o)?;
+            o = no;
+            let (service_type, no) = read_varint(&rest, o)?;
+            o = no;
+            let (stop_id, no) = read_varint(&rest, o)?;
+            o = no;
+            let (route_id, no) = read_varint(&rest, o)?;
+            o = no;
+            need(3, &mut o)?;
+            let bound = rest[o - 3];
+            let seq = u16::from_le_bytes(rest[o - 2..o].try_into().unwrap());
+            route_stops.push(RouteStop { op, bound, seq, route, service_type, stop_id, route_id });
+        }
+
+        Ok(Index {
+            version,
+            built_at,
+            strings,
+            routes,
+            stops,
+            route_stops,
+            routes_by_stop: None,
+            string_index: None,
+        })
+    }
+
+    pub fn load(path: &str) -> Result<Index, String> {
+        let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut r = std::io::BufReader::new(f);
+        Index::read_from(&mut r)
+    }
+
+    // ------------------------------------------------------------ 查詢
+
+    /// 建車站→路線索引（懶建，第一次查嗰陣先起）
+    fn ensure_routes_by_stop(&mut self) {
+        if self.routes_by_stop.is_some() {
+            return;
+        }
+        let mut m: HashMap<u64, Vec<u32>> = HashMap::with_capacity(self.stops.len() * 2);
+        for rs in &self.route_stops {
+            let key = ((rs.op as u64) << 32) | (rs.stop_id as u64);
+            let v = m.entry(key).or_insert_with(Vec::new);
+            if !v.contains(&rs.route) {
+                v.push(rs.route);
+            }
+        }
+        {
+            // 用獨立作用域攞 &self.strings —— 唔係嘅話排序閉包會一路借住 self，
+            // 下面 `self.routes_by_stop = Some(m)` 就會撞借用檢查
+            let strings = &self.strings;
+            for v in m.values_mut() {
+                // 同 Kotlin 版一致：先長度後字典序
+                v.sort_by(|a, b| {
+                    let sa = strings.get(*a as usize).map(|x| x.as_str()).unwrap_or("");
+                    let sb = strings.get(*b as usize).map(|x| x.as_str()).unwrap_or("");
+                    sa.len().cmp(&sb.len()).then_with(|| sa.cmp(sb))
+                });
+            }
+        }
+        self.routes_by_stop = Some(m);
+    }
+
+    /// 建字串反查表（懶建）
+    fn ensure_string_index(&mut self) {
+        if self.string_index.is_some() {
+            return;
+        }
+        let mut m: HashMap<String, u32> = HashMap::with_capacity(self.strings.len() * 2);
+        for (i, st) in self.strings.iter().enumerate() {
+            m.entry(st.clone()).or_insert(i as u32);
+        }
+        self.string_index = Some(m);
+    }
+
+    /// 某個站有邊啲路線（返回字串表索引）
+    pub fn routes_at_stop(&mut self, op: u8, stop_id: &str) -> Vec<u32> {
+        self.ensure_string_index();
+        let sid = match self.string_index.as_ref().and_then(|m| m.get(stop_id).copied()) {
+            Some(i) => i,
+            None => return Vec::new(),
+        };
+        self.ensure_routes_by_stop();
+        let key = ((op as u64) << 32) | (sid as u64);
+        match &self.routes_by_stop {
+            Some(m) => m.get(&key).cloned().unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+
+    /// 半徑內嘅車站，按距離排（返回 `(stop 下標, 距離米)`）
+    ///
+    /// bounding box 預篩：先用加減法濾走絕大部分站，
+    /// 淨係對候選做 haversine（sin/cos/atan2/sqrt）
+    pub fn nearby(&self, lat: f64, lon: f64, radius_m: f64) -> Vec<(u32, i32)> {
+        let d_lat = radius_m / 111_320.0;
+        let cos_lat = (lat.to_radians().cos()).max(0.01);
+        let d_lon = radius_m / (111_320.0 * cos_lat);
+        let min_lat = lat - d_lat;
+        let max_lat = lat + d_lat;
+        let min_lon = lon - d_lon;
+        let max_lon = lon + d_lon;
+
+        let mut out: Vec<(u32, i32)> = Vec::with_capacity(64);
+        for (i, st) in self.stops.iter().enumerate() {
+            // 冇座標嘅站（例如未補到經緯度嘅）直接跳過
+            if st.lat == 0.0 && st.lon == 0.0 {
+                continue;
+            }
+            if st.lat < min_lat || st.lat > max_lat {
+                continue;
+            }
+            if st.lon < min_lon || st.lon > max_lon {
+                continue;
+            }
+            let d = haversine(lat, lon, st.lat, st.lon);
+            if d <= radius_m {
+                out.push((i as u32, d as i32));
+            }
+        }
+        out.sort_by_key(|x| x.1);
+        out
+    }
+}
+
+pub fn haversine(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let r = 6_371_000.0;
+    let d_lat = (lat2 - lat1).to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+    let a = (d_lat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+    2.0 * r * a.sqrt().atan2((1.0 - a).sqrt())
+}
+
+// ---------------------------------------------------------------- varint
+
+pub fn put_varint<W: Write>(w: &mut W, mut v: u32) -> io::Result<()> {
+    loop {
+        let b = (v & 0x7f) as u8;
+        v >>= 7;
+        if v != 0 {
+            w.write_all(&[b | 0x80])?;
+        } else {
+            w.write_all(&[b])?;
+            return Ok(());
+        }
+    }
+}
+
+pub fn read_varint(b: &[u8], mut o: usize) -> Result<(u32, usize), String> {
+    let mut v: u32 = 0;
+    let mut shift = 0;
+    loop {
+        if o >= b.len() {
+            return Err("varint out of bounds".to_string());
+        }
+        let x = b[o];
+        o += 1;
+        v |= ((x & 0x7f) as u32) << shift;
+        if x & 0x80 == 0 {
+            return Ok((v, o));
+        }
+        shift += 7;
+        if shift > 28 {
+            return Err("varint too long".to_string());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn demo() -> Index {
+        let json = r#"{
+            "version": 2, "builtAt": 1759900000000,
+            "routes": [{"op":"KMB","route":"1A","bound":"O","serviceType":"01","routeId":"1","orig":"A","origEn":"A","dest":"B","destEn":"B"}],
+            "stops": [{"op":"KMB","id":"S1","name":"站一","nameEn":"Stop 1","lat":22.3,"lon":114.2},
+                      {"op":"KMB","id":"S2","name":"站二","nameEn":"Stop 2","lat":22.31,"lon":114.21}],
+            "routeStops": [{"op":"KMB","route":"1A","bound":"O","serviceType":"01","stopId":"S1","seq":1}]
+        }"#;
+        Index::from_json(json).unwrap()
+    }
+
+    #[test]
+    fn round_trip() {
+        let idx = demo();
+        let mut buf = Vec::new();
+        idx.write_to(&mut buf).unwrap();
+        let back = Index::read_from(&mut std::io::Cursor::new(buf)).unwrap();
+        assert_eq!(back.routes.len(), 1);
+        assert_eq!(back.stops.len(), 2);
+        assert_eq!(back.route_stops.len(), 1);
+        assert_eq!(back.strings[back.routes[0].route as usize], "1A");
+        assert!((back.stops[0].lat - 22.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn nearby_matches() {
+        let idx = demo();
+        let r = idx.nearby(22.3, 114.2, 2000.0);
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].0, 0); // 自己最近
+    }
+
+    #[test]
+    fn routes_at_stop_works() {
+        let mut idx = demo();
+        let r = idx.routes_at_stop(op_index("KMB"), "S1");
+        assert_eq!(r.len(), 1);
+        assert_eq!(idx.strings[r[0] as usize], "1A");
+        assert!(idx.routes_at_stop(op_index("KMB"), "NOPE").is_empty());
+    }
+}
+
+#[cfg(feature = "android")]
+pub mod jni;
