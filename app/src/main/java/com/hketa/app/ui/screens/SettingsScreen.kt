@@ -214,6 +214,8 @@ fun SettingsScreen(
         // 講清楚而家用緊邊種索引格式 —— Rust 二進制定純 Kotlin JSON，
         // 等用戶（同我）一眼睇到 Rust 係咪真係生效
         Muted(stringResource(R.string.settings_index_backend, vm.indexBackendLabel()))
+        // 加速層嘅命中率 —— 呢層純 Kotlin，Rust 有冇 build 到都一樣生效
+        Muted(vm.speedLayerLabel())
 
         // ---- 索引診斷：講清楚邊個營辦商點解係 0 ----
         val diag = vm.indexErrors.collectAsState().value
