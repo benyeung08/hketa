@@ -49,10 +49,15 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
+        /** 「全部方向」嘅哨兵值——唔會同任何真實 dest 撞 */
+        const val ALL_DIRECTIONS = "\u0000ALL"
         /** 到站預報自動刷新間隔（秒）—— 同底部狀態欄嘅倒數一致 */
         const val ETA_AUTO_REFRESH_SEC = 20
 
@@ -308,6 +313,52 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _etas = MutableStateFlow<List<EtaEntry>>(emptyList())
     val etas: StateFlow<List<EtaEntry>> = _etas.asStateFlow()
+
+    /**
+     * ETA 離線快取 —— **解決「冇網就完全冇嘢睇」**。
+     * 有網照舊抓新嘅；冇網／官方接口冇回應就退返上次嗰份並標明時間。
+     */
+    private var etaCache: com.hketa.app.data.EtaCache? = null
+    private fun ensureEtaCache(): com.hketa.app.data.EtaCache {
+        val c = etaCache ?: com.hketa.app.data.EtaCache(getApplication()).also { etaCache = it }
+        return c
+    }
+
+    /** 目前顯示嘅 ETA 係咪離線快取（true = 唔係即時） */
+    private val _etaOffline = MutableStateFlow(false)
+    val etaOffline: StateFlow<Boolean> = _etaOffline.asStateFlow()
+
+    /** 離線快取嘅抓取時間（epoch ms；0 = 冇） */
+    private val _etaCacheAt = MutableStateFlow(0L)
+    val etaCacheAt: StateFlow<Long> = _etaCacheAt.asStateFlow()
+
+    /**
+     * ETA 頁面嘅方向篩選 —— **解決「同一個站兩個方向嘅班次撈埋一齊」**。
+     *
+     * 官方接口會一次過返晒兩個方向（例如 38A 往荃灣 ＋ 38A 往美孚），
+     * 以前全部撈埋顯示，要自己逐張卡睇目的地先分得清。
+     *
+     * - `null`   = **自動**（預設）：淨係顯示最快嗰班嘅方向
+     * - 某個 dest = 淨係顯示嗰個方向
+     * - [ALL_DIRECTIONS] = 全部方向（想一次過睇晒嗰陣用）
+     */
+    private val _etaDirection = MutableStateFlow<String?>(null)
+    val etaDirection: StateFlow<String?> = _etaDirection.asStateFlow()
+
+    /** 由目前 ETA 推斷出嘅全部方向（按最快班次排序，唔重複） */
+    val etaDirections: StateFlow<List<String>> = _etas.map { list ->
+        list.map { it.dest }.filter { it.isNotBlank() }.distinct()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 揀方向；傳 [ALL_DIRECTIONS] 即係「全部方向」 */
+    fun setEtaDirection(dest: String?) {
+        _etaDirection.value = dest
+    }
+
+    /** 轉站／轉路線嗰陣要清返自動，否則會留低上個站嘅方向 */
+    fun resetEtaDirection() {
+        _etaDirection.value = null
+    }
 
     private val _nearby = MutableStateFlow<List<NearbyStop>>(emptyList())
     val nearby: StateFlow<List<NearbyStop>> = _nearby.asStateFlow()
@@ -714,7 +765,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_message.value == null) {
             _message.value = str(R.string.eta_repair_op_done, op.label, rc, sc)
         }
+        // 修好就清走嗰個營辦商嘅診斷 —— 唔係嘅話「需要修復」會永久掛住。
+        // 城巴嘅診斷係「車站要另行修復」，所以要車站補到先算解決；
+        // 其他營辦商嘅診斷係「路線抓取失敗」，有返路線就解決。
+        val solved = if (op == Operator.CTB) sc > 0 else rc > 0
+        if (solved) {
+            _indexErrors.value = _indexErrors.value.filter { it.first != op }
+        }
+        refreshDiagnostics()
         _busy.value = false
+    }
+
+    /**
+     * 按**目前索引嘅實際狀態**重算診斷。
+     *
+     * 以前診斷淨係喺 buildIndex() 入面「加」，修好之後唔會清 ——
+     * 所以「城巴需另行修復」會永久掛住。而家一律由實際資料決定：
+     *
+     * - 城巴：有路線但冇車站 → 提示要補車站
+     * - 專線小巴：一條路線都冇 → 提示抓取失敗
+     */
+    private fun refreshDiagnostics() {
+        val idx = _index.value
+        val errs = mutableListOf<Pair<Operator, String>>()
+        if (idx.routes.any { it.op == Operator.CTB } &&
+            !idx.stops.any { it.op == Operator.CTB }
+        ) {
+            errs += Operator.CTB to str(R.string.index_err_ctb_stops)
+        }
+        if (!idx.routes.any { it.op == Operator.GMB }) {
+            errs += Operator.GMB to str(R.string.index_err_gmb)
+        }
+        _indexErrors.value = errs
     }
 
     /** 用新資料成個替換某個營辦商嘅 routes / stops / routeStops */
@@ -735,6 +817,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        refreshDiagnostics()
     }
 
     private suspend fun buildIndex() {
@@ -826,6 +909,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = data
         store.saveSuspend(data)
+        refreshDiagnostics()
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
         _busy.value = false
 
@@ -849,18 +933,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         silent: Boolean = false
     ) {
         coroutineScope {
-            val all = _index.value.routes.filter { it.op == Operator.CTB }
-            val done = _index.value.routeStops
+            val cur = _index.value
+            val all = cur.routes.filter { it.op == Operator.CTB }
+            val doneRoutes = cur.routeStops
                 .filter { it.op == Operator.CTB }.map { it.route }.toSet()
-            val targets = if (incremental) all.filter { it.route !in done } else all
+            val knownStops = cur.stops
+                .filter { it.op == Operator.CTB }.map { it.id }.toSet()
+            val targets = if (incremental) all.filter { it.route !in doneRoutes } else all
 
             if (targets.isEmpty()) {
                 _message.value = str(R.string.index_deep_already_done)
                 return@coroutineScope
             }
+            // 已經抓過嘅站唔使再抓（並發安全）
+            val seen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+                .apply { addAll(knownStops) }
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
+            var okRoutes = 0
+            // ★ 數住「車站座標抓唔到」嘅次數。
+            //   以前呢個數字冇人記 —— 只要 /stop 全部失敗（data.gov.hk 限流／逾時），
+            //   okRoutes 依然 > 0、addedStops 依然 = 0，畫面就淨係出
+            //   「新增 0 個車站」，令人以為「已經補完、冇嘢要補」。
+            //   而家可以分得清：真係冇新增（一早有晒）定係全部失敗。
+            val failedStops = java.util.concurrent.atomic.AtomicInteger(0)
 
             // 分批並發（唔係逐條串行）—— 每批 8 條，時間大幅縮短
             var finished = 0
@@ -873,15 +970,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val results = coroutineScope {
                     batch.map { r ->
                         async {
-                            suspendCatching {
-                                val rs = repo.ctbRouteStops(r.route, r.bound)
-                                val stops = rs.mapNotNull { repo.ctbStop(it.stopId) }
+                            // ★ 分兩步，而且**分開容錯**：
+                            //   以前係 suspendCatching 包住晒 —— 只要其中一個站嘅
+                            //   /stop 請求失敗/超時，成條路線嘅 route-stop 對應都會
+                            //   被 .getOrNull() 丟棄，最後就係「新增 0 個車站」。
+                            //   而家：route-stop 對應抓唔到先算失敗；車站座標
+                            //   逐個自己容錯，一個失敗淨係少一個站。
+                            val rs = suspendCatching { repo.ctbRouteStops(r.route, r.bound) }
+                                .getOrNull()
+                            if (rs == null) {
+                                null
+                            } else {
+                                // 唔同路線共用同一個站 → 每個站淨係抓一次，
+                                // 唔單止慇請求，亦冇咁易撞 data.gov.hk 嘅 rate limit
+                                val stops = rs.mapNotNull { s ->
+                                    if (!seen.add(s.stopId)) null
+                                    else suspendCatching { repo.ctbStop(s.stopId) }
+                                        .getOrNull()
+                                        .also { if (it == null) failedStops.incrementAndGet() }
+                                }
                                 rs to stops
-                            }.getOrNull()
+                            }
                         }
                     }.awaitAll()
                 }
-                for ((rs, stops) in results.filterNotNull()) {
+                val good = results.filterNotNull()
+                okRoutes += good.size
+                for ((rs, stops) in good) {
                     newRouteStops.addAll(rs)
                     newStops.addAll(stops)
                 }
@@ -893,14 +1008,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             // 唔同路線會重複出現同一個站 → 去重先合併
-            mergeAll(
-                newStops.distinctBy { "${it.op.name}|${it.id}" },
-                newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
-            )
-            _indexStatus.value = str(R.string.index_deep_ctb_done, newStops.size)
+            val mergedStops = newStops.distinctBy { "${it.op.name}|${it.id}" }
+            val mergedRs = newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
+            // 顯示「真正新加」嘅數量（去重 + 扣走索引已經有嘅），唔係累積數
+            val addedStops = mergedStops.count { it.id !in knownStops }
+
+            mergeAll(mergedStops, mergedRs)
+
+            // 一條路線都抓唔到 → 講清楚係網絡／接口問題，唔好扮「冇嘢要補」
+            // 抓到路線但一個車站座標都冇 → 講清楚係接口繁忙，叫用戶再撳一次，
+            //   唔好再出「新增 0 個車站」呢句會令人誤會「已經補完」嘅說話
+            val noStopData = okRoutes > 0 && addedStops == 0 && failedStops.get() > 0
+            _indexStatus.value = when {
+                okRoutes == 0 -> str(R.string.index_deep_ctb_failed, targets.size)
+                noStopData -> str(R.string.index_deep_ctb_nostops, okRoutes, failedStops.get())
+                else -> str(R.string.index_deep_ctb_done, addedStops, okRoutes)
+            }
             // silent = 背景自動修復：唔彈訊息、唔掝 busy（費事蓋住用戶自己開嘅動作）
             if (!silent) {
-                _message.value = str(R.string.index_deep_ctb_msg)
+                _message.value = when {
+                    okRoutes == 0 -> str(R.string.index_deep_ctb_failed, targets.size)
+                    noStopData -> str(R.string.index_deep_ctb_nostops, okRoutes, failedStops.get())
+                    else -> str(R.string.index_deep_ctb_msg)
+                }
                 _busy.value = false
             }
         }
@@ -921,10 +1051,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         silent: Boolean = false
     ) {
         coroutineScope {
-            val all = _index.value.routes.filter { it.op == Operator.GMB }
-            val done = _index.value.routeStops
+            val cur = _index.value
+            val all = cur.routes.filter { it.op == Operator.GMB }
+            val doneIds = cur.routeStops
                 .filter { it.op == Operator.GMB }.map { it.routeId }.toSet()
-            val targets = if (incremental) all.filter { it.routeId !in done } else all
+            val knownStops = cur.stops
+                .filter { it.op == Operator.GMB }.map { it.id }.toSet()
+            val targets = if (incremental) all.filter { it.routeId !in doneIds } else all
 
             if (targets.isEmpty()) {
                 _message.value = str(R.string.index_deep_already_done)
@@ -933,6 +1066,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = true
             val newStops = mutableListOf<StopDef>()
             val newRouteStops = mutableListOf<RouteStopDef>()
+            var okRoutes = 0
 
             var finished = 0
             for (batch in targets.chunked(DEEP_INDEX_CONCURRENCY)) {
@@ -957,7 +1091,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }.awaitAll()
                 }
-                for ((rs, list) in results.filterNotNull()) {
+                val good = results.filterNotNull()
+                okRoutes += good.size
+                for ((rs, list) in good) {
                     newRouteStops.addAll(rs)
                     newStops.addAll(list)
                 }
@@ -968,13 +1104,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
 
-            mergeAll(
-                newStops.distinctBy { "${it.op.name}|${it.id}" },
-                newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
-            )
-            _indexStatus.value = str(R.string.index_deep_gmb_done, newStops.size)
+            val mergedStops = newStops.distinctBy { "${it.op.name}|${it.id}" }
+            val mergedRs = newRouteStops.distinctBy { "${it.op.name}|${it.route}|${it.stopId}" }
+            // 顯示「真正新加」嘅數量（去重 + 扣走索引已經有嘅），唔係累積數
+            val addedStops = mergedStops.count { it.id !in knownStops }
+
+            mergeAll(mergedStops, mergedRs)
+
+            _indexStatus.value = if (okRoutes == 0)
+                str(R.string.index_deep_gmb_failed, targets.size)
+            else
+                str(R.string.index_deep_gmb_done, addedStops, okRoutes)
             if (!silent) {
-                _message.value = str(R.string.index_deep_gmb_msg)
+                _message.value = if (okRoutes == 0)
+                    str(R.string.index_deep_gmb_failed, targets.size)
+                else
+                    str(R.string.index_deep_gmb_msg)
                 _busy.value = false
             }
         }
@@ -1415,6 +1560,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val fixed = normalizeStop(stop)
         _selectedStop.value = fixed
         _etas.value = emptyList()
+        resetEtaDirection()
         loadEta(fixed, route ?: _selectedRoute.value)
     }
 
@@ -1848,16 +1994,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadEta(stop: StopDef, route: RouteDef?) {
         viewModelScope.launch {
             _busy.value = true
+            _etaOffline.value = false
+            _etaCacheAt.value = 0L
             val (raw, alert) = etasFor(stop, route)
             val list = raw
             alert?.let { _message.value = it }
             run { if (list.isNotEmpty()) _lastUpdateAt.value = System.currentTimeMillis() }
-            if (list.isEmpty() && alert == null) {
-                // 交畀下面統一提示
+
+            val cache = ensureEtaCache()
+            val ck = cache.keyOf(stop.id, stop.op, route?.route.orEmpty())
+
+            if (list.isNotEmpty()) {
+                // 成功：寫落快取，下次冇網都用得着
+                cache.put(ck, com.hketa.app.data.EtaCache.from(list))
+                _etas.value = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                _busy.value = false
+                return@launch
             }
-            _etas.value = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+
+            // ★ 冇網／官方接口冇回應：退返上次成功嗰份，並標明係幾時嘅
+            val hit = cache.get(ck)
+            val cached = hit?.etas.orEmpty().map {
+                EtaEntry(
+                    op = stop.op,
+                    route = it.route,
+                    dest = it.dest,
+                    minutes = it.minutes,
+                    clock = it.clock,
+                    remark = ""
+                )
+            }
+            if (cached.isNotEmpty()) {
+                _etas.value = cached.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                _etaOffline.value = true
+                _etaCacheAt.value = hit?.atMs ?: 0L
+                _busy.value = false
+                return@launch
+            }
+
+            _etas.value = emptyList()
             _busy.value = false
-            if (list.isEmpty() && _message.value == null) {
+            if (_message.value == null) {
                 _message.value = str(R.string.eta_empty)
             }
         }
@@ -2059,6 +2236,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        refreshDiagnostics()
     }
 
     // ==================== 效能：車站→路線索引 + 距離預篩 ====================
