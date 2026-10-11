@@ -111,6 +111,46 @@ class IndexStore(context: Context) {
             else -> "Kotlin / JSON"
         }
 
+    // ============ 常駐索引（Rust 完全擁有記憶體）============
+
+    /** 二進制索引嘅路徑（畀 `RustIndex.nativeOpen` 用） */
+    val binPath: String get() = binFile.absolutePath
+
+    /**
+     * 開一個 **常駐** handle：索引由 Rust 放喺 native heap，Kotlin 淨係揸住
+     * 一個 `Long`。之後嘅搜尋／附近車站／路線車站全部喺 Rust 側做。
+     *
+     * 如果得舊 JSON、仲未轉過二進制，會喺呢度**遷移**：
+     * JSON → Rust → 寫二進制 → 刪走舊 JSON（從此磁碟上淨係得二進制）。
+     *
+     * 失敗一律返回 0（呼叫方行返純 Kotlin 路徑）。
+     */
+    fun openResident(): Long {
+        if (!RustIndex.available) return 0L
+        return runCatching {
+            if (binFile.exists() && binFile.length() > 0L) {
+                RustIndex.nativeOpen(binFile.absolutePath)
+            } else {
+                if (!file.exists() || file.length() == 0L) return 0L
+                val text = file.readText()
+                val h = RustIndex.nativeOpenJson(text)
+                if (h == 0L) return 0L
+                if (RustIndex.nativeSaveResident(h, binFile.absolutePath)) {
+                    // 遷移成功 —— 7 MB 嘅 JSON 唔使再留喺磁碟
+                    runCatching { file.delete() }
+                }
+                h
+            }
+        }.getOrDefault(0L)
+    }
+
+    /** 把常駐索引寫落碟（原子寫：`.tmp` 再 rename） */
+    fun saveResident(handle: Long): Boolean {
+        if (handle == 0L || !RustIndex.available) return false
+        return runCatching { RustIndex.nativeSaveResident(handle, binFile.absolutePath) }
+            .getOrDefault(false)
+    }
+
     // ============ 內部實作 ============
 
     private fun read(): IndexData? = runCatching {

@@ -74,6 +74,50 @@ object RustIndex {
     /** 某個站有邊啲路線 —— 返回字串表索引 */
     external fun nativeRoutesAtStop(handle: Long, op: String, stopId: String): IntArray?
 
+    // ---------- 常駐（Rust 完全擁有記憶體）----------
+    //
+    // 上面嗰啲係 `Box::into_raw`：Kotlin 攞到 handle，用完要自己 `nativeFree`，
+    // 而 `toIndexData()` 會把成個索引砌返落 JVM heap —— 即係 JVM 仍然有份副本。
+    //
+    // 下面呢組係 **常駐**：索引由 Rust 放喺 native heap（`Box::leak`），
+    // Kotlin 淨係揸住一個 `Long`。查詢全部喺 Rust 側做，**淨係把要顯示嗰
+    // 幾十筆傳過界** —— JVM heap 淨係持有暫時性、結果咁大嘅物件。
+
+    /** 由碟上嘅二進制索引開一個常駐 handle；失敗返回 0 */
+    external fun nativeOpen(path: String): Long
+
+    /** 由 JSON 建一個常駐 handle（第一次建索引嗰陣用） */
+    external fun nativeOpenJson(json: String): Long
+
+    /** 收返 handle，並釋放 native heap 上面嘅索引 */
+    external fun nativeClose(handle: Long)
+
+    /** 常駐索引數量（診斷用，正常係 1） */
+    external fun nativeResidentCount(): Int
+
+    /** 把常駐索引寫落碟（原子寫） */
+    external fun nativeSaveResident(handle: Long, path: String): Boolean
+
+    external fun nativeStatsResident(handle: Long): IntArray?
+
+    external fun nativeBuiltAtResident(handle: Long): Long
+
+    /** 搵路線。每行：`op|route|bound|serviceType|routeId|orig|dest` */
+    external fun nativeSearchRoutes(handle: Long, query: String, limit: Int): Array<String>?
+
+    /** 搵車站。每行：`op|id|name|nameEn|lat|lon|route1,route2,…` */
+    external fun nativeSearchStops(handle: Long, query: String, limit: Int): Array<String>?
+
+    /** 某條路線嘅車站（按 seq）。每行：`op|stopId|seq|name|nameEn|lat|lon` */
+    external fun nativeRouteStopsRows(
+        handle: Long, op: String, route: String, bound: String, serviceType: String
+    ): Array<String>?
+
+    /** 半徑內嘅車站。每行：`op|id|name|nameEn|lat|lon|distM` */
+    external fun nativeNearbyRows(
+        handle: Long, lat: Double, lon: Double, radiusM: Double, limit: Int
+    ): Array<String>?
+
     // ==================== 高階封裝 ====================
 
     /**
@@ -166,4 +210,141 @@ object RustIndex {
         2 -> "I"
         else -> ""
     }
+}
+
+// ==================== 常駐模式：查詢結果嘅封裝 ====================
+//
+// 行分隔符係 `\u001F`（unit separator）—— 站名入面唔會有呢個字符，
+// 所以唔使自訂二進制格式（少一個出錯位）。
+
+/** 行分隔符，要同 Rust `lib.rs` 嘅 `SEP` 一致 */
+private const val ROW_SEP = '\u001F'
+
+/** Rust 搵路線嘅結果（已經係 `RouteDef`，可以直接畀 UI） */
+fun searchRoutes(handle: Long, query: String, limit: Int): List<RouteDef> {
+    if (handle == 0L || query.isBlank() || !RustIndex.available) return emptyList()
+    val rows = runCatching { RustIndex.nativeSearchRoutes(handle, query.trim(), limit) }
+        .getOrNull() ?: return emptyList()
+    val out = ArrayList<RouteDef>(rows.size)
+    for (row in rows) {
+        val f = row.split(ROW_SEP)
+        if (f.size < 7) continue
+        val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+        out.add(
+            RouteDef(
+                op = op,
+                route = f[1],
+                bound = f[2],
+                serviceType = f[3],
+                routeId = f[4],
+                orig = f[5],
+                dest = f[6]
+            )
+        )
+    }
+    return out
+}
+
+/** Rust 搵車站嘅結果 */
+data class StopRow(
+    val stop: StopDef,
+    /** 該站停靠嘅路線號（已排序） */
+    val routes: List<String>,
+    /** 距離（米）；`nearbyRows` 先會有，否則 0 */
+    val distM: Int = 0
+)
+
+fun searchStops(handle: Long, query: String, limit: Int): List<StopRow> {
+    if (handle == 0L || query.isBlank() || !RustIndex.available) return emptyList()
+    val rows = runCatching { RustIndex.nativeSearchStops(handle, query.trim(), limit) }
+        .getOrNull() ?: return emptyList()
+    val out = ArrayList<StopRow>(rows.size)
+    for (row in rows) {
+        val f = row.split(ROW_SEP)
+        if (f.size < 7) continue
+        val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+        val routes = if (f[6].isEmpty()) emptyList() else f[6].split(",")
+        out.add(
+            StopRow(
+                stop = StopDef(
+                    op = op,
+                    id = f[1],
+                    name = f[2],
+                    nameEn = f[3],
+                    lat = f[4].toDoubleOrNull() ?: 0.0,
+                    lon = f[5].toDoubleOrNull() ?: 0.0
+                ),
+                routes = routes
+            )
+        )
+    }
+    return out
+}
+
+/** 某條路線（某方向）嘅車站，按 `seq` 排 */
+fun routeStops(
+    handle: Long, op: Operator, route: String, bound: String, serviceType: String
+): List<Pair<Int, StopDef>> {
+    if (handle == 0L || !RustIndex.available) return emptyList()
+    val rows = runCatching {
+        RustIndex.nativeRouteStopsRows(handle, op.name, route, bound, serviceType)
+    }.getOrNull() ?: return emptyList()
+    val out = ArrayList<Pair<Int, StopDef>>(rows.size)
+    for (row in rows) {
+        val f = row.split(ROW_SEP)
+        if (f.size < 7) continue
+        val o = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+        out.add(
+            f[2].toIntOrNull() ?: 0 to StopDef(
+                op = o,
+                id = f[1],
+                name = f[3],
+                nameEn = f[4],
+                lat = f[5].toDoubleOrNull() ?: 0.0,
+                lon = f[6].toDoubleOrNull() ?: 0.0
+            )
+        )
+    }
+    return out
+}
+
+/** 半徑內嘅車站，按距離排 */
+fun nearbyStops(
+    handle: Long, lat: Double, lon: Double, radiusM: Double, limit: Int
+): List<StopRow> {
+    if (handle == 0L || !RustIndex.available) return emptyList()
+    val rows = runCatching { RustIndex.nativeNearbyRows(handle, lat, lon, radiusM, limit) }
+        .getOrNull() ?: return emptyList()
+    val out = ArrayList<StopRow>(rows.size)
+    for (row in rows) {
+        val f = row.split(ROW_SEP)
+        if (f.size < 7) continue
+        val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+        out.add(
+            StopRow(
+                stop = StopDef(
+                    op = op,
+                    id = f[1],
+                    name = f[2],
+                    nameEn = f[3],
+                    lat = f[4].toDoubleOrNull() ?: 0.0,
+                    lon = f[5].toDoubleOrNull() ?: 0.0
+                ),
+                routes = emptyList(),
+                distM = f[6].toIntOrNull() ?: 0
+            )
+        )
+    }
+    return out
+}
+
+/** 常駐索引嘅統計：`[routes, stops, routeStops, strings]` */
+fun stats(handle: Long): IntArray? {
+    if (handle == 0L || !RustIndex.available) return null
+    return runCatching { RustIndex.nativeStatsResident(handle) }.getOrNull()
+}
+
+fun builtAt(handle: Long): Long {
+    if (handle == 0L || !RustIndex.available) return 0L
+    return runCatching { RustIndex.nativeBuiltAtResident(handle) }.getOrDefault(0L)
 }
