@@ -76,11 +76,13 @@
     <string name="eta_auto_refresh">Auto-refreshing every 20 seconds</string>
     <string name="eta_loading">Fetching arrival times…</string>
     <string name="eta_empty">No departures right now (last service may have passed)</string>
+    <string name="eta_offline_hint">No network or no reply from the operator \u2014 showing data from %1$s</string>
     <string name="eta_query_failed">Query failed: %1$s</string>
     <string name="eta_scheduled">Scheduled %1$s</string>
     <string name="eta_soon">Arriving now</string>
     <string name="eta_minutes">%1$d min</string>
     <string name="eta_dash">—</string>
+    <string name="eta_all_directions">All directions</string>
 
     <!-- Arrival remarks assembled by the data layer -->
     <string name="eta_platform">Platform %1$s</string>
@@ -131,6 +133,7 @@
     <!-- Home-screen widget -->
     <string name="widget_refresh">Refresh</string>
     <string name="widget_no_fav">No saved stops yet — save one in the app and it will appear here</string>
+    <string name="widget_offline">Offline \u00b7 %1$d min ago</string>
     <string name="widget_now">Now</string>
     <string name="widget_minutes">%1$d min</string>
     <string name="settings_widget_hint">Long-press an empty spot on the home screen → Widgets → pick HKATE. It then shows the next departure at your saved stops.</string>
@@ -229,11 +232,14 @@
     <string name="index_step_gmb">Downloading GMB minibus routes…</string>
     <string name="index_step_failed">%1$s failed: %2$s</string>
     <string name="index_deep_ctb_progress">Deep-indexing Citybus %1$s (%2$d/%3$d)</string>
-    <string name="index_deep_ctb_done">Citybus deep index complete: %1$d stops added</string>
+    <string name="index_deep_ctb_done">Citybus deep index complete: %1$d stops added (%2$d routes)</string>
     <string name="index_deep_ctb_msg">Citybus stops added to “Nearby stops”</string>
     <string name="index_deep_gmb_progress">Deep-indexing minibus %1$s (%2$d/%3$d)</string>
-    <string name="index_deep_gmb_done">Minibus deep index complete: %1$d stops added</string>
+    <string name="index_deep_gmb_done">Minibus deep index complete: %1$d stops added (%2$d routes)</string>
     <string name="index_deep_gmb_msg">Minibus stops added to “Nearby stops”</string>
+    <string name="index_deep_ctb_failed">Citybus deep index failed: all %1$d routes unreachable — check your connection</string>
+    <string name="index_deep_ctb_nostops">Citybus deep index complete: %1$d routes mapped, but %2$d stop coordinates failed (endpoint busy or rate-limited) — tap again</string>
+    <string name="index_deep_gmb_failed">Minibus deep index failed: all %1$d routes unreachable — check your connection</string>
     <string name="index_no_ctb">No Citybus routes yet — rebuild the index first</string>
     <string name="index_no_gmb">No minibus routes yet — rebuild the index first</string>
     <string name="index_mtrbus_hint">Query MTR Bus live</string>
@@ -299,6 +305,9 @@
     <string name="tt_loading">Loading trips\u2026</string>
     <string name="tt_empty">No trips right now (possibly after the last bus)</string>
     <string name="tt_offline">Offline data \u00b7 fetched at %1$s (not live)</string>
+    <string name="tt_official">Official timetable</string>
+    <string name="tt_official_goto">Timetable on operator site</string>
+    <string name="tt_official_note">data.gov.hk has no departure timetable - the official ETA endpoints only give live arrivals, and the route dataset only carries a "headway link" pointing at the operator\u2019s own page. So this opens the official timetable directly rather than inventing data.</string>
     <string name="tt_reload">Reload</string>
     <string name="notice_official_title">Service notice</string>
     <string name="notice_source_official">Official</string>
@@ -338,4 +347,5 @@
     <string name="notice_line_normal_title">Route running normally</string>
     <string name="notice_line_normal_body">Every stop along the route returned arrivals and nothing unusual was found.</string>
     <string name="notice_disclaimer">Apart from the MTR family, which publishes official service alerts, the other operators\u2019 arrival APIs have no notice field. Items labelled \u201cDerived from official data\u201d are observations computed from live official arrivals \u2014 they are not official notices.</string>
+    <string name="settings_index_backend">Index format: %1$s</string>
 </resources>
