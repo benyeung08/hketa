@@ -2330,6 +2330,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return out
     }
 
+    /** 索引而家用緊邊種格式（Rust 二進制 / 純 Kotlin JSON）—— 畀設定頁顯示 */
+    fun indexBackendLabel(): String = runCatching { store.backendLabel }.getOrDefault("Kotlin / JSON")
+
     fun consumeMessage() {
         _message.value = null
     }
