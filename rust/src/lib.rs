@@ -196,6 +196,8 @@ pub struct Index {
     /// `(op, stop_id_string_idx) -> route_name_string_idx list`
     /// key 打包成 u64：`(op as u64) << 32 | stop_id as u64`
     routes_by_stop: Option<HashMap<u64, Vec<u32>>>,
+    /// `(op, stop_id) -> stops 下標`（懶建）—— 用嚟由路線-車站對應查出車站資料
+    stops_by_id: Option<HashMap<u64, u32>>,
     /// 字串 → 索引嘅反查表（懶建）—— 唔係嘅話查一個站要線性掃 25770 條字串
     string_index: Option<HashMap<String, u32>>,
 }
@@ -229,6 +231,7 @@ impl Index {
             route_stops: Vec::new(),
             routes_by_stop: None,
             string_index: None,
+            stops_by_id: None,
         }
     }
 
@@ -459,6 +462,7 @@ impl Index {
             route_stops,
             routes_by_stop: None,
             string_index: None,
+            stops_by_id: None,
         })
     }
 
@@ -653,3 +657,344 @@ mod tests {
 
 #[cfg(feature = "android")]
 pub mod jni;
+
+// ================================================================
+// Rust 完全擁有：常駐記憶體 ＋ 查詢
+// ================================================================
+//
+// 上面嗰個版本淨係做「儲存」：Kotlin 攞完 handle 會砌返一個 `IndexData`
+// 放落 JVM heap，即係 JVM 仍然持有一份完整副本。
+//
+// 呢度做嘅係「Rust 完全擁有」：
+//
+// * **常駐**：索引放喺 Rust 嘅 `REGISTRY`（native heap），Kotlin 淨係揸住一個
+//   `Long` handle。每次查詢都唔使重新讀碟。
+// * **查詢喺 Rust 側做**：搜尋路線、搜尋車站、搵路線嘅車站 —— Kotlin 唔使
+//   遍歷 JVM 物件。
+// * **結果先至過界**：Rust 淨係把「要顯示嗰幾十筆」傳過去。JVM heap 淨係持有
+//   **暫時性、結果咁大**嘅物件，而唔係成個索引。
+//
+// 行格式用 `\u{1F}`（unit separator）分隔 —— 站名唔會有呢個字符，
+// 亦唔使自訂二進制格式（少一個出錯位）。
+
+pub const SEP: char = '\u{1F}';
+
+impl Index {
+    pub fn str_at(&self, i: u32) -> &str {
+        match self.strings.get(i as usize) {
+            Some(s) => s.as_str(),
+            None => "",
+        }
+    }
+
+    fn ensure_stops_by_id(&mut self) {
+        if self.stops_by_id.is_some() {
+            return;
+        }
+        let mut m: HashMap<u64, u32> = HashMap::with_capacity(self.stops.len() * 2);
+        for (i, st) in self.stops.iter().enumerate() {
+            let key = ((st.op as u64) << 32) | (st.id as u64);
+            m.entry(key).or_insert(i as u32);
+        }
+        self.stops_by_id = Some(m);
+    }
+
+    /// 搵路線。行格式：`op|route|bound|serviceType|routeId|orig|dest`
+    ///
+    /// 排序同純 Kotlin 版一致：前綴命中 → 包含 → 起點／終點命中，
+    /// 每組入面按路線號長度再按字典序。
+    pub fn search_routes(&self, q: &str, limit: usize) -> Vec<String> {
+        if q.is_empty() || limit == 0 {
+            return Vec::new();
+        }
+        let qq = q.trim().to_uppercase();
+        if qq.is_empty() {
+            return Vec::new();
+        }
+
+        let mut prefix: Vec<u32> = Vec::new();
+        let mut substr: Vec<u32> = Vec::new();
+        let mut ends: Vec<u32> = Vec::new();
+
+        for (i, r) in self.routes.iter().enumerate() {
+            let name = self.str_at(r.route).to_uppercase();
+            let rid = self.str_at(r.route_id).to_uppercase();
+            if name.starts_with(&qq) || rid.starts_with(&qq) {
+                prefix.push(i as u32);
+            } else if name.contains(&qq) || rid.contains(&qq) {
+                substr.push(i as u32);
+            } else if self.str_at(r.orig).to_uppercase().contains(&qq)
+                || self.str_at(r.dest).to_uppercase().contains(&qq)
+                || self.str_at(r.orig_en).to_uppercase().contains(&qq)
+                || self.str_at(r.dest_en).to_uppercase().contains(&qq)
+            {
+                ends.push(i as u32);
+            }
+        }
+
+        // 每組入面：路線號短嘅排先，再按字典序
+        let sort_group = |v: &mut Vec<u32>, idx: &Index| {
+            v.sort_by(|a, b| {
+                let ra = &idx.routes[*a as usize];
+                let rb = &idx.routes[*b as usize];
+                let la = idx.str_at(ra.route).len();
+                let lb = idx.str_at(rb.route).len();
+                la.cmp(&lb)
+                    .then_with(|| idx.str_at(ra.route).cmp(idx.str_at(rb.route)))
+                    .then_with(|| ra.op.cmp(&rb.op))
+            });
+        };
+        sort_group(&mut prefix, self);
+        sort_group(&mut substr, self);
+        sort_group(&mut ends, self);
+
+        let mut out: Vec<String> = Vec::with_capacity(limit);
+        for i in prefix.into_iter().chain(substr).chain(ends).take(limit) {
+            let r = &self.routes[i as usize];
+            out.push(format!(
+                "{}{}{}{}{}{}{}{}{}{}{}{}{}",
+                OPS.get(r.op as usize).copied().unwrap_or("KMB"), SEP,
+                self.str_at(r.route), SEP,
+                bound_str(r.bound), SEP,
+                self.str_at(r.service_type), SEP,
+                self.str_at(r.route_id), SEP,
+                self.str_at(r.orig), SEP,
+                self.str_at(r.dest)
+            ));
+        }
+        out
+    }
+
+    /// 搵車站。行格式：`op|id|name|nameEn|lat|lon|route1,route2,…`
+    ///
+    /// 排序同純 Kotlin 版一致：站名開頭 → 站名包含 → 英文名開頭 →
+    /// 英文名包含 → 淨係站號命中。
+    pub fn search_stops(&mut self, q: &str, limit: usize) -> Vec<String> {
+        if q.is_empty() || limit == 0 {
+            return Vec::new();
+        }
+        let key = q.trim();
+        let upper = key.to_uppercase();
+        if upper.is_empty() {
+            return Vec::new();
+        }
+
+        self.ensure_string_index();
+        self.ensure_routes_by_stop();
+
+        let mut scored: Vec<(u8, u32)> = Vec::new();
+        for (i, st) in self.stops.iter().enumerate() {
+            let name = self.str_at(st.name);
+            let name_en = self.str_at(st.name_en);
+            let id = self.str_at(st.id);
+            let rank: u8 = if name.to_uppercase().starts_with(&upper) {
+                0
+            } else if name.to_uppercase().contains(&upper) {
+                1
+            } else if name_en.to_uppercase().starts_with(&upper) {
+                2
+            } else if name_en.to_uppercase().contains(&upper) {
+                3
+            } else if id.to_uppercase().contains(&upper) {
+                4
+            } else {
+                continue;
+            };
+            scored.push((rank, i as u32));
+        }
+
+        scored.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| {
+                    let la = self.str_at(self.stops[a.1 as usize].name).len();
+                    let lb = self.str_at(self.stops[b.1 as usize].name).len();
+                    la.cmp(&lb)
+                })
+                .then_with(|| {
+                    self.str_at(self.stops[a.1 as usize].name)
+                        .cmp(self.str_at(self.stops[b.1 as usize].name))
+                })
+        });
+
+        let mut out: Vec<String> = Vec::with_capacity(limit);
+        for (_, i) in scored.into_iter().take(limit) {
+            let st = &self.stops[i as usize];
+            let key64 = ((st.op as u64) << 32) | (st.id as u64);
+            let mut routes: Vec<&str> = Vec::new();
+            if let Some(m) = &self.routes_by_stop {
+                if let Some(v) = m.get(&key64) {
+                    for r in v {
+                        let name = self.str_at(*r);
+                        if !name.is_empty() && !routes.contains(&name) {
+                            routes.push(name);
+                        }
+                    }
+                }
+            }
+            routes.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
+            out.push(format!(
+                "{}{}{}{}{}{}{}{}{}{}{}{}{}",
+                OPS.get(st.op as usize).copied().unwrap_or("KMB"), SEP,
+                self.str_at(st.id), SEP,
+                self.str_at(st.name), SEP,
+                self.str_at(st.name_en), SEP,
+                st.lat, SEP,
+                st.lon, SEP,
+                routes.join(",")
+            ));
+        }
+        out
+    }
+
+    /// 某條路線（某方向）嘅車站，按 `seq` 排。
+    /// 行格式：`op|stopId|seq|name|nameEn|lat|lon`
+    pub fn route_stops_rows(&mut self, op: u8, route: &str, bound: &str, svc: &str) -> Vec<String> {
+        self.ensure_stops_by_id();
+        let mut hits: Vec<(u16, u32)> = Vec::new();
+        for (i, rs) in self.route_stops.iter().enumerate() {
+            if rs.op != op {
+                continue;
+            }
+            if self.str_at(rs.route) != route {
+                continue;
+            }
+            let b = bound_str(rs.bound);
+            if !bound.is_empty() && b != bound {
+                continue;
+            }
+            if !svc.is_empty() && self.str_at(rs.service_type) != svc {
+                continue;
+            }
+            hits.push((rs.seq, i as u32));
+        }
+        hits.sort_by_key(|x| x.0);
+
+        let mut out: Vec<String> = Vec::with_capacity(hits.len());
+        for (seq, i) in hits {
+            let rs = &self.route_stops[i as usize];
+            let key = ((rs.op as u64) << 32) | (rs.stop_id as u64);
+            let si = match &self.stops_by_id {
+                Some(m) => m.get(&key).copied(),
+                None => None,
+            };
+            let (name, name_en, lat, lon) = match si {
+                Some(s) => {
+                    let st = &self.stops[s as usize];
+                    (
+                        self.str_at(st.name),
+                        self.str_at(st.name_en),
+                        st.lat,
+                        st.lon,
+                    )
+                }
+                None => ("", "", 0.0_f64, 0.0_f64),
+            };
+            out.push(format!(
+                "{}{}{}{}{}{}{}{}{}{}{}{}{}",
+                OPS.get(rs.op as usize).copied().unwrap_or("KMB"), SEP,
+                self.str_at(rs.stop_id), SEP,
+                seq, SEP,
+                name, SEP,
+                name_en, SEP,
+                lat, SEP,
+                lon
+            ));
+        }
+        out
+    }
+
+    /// 半徑內嘅車站，按距離排。行格式：`op|id|name|nameEn|lat|lon|distM`
+    pub fn nearby_rows(&self, lat: f64, lon: f64, radius_m: f64, limit: usize) -> Vec<String> {
+        let r = self.nearby(lat, lon, radius_m);
+        let mut out: Vec<String> = Vec::with_capacity(limit);
+        for (i, d) in r.into_iter().take(limit) {
+            let st = match self.stops.get(i as usize) {
+                Some(s) => s,
+                None => continue,
+            };
+            out.push(format!(
+                "{}{}{}{}{}{}{}{}{}{}{}{}{}",
+                OPS.get(st.op as usize).copied().unwrap_or("KMB"), SEP,
+                self.str_at(st.id), SEP,
+                self.str_at(st.name), SEP,
+                self.str_at(st.name_en), SEP,
+                st.lat, SEP,
+                st.lon, SEP,
+                d
+            ));
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------- 常駐登錄表
+
+use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+
+/// `handle -> *mut Index`
+///
+/// 入面放嘅係 **`Box::leak` 出嚟嘅指標**：`Index` 本體喺 native heap，
+/// 地址永遠唔會變（唔會因為 `HashMap` rehash 而搬走），所以攞到嘅係
+/// `&'static mut Index`，**唔使任何 unsafe 轉型**。
+fn registry() -> &'static Mutex<HashMap<u64, ptr::NonNull<Index>>> {
+    static R: OnceLock<Mutex<HashMap<u64, ptr::NonNull<Index>>>> = OnceLock::new();
+    R.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// 把索引交畀 Rust 長期持有（native heap），返回 handle。
+///
+/// Kotlin 淨係揸住呢個 `Long` —— 索引本身嘅記憶體**由 Rust 擁有**，
+/// 唔喺 JVM heap，亦唔使每次查詢重新讀碟。
+pub fn resident_insert(idx: Index) -> u64 {
+    let leaked: &'static mut Index = Box::leak(Box::new(idx));
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    match registry().lock() {
+        Ok(mut m) => {
+            match ptr::NonNull::new(leaked as *mut Index) {
+                Some(p) => {
+                    m.insert(id, p);
+                    id
+                }
+                None => 0,
+            }
+        }
+        Err(_) => 0,
+    }
+}
+
+pub fn resident_get(id: u64) -> Option<&'static mut Index> {
+    let p = match registry().lock() {
+        Ok(m) => match m.get(&id) {
+            Some(p) => *p,
+            None => return None,
+        },
+        Err(_) => return None,
+    };
+    // SAFETY: 指標由 `Box::leak` 嚟，地址穩定、活到 process 結束（或者
+    // `resident_remove` 嗰陣先回收）。Kotlin 側唔會同時揸住兩個可變引用。
+    Some(unsafe { &mut *p.as_ptr() })
+}
+
+/// 收返 handle，並**真正釋放** native heap 上面嘅 `Index`
+pub fn resident_remove(id: u64) {
+    let p = match registry().lock() {
+        Ok(mut m) => m.remove(&id),
+        Err(_) => None,
+    };
+    if let Some(p) = p {
+        unsafe {
+            drop(Box::from_raw(p.as_ptr()));
+        }
+    }
+}
+
+pub fn resident_len() -> usize {
+    match registry().lock() {
+        Ok(m) => m.len(),
+        Err(_) => 0,
+    }
+}

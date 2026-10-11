@@ -319,3 +319,240 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRoutesAtStop<'loc
     let v: Vec<jint> = r.iter().map(|x| *x as jint).collect();
     new_ints(&mut env, &v)
 }
+
+// ================================================================
+// Rust 完全擁有：常駐 handle ＋ 查詢結果先至過界
+// ================================================================
+//
+// 呢度嘅 handle 同上面嗰啲唔同：上面係 `Box::into_raw`（Kotlin 要自己
+// `nativeFree`），呢度係 **Rust 常駐**（`resident_insert`，索引用嘅記憶體
+// 由 Rust 擁有，Kotlin 淨係揸住一個 `Long`）。
+//
+// 行格式用 `\u{1F}` 分隔，見 `lib.rs` 嘅 `SEP`。
+
+use jni::objects::JObject;
+
+fn new_strings(env: &mut JNIEnv, rows: &[String]) -> jobjectArray {
+    let cls = match env.find_class("java/lang/String") {
+        Ok(c) => c,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    match env.new_object_array(rows.len() as i32, cls, JObject::null()) {
+        Ok(arr) => {
+            for (i, r) in rows.iter().enumerate() {
+                if let Ok(s) = env.new_string(r.as_str()) {
+                    let _ = env.set_object_array_element(&arr, i as i32, JObject::from(s));
+                }
+            }
+            arr.as_raw()
+        }
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// 由碟上嘅二進制索引開一個常駐 handle；失敗返回 0
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpen<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    path: JString<'local>,
+) -> jlong {
+    let p = jstr(&mut env, &path);
+    match Index::load(&p) {
+        Ok(idx) => crate::resident_insert(idx) as jlong,
+        Err(_) => 0,
+    }
+}
+
+/// 由 JSON 建一個常駐 handle（第一次建索引嗰陣用）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpenJson<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    json: JString<'local>,
+) -> jlong {
+    let j = jstr(&mut env, &json);
+    match Index::from_json(&j) {
+        Ok(idx) => crate::resident_insert(idx) as jlong,
+        Err(_) => 0,
+    }
+}
+
+/// 收返常駐 handle，並釋放 native heap 上面嘅索引
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeClose(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle != 0 {
+        crate::resident_remove(handle as u64);
+    }
+}
+
+/// 常駐索引嘅數量（診斷用，正常應該係 1）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeResidentCount(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    crate::resident_len() as jint
+}
+
+/// 把常駐索引寫落碟（原子寫：`.tmp` 再 rename）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSaveResident<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    path: JString<'local>,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    let p = jstr(&mut env, &path);
+    match crate::resident_get(handle as u64) {
+        Some(idx) => match idx.save(&p) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        },
+        None => 0,
+    }
+}
+
+/// `[routes, stops, routeStops, strings]`（常駐版）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStatsResident(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jintArray {
+    if handle == 0 {
+        return std::ptr::null_mut();
+    }
+    match crate::resident_get(handle as u64) {
+        Some(idx) => {
+            let v = [
+                idx.routes.len() as jint,
+                idx.stops.len() as jint,
+                idx.route_stops.len() as jint,
+                idx.strings.len() as jint,
+            ];
+            new_ints(&mut env, &v)
+        }
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeBuiltAtResident(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jlong {
+    if handle == 0 {
+        return 0;
+    }
+    match crate::resident_get(handle as u64) {
+        Some(idx) => idx.built_at,
+        None => 0,
+    }
+}
+
+/// 搵路線。每行：`op|route|bound|serviceType|routeId|orig|dest`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchRoutes<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    query: JString<'local>,
+    limit: jint,
+) -> jobjectArray {
+    if handle == 0 || limit <= 0 {
+        return new_strings(&mut env, &[]);
+    }
+    let q = jstr(&mut env, &query);
+    match crate::resident_get(handle as u64) {
+        Some(idx) => {
+            let rows = idx.search_routes(&q, limit as usize);
+            new_strings(&mut env, &rows)
+        }
+        None => new_strings(&mut env, &[]),
+    }
+}
+
+/// 搵車站。每行：`op|id|name|nameEn|lat|lon|route1,route2,…`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchStops<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    query: JString<'local>,
+    limit: jint,
+) -> jobjectArray {
+    if handle == 0 || limit <= 0 {
+        return new_strings(&mut env, &[]);
+    }
+    let q = jstr(&mut env, &query);
+    match crate::resident_get(handle as u64) {
+        Some(idx) => {
+            let rows = idx.search_stops(&q, limit as usize);
+            new_strings(&mut env, &rows)
+        }
+        None => new_strings(&mut env, &[]),
+    }
+}
+
+/// 某條路線嘅車站（按 seq）。每行：`op|stopId|seq|name|nameEn|lat|lon`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRouteStopsRows<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    op: JString<'local>,
+    route: JString<'local>,
+    bound: JString<'local>,
+    service_type: JString<'local>,
+) -> jobjectArray {
+    if handle == 0 {
+        return new_strings(&mut env, &[]);
+    }
+    let op_s = jstr(&mut env, &op);
+    let route_s = jstr(&mut env, &route);
+    let bound_s = jstr(&mut env, &bound);
+    let svc_s = jstr(&mut env, &service_type);
+    let op_i = match OPS.iter().position(|o| *o == op_s.as_str()) {
+        Some(i) => i as u8,
+        None => return new_strings(&mut env, &[]),
+    };
+    match crate::resident_get(handle as u64) {
+        Some(idx) => {
+            let rows = idx.route_stops_rows(op_i, &route_s, &bound_s, &svc_s);
+            new_strings(&mut env, &rows)
+        }
+        None => new_strings(&mut env, &[]),
+    }
+}
+
+/// 半徑內嘅車站。每行：`op|id|name|nameEn|lat|lon|distM`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeNearbyRows(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    lat: jdouble,
+    lon: jdouble,
+    radius_m: jdouble,
+    limit: jint,
+) -> jobjectArray {
+    if handle == 0 || limit <= 0 {
+        return new_strings(&mut env, &[]);
+    }
+    match crate::resident_get(handle as u64) {
+        Some(idx) => {
+            let rows = idx.nearby_rows(lat, lon, radius_m, limit as usize);
+            new_strings(&mut env, &rows)
+        }
+        None => new_strings(&mut env, &[]),
+    }
+}
