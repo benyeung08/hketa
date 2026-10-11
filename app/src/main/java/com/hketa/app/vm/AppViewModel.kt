@@ -20,6 +20,7 @@ import com.hketa.app.data.RailData
 import com.hketa.app.data.RailLine
 import com.hketa.app.data.RouteDef
 import com.hketa.app.data.RouteStopDef
+import com.hketa.app.data.RustIndex
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.LocatePhase
@@ -575,11 +576,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return out
     }
 
+    // ============ Rust 常駐索引（Rust 完全擁有記憶體）============
+    //
+    // `rustHandle != 0` 即係索引而家由 Rust 放喺 native heap，Kotlin 淨係揸住
+    // 一個 `Long`。呢個時候搜尋／附近車站／路線嘅車站全部喺 Rust 側做，
+    // **淨係把要顯示嗰幾十筆傳過界** —— JVM heap 唔使持有成個索引。
+    //
+    // handle 一律由 `store` 嗰個二進制檔開出嚟，所以只會喺「索引啱啱由碟
+    // 讀出嚟／寫落碟」之後開。任何**淨係喺記憶體改**嘅操作（修復、合併）
+    // 都會先把 handle 收返（`dropResident`），等下次存檔再開過，
+    // 唔會出現「Rust 嗰份係舊嘅」。
+    private var rustHandle = 0L
+
+    /** 由磁碟重新開常駐 handle（會先收返舊嗰個） */
+    private fun syncResident() {
+        runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
+        rustHandle = runCatching { store.openResident() }.getOrDefault(0L)
+    }
+
+    /** 記憶體入面嘅索引改咗、但仲未寫落碟 → 收返 handle，改用純 Kotlin 查詢 */
+    private fun dropResident() {
+        runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
+        rustHandle = 0L
+    }
+
     suspend fun ensureIndex(force: Boolean = false) {
         // 版本落後（例如 1.0.0 建立、未含鐵路站）就自動重建
         val cached = if (force) null else store.loadSuspend()
         if (cached != null && cached.routes.isNotEmpty() && cached.version >= INDEX_VERSION) {
             _index.value = cached
+            syncResident()
             _indexStatus.value = str(R.string.index_ready, cached.routes.size)
             // 快取命中都要補城巴／小巴車站 —— 以前淨係得「重建索引」嗰條路會叫
             // maybeAutoRepair()，所以第二次開 App 起就永遠唔會補，
@@ -599,6 +625,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = true
             store.clear()
             _index.value = IndexData()
+            dropResident()
             _indexStatus.value = ""
             _favorites.value = favoritesStore.all().takeIf { ::favoritesStore.isInitialized }.orEmpty()
             _busy.value = false
@@ -610,6 +637,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             store.clear()
             _index.value = IndexData()
+            dropResident()
             buildIndex()
         }
     }
@@ -817,6 +845,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        syncResident()
         refreshDiagnostics()
     }
 
@@ -909,6 +938,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = data
         store.saveSuspend(data)
+        syncResident()
         refreshDiagnostics()
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
         _busy.value = false
@@ -1330,16 +1360,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val upper = key.uppercase()
 
-        val fromIndex = _index.value.routes.filter {
-            it.route.uppercase().contains(upper) ||
-                it.routeId.uppercase().contains(upper) ||
-                it.orig.contains(upper, true) ||
-                it.dest.contains(upper, true)
-        }.sortedWith(
-            compareBy<RouteDef> { it.op.ordinal }
-                .thenBy { it.route.length }
-                .thenBy { it.route }
-        ).take(150)
+        // Rust 常駐索引：喺 native heap 入面搜，淨係把結果傳過界
+        val rust = RustIndex.searchRoutes(rustHandle, key, 150)
+        val fromIndex = if (rust.isNotEmpty()) {
+            rust
+        } else {
+            _index.value.routes.filter {
+                it.route.uppercase().contains(upper) ||
+                    it.routeId.uppercase().contains(upper) ||
+                    it.orig.contains(upper, true) ||
+                    it.dest.contains(upper, true)
+            }.sortedWith(
+                compareBy<RouteDef> { it.op.ordinal }
+                    .thenBy { it.route.length }
+                    .thenBy { it.route }
+            ).take(150)
+        }
 
         val withMtrBus = if (upper.matches(Regex("^K\\d+[A-Z]?$")) &&
             fromIndex.none { it.op == Operator.MTR_BUS }
@@ -1363,6 +1399,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val upper = key.uppercase()
         val idx = _index.value
+
+        // Rust 常駐索引：喺 native heap 入面搜，淨係把結果傳過界
+        val rustStops = RustIndex.searchStops(rustHandle, key, 80)
+        if (rustStops.isNotEmpty()) {
+            _stopResults.value = rustStops.map { row ->
+                StopHit(stop = row.stop, routes = row.routes)
+            }
+            return
+        }
 
         // 路線號 → 車站 ID 嘅反向表，用嚟計每站停靠嘅路線
         val routesByStop = idx.routeStops
@@ -1465,6 +1510,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun stopsFromIndex(rd: RouteDef): List<StopWithSeq> {
+        // Rust 常駐索引：喺 native heap 入面過濾 + 按 seq 排
+        val rust = RustIndex.routeStops(
+            rustHandle, rd.op, rd.route, rd.bound, rd.serviceType
+        )
+        if (rust.isNotEmpty()) {
+            return rust.map { (seq, st) -> StopWithSeq(st, seq) }
+        }
         val idx = _index.value
         return idx.routeStops
             .filter {
@@ -2205,10 +2257,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = true
             _nearbyOrigin.value = "%.5f, %.5f".format(lat, lon)
             val idx = _index.value
-            // bbox 預篩 + 車站→路線索引（O(1) 查表，唔使逐個站掃 63150 條）
-            val list = stopsWithin(idx.stops, lat, lon, radiusMeters.toDouble())
-                .take(80)
-                .map { (s, d) -> NearbyStop(s, d, routesOfStop(idx, s)) }
+            // Rust 常駐索引：喺 native heap 入面篩 + 排，淨係把結果傳過界
+            val rustNear = RustIndex.nearbyStops(rustHandle, lat, lon, radiusMeters.toDouble(), 80)
+            val list = if (rustNear.isNotEmpty()) {
+                rustNear.map { row -> NearbyStop(row.stop, row.distM, routesOfStop(idx, row.stop)) }
+            } else {
+                // bbox 預篩 + 車站→路線索引（O(1) 查表，唔使逐個站掃 63150 條）
+                stopsWithin(idx.stops, lat, lon, radiusMeters.toDouble())
+                    .take(80)
+                    .map { (s, d) -> NearbyStop(s, d, routesOfStop(idx, s)) }
+            }
             _nearby.value = list
             _busy.value = false
             if (list.isEmpty()) {
@@ -2236,6 +2294,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        syncResident()
         refreshDiagnostics()
     }
 
