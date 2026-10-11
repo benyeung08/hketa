@@ -76,11 +76,13 @@
     <string name="eta_auto_refresh">每 20 秒自動更新</string>
     <string name="eta_loading">正在查詢到站預報…</string>
     <string name="eta_empty">暫時冇班次資料（可能已過尾班車）</string>
+    <string name="eta_offline_hint">冇網／官方接口冇回應，顯示嘅係 %1$s 嘅資料</string>
     <string name="eta_query_failed">查詢失敗：%1$s</string>
     <string name="eta_scheduled">預定 %1$s</string>
     <string name="eta_soon">即將抵站</string>
     <string name="eta_minutes">%1$d 分鐘</string>
     <string name="eta_dash">—</string>
+    <string name="eta_all_directions">全部方向</string>
 
     <!-- 到站預報：資料層組裝備註用 -->
     <string name="eta_platform">月台 %1$s</string>
@@ -131,6 +133,7 @@
     <!-- 桌面小工具 -->
     <string name="widget_refresh">更新</string>
     <string name="widget_no_fav">未有收藏車站，撳開 App 收藏後會顯示喺度</string>
+    <string name="widget_offline">離線 · %1$d 分前</string>
     <string name="widget_now">現已到站</string>
     <string name="widget_minutes">%1$d 分</string>
     <string name="settings_widget_hint">長按桌面空白位 →「小工具」→ 搵 HKATE，加入後會顯示收藏車站嘅下一班車。</string>
@@ -229,11 +232,14 @@
     <string name="index_step_gmb">正在下載專線小巴路線…</string>
     <string name="index_step_failed">%1$s失敗：%2$s</string>
     <string name="index_deep_ctb_progress">深度索引城巴 %1$s（%2$d/%3$d）</string>
-    <string name="index_deep_ctb_done">城巴深度索引完成：新增 %1$d 個車站</string>
+    <string name="index_deep_ctb_done">城巴深度索引完成：新增 %1$d 個車站（%2$d 條路線）</string>
     <string name="index_deep_ctb_msg">城巴車站已納入「附近車站」</string>
     <string name="index_deep_gmb_progress">深度索引小巴 %1$s（%2$d/%3$d）</string>
-    <string name="index_deep_gmb_done">小巴深度索引完成：新增 %1$d 個車站</string>
+    <string name="index_deep_gmb_done">小巴深度索引完成：新增 %1$d 個車站（%2$d 條路線）</string>
     <string name="index_deep_gmb_msg">專線小巴車站已納入「附近車站」</string>
+    <string name="index_deep_ctb_failed">城巴深度索引失敗：%1$d 條路線全部抓唔到，請檢查網絡再試</string>
+    <string name="index_deep_ctb_nostops">城巴深度索引完成：補完 %1$d 條路線，但 %2$d 個車站座標抓唔到（官方接口繁忙或限流），請再撳一次</string>
+    <string name="index_deep_gmb_failed">小巴深度索引失敗：%1$d 條路線全部抓唔到，請檢查網絡再試</string>
     <string name="index_no_ctb">尚未取得城巴路線，請先重建索引</string>
     <string name="index_no_gmb">尚未取得小巴路線，請先重建索引</string>
     <string name="index_mtrbus_hint">即時向港鐵巴士查詢</string>
@@ -299,6 +305,9 @@
     <string name="tt_loading">抓取班次資料…</string>
     <string name="tt_empty">暫時冇班次資料（可能已過尾班車）</string>
     <string name="tt_offline">離線資料 · %1$s 抓取（唔係即時班次）</string>
+    <string name="tt_official">官方時間表</string>
+    <string name="tt_official_goto">去官網查時間表</string>
+    <string name="tt_official_note">政府公開數據（data.gov.hk）冇發車時間表 —— 官方 ETA 接口只提供即時到站，路線資料淨係有「班次連結」指去官方網頁。所以呢度直接開官方時間表，唔會自己編數據。</string>
     <string name="tt_reload">重新抓取</string>
     <string name="notice_official_title">服務公告</string>
     <string name="notice_source_official">官方</string>
@@ -338,4 +347,5 @@
     <string name="notice_line_normal_title">路線運作正常</string>
     <string name="notice_line_normal_body">沿線車站都有返到班次資料，冇發現異常。</string>
     <string name="notice_disclaimer">除咗港鐵系有官方服務公告之外，其他營辦商嘅官方 ETA 接口冇公告欄位。上面標「由官方數據推導」嘅項目，係由官方即時到站數據計算出嚟嘅觀察值，並非官方公告。</string>
+    <string name="settings_index_backend">索引格式：%1$s</string>
 </resources>
