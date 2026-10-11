@@ -62,6 +62,42 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # ---- Rust 索引庫（可選）----
+      # 呢個步驟**失敗都唔會令 build 紅**（continue-on-error）——
+      # App 側有純 Kotlin 回退：冇 .so 就用返 JSON，功能完全一樣。
+      # 所以就算 Rust toolchain／NDK 有問題，APK 照出。
+      - name: Build Rust index store (optional)
+        id: rust
+        continue-on-error: true
+        run: |
+          set -u
+          echo "--- 安裝 Rust ---"
+          rustup toolchain install stable --profile minimal
+          rustup target add armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+
+          echo "--- 搵／裝 NDK ---"
+          if [ ! -d "$ANDROID_HOME/ndk" ] || [ -z "$(ls -A "$ANDROID_HOME/ndk" 2>/dev/null)" ]; then
+            CM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+            [ -x "$CM" ] || CM=$(command -v sdkmanager)
+            if [ -n "$CM" ]; then
+              yes | "$CM" --install "ndk;26.1.10909125" > /dev/null 2>&1 || \
+                yes | "$CM" --install "ndk-bundle" > /dev/null 2>&1 || true
+            fi
+          fi
+          ls -1 "$ANDROID_HOME/ndk" 2>/dev/null || echo "（搵唔到 NDK，下面會失敗但可以繼續）"
+
+          echo "--- cargo ndk build ---"
+          cd rust
+          cargo ndk \
+            -t armeabi-v7a \
+            -t arm64-v8a \
+            -t x86_64 \
+            -o ../app/src/main/jniLibs \
+            build --release --features android
+          echo "--- 産出 ---"
+          find ../app/src/main/jniLibs -name '*.so' -exec ls -la {} \;
+
       # Android 17 (API 37) 需要 platforms;android-37 + build-tools;36.0.0。
       # runner 預裝嘅 cmdline-tools 通常太舊，**根本唔知有 android-37 呢個包**，
       # 所以要先升 cmdline-tools；升完都冇就**自動降級**到最高可用嘅 platform，
@@ -415,6 +451,9 @@ jobs:
           mkdir -p apk-out
           for f in $(find app/build/outputs/apk -name "*.apk" -type f); do
             cp "$f" "apk-out/HKATE-release.apk"
+            # SHA-256 校驗檔：App 內下載嗰陣會自動攞嚟對比
+            # 格式「<hash>  <檔名>」，淨係取第一行 hash 就得
+            (cd apk-out && sha256sum HKATE-release.apk > HKATE-release.apk.sha256)
           done
           ls -lh apk-out
           test -n "$(ls -A apk-out)" || { echo "::error::no APK produced"; exit 1; }
@@ -436,6 +475,15 @@ jobs:
 
       # 失敗時把完整 log 印落 step log（唔使下載 artifact 都睇到），
       # 並抽出「最有用嗰 60 行」—— 冇 log 就好難判斷錯乜。
+      - name: Report Rust backend
+        if: always()
+        run: |
+          if find app/src/main/jniLibs -name 'libhketa_store.so' 2>/dev/null | grep -q .; then
+            echo "Rust 索引庫：已打包 ✔"
+          else
+            echo "::warning::Rust 索引庫冇打包 —— App 會行純 Kotlin / JSON 路徑（功能一樣，只係冇慳到）"
+          fi
+
       - name: Dump build log on failure
         if: failure() && hashFiles('/tmp/release-build.log') != ''
         run: |
@@ -583,6 +631,7 @@ jobs:
           VER="${{ needs.build.outputs.version_name || '1.0.0' }}"
           cp "$SRC" "${{ steps.cfg.outputs.dir }}/hkate-v${VER}-run${{ github.run_number }}.apk"
           cp "$SRC" "${{ steps.cfg.outputs.dir }}/latest.apk"
+          (cd "${{ steps.cfg.outputs.dir }}" && sha256sum latest.apk > latest.apk.sha256)
           # 只保留 latest.apk + 最近 5 個版本檔（關咗 keep_history 就只留 latest）
           if [ "${{ github.event.inputs.keep_history || 'true' }}" != "true" ]; then
             # 只保留 latest.apk + 最近 5 個版本檔（sort -V 先啱：run9 < run10）
