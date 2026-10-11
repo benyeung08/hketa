@@ -439,6 +439,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { indexJob?.join() }
             // ① + ②：索引 + 自動體檢／修復
             runCatching { autoRepairIfNeeded() }
+            // ④ 加速層預熱：開 App 時背景暖收藏站嘅 ETA，
+            //    等用戶撳去收藏頁嗰陣已經有嘢睇，唔使等
+            runCatching { prefetchFavorites() }
         }
 
         // ③ 定位：自動請求權限，之後交畀循環（冇授權都照樣跑，會退返手動選點）
@@ -590,12 +593,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 由磁碟重新開常駐 handle（會先收返舊嗰個） */
     private fun syncResident() {
+        // 索引換咗 → 附近車站／班次表嘅舊結果已經唔啱，加速層要清
+        com.hketa.app.data.SpeedLayer.clearAll()
         runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
         rustHandle = runCatching { store.openResident() }.getOrDefault(0L)
     }
 
     /** 記憶體入面嘅索引改咗、但仲未寫落碟 → 收返 handle，改用純 Kotlin 查詢 */
     private fun dropResident() {
+        com.hketa.app.data.SpeedLayer.clearAll()
         runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
         rustHandle = 0L
     }
@@ -1782,6 +1788,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _routeTimetable.value = null
             _timetableOffline.value = false
             _timetableCacheAt.value = 0L
+
+            // ★ 加速層：班次表要打 12 個站，成本最高。
+            //   90 秒內睇過就即出，唔使再等 12 個請求。
+            val tk = com.hketa.app.data.SpeedLayer.routeKey(
+                rd.op, rd.route, rd.bound, rd.serviceType
+            )
+            val freshTt = com.hketa.app.data.SpeedLayer.timetable.get(tk)
+            if (freshTt != null) {
+                _routeTimetable.value = freshTt
+                return@launch
+            }
+
             val stops = _routeStops.value
             if (stops.isEmpty()) return@launch
 
@@ -1876,6 +1894,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _timetableOffline.value = false
             _timetableCacheAt.value = 0L
             _routeTimetable.value = table
+            // 寫落加速層：90 秒內切返嚟唔使再打 12 個請求
+            com.hketa.app.data.SpeedLayer.timetable.put(tk, table)
         }
     }
 
@@ -2045,27 +2065,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadEta(stop: StopDef, route: RouteDef?) {
         viewModelScope.launch {
-            _busy.value = true
             _etaOffline.value = false
             _etaCacheAt.value = 0L
-            val (raw, alert) = etasFor(stop, route)
-            val list = raw
-            alert?.let { _message.value = it }
+
+            //
+            // ★ 加速層（stale-while-revalidate）
+            //
+            // 以前無論幾時入車站頁都一定打一次網絡，就算 3 秒前先睇過都係咁，
+            // 所以每次都要對住轉圈等。而家：
+            //   - 有新鮮（20 秒內）→ 即出，連轉圈都唔使
+            //   - 得舊嘅         → 先出舊嘅（畫面即刻有嘢），再背景刷新
+            //   - 完全冇         → 先轉圈，正常抓取
+            //
+            val ck = com.hketa.app.data.SpeedLayer.etaKeyOf(stop, route)
+            val fresh = com.hketa.app.data.SpeedLayer.eta.get(ck)
+            if (fresh != null) {
+                _etas.value = fresh
+                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.eta.atOf(ck)
+                _busy.value = false
+                return@launch
+            }
+
+            val stale = com.hketa.app.data.SpeedLayer.eta.peek(ck)
+            if (stale != null) {
+                // 先畀畫面有嘢睇，跟住靜默刷新 —— 唔再對住轉圈
+                _etas.value = stale
+                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.eta.atOf(ck)
+                _busy.value = false
+            } else {
+                _busy.value = true
+            }
+
+            // 單飛：快速撳幾下／重組觸發多次，都淨係一個網絡請求
+            val pair = com.hketa.app.data.SpeedLayer.etaFlight.join(ck) {
+                etasFor(stop, route)
+            }
+            val list = pair.first
+            pair.second?.let { _message.value = it }
             run { if (list.isNotEmpty()) _lastUpdateAt.value = System.currentTimeMillis() }
 
             val cache = ensureEtaCache()
-            val ck = cache.keyOf(stop.id, stop.op, route?.route.orEmpty())
+            val diskKey = cache.keyOf(stop.id, stop.op, route?.route.orEmpty())
 
             if (list.isNotEmpty()) {
                 // 成功：寫落快取，下次冇網都用得着
-                cache.put(ck, com.hketa.app.data.EtaCache.from(list))
-                _etas.value = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                cache.put(diskKey, com.hketa.app.data.EtaCache.from(list))
+                val sorted = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                com.hketa.app.data.SpeedLayer.eta.put(ck, sorted)
+                _etas.value = sorted
+                _busy.value = false
+                return@launch
+            }
+
+            // 網絡失敗但手上仲有舊嘅 → 保留舊嘅，唔好清空畫面
+            if (stale != null) {
+                _etas.value = stale
                 _busy.value = false
                 return@launch
             }
 
             // ★ 冇網／官方接口冇回應：退返上次成功嗰份，並標明係幾時嘅
-            val hit = cache.get(ck)
+            val hit = cache.get(diskKey)
             val cached = hit?.etas.orEmpty().map {
                 EtaEntry(
                     op = stop.op,
@@ -2103,6 +2163,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshFavorites() {
         ensureFavorites()
         _favorites.value = favoritesStore.all()
+    }
+
+    /**
+     * 加速層預熱：開 App 嗰陣背景拉一次收藏站嘅 ETA。
+     *
+     * 淨係喺 `_favoriteEtas` 仲係空嗰陣寫入 —— 用戶自己撳入收藏頁嗰個
+     * `loadFavoriteEtas()` 會照常refresh，唔會被呢度覆蓋。
+     * 失敗唔會出聲（純加速，唔係功能）。
+     */
+    private suspend fun prefetchFavorites() {
+        runCatching {
+            ensureFavorites()
+            val list = favoritesStore.all().take(6)
+            if (list.isEmpty()) return
+            if (_favoriteEtas.value.isNotEmpty()) return
+            val map = coroutineScope {
+                list.map { fav ->
+                    async {
+                        fav.key to suspendCatching { etasForFavorite(fav) }
+                            .getOrDefault(emptyList())
+                            .sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+                    }
+                }.awaitAll().toMap()
+            }
+            if (_favoriteEtas.value.isEmpty()) _favoriteEtas.value = map
+        }
     }
 
     /** 收藏頁：一次過拉晒所有收藏車站嘅到站預報 */
@@ -2256,6 +2342,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _busy.value = true
             _nearbyOrigin.value = "%.5f, %.5f".format(lat, lon)
+
+            // ★ 加速層：自動定位每 60 秒重整一次，位置郁少少唔應該重新計
+            val nk = com.hketa.app.data.SpeedLayer.nearbyKey(lat, lon, radiusMeters)
+            val freshNear = com.hketa.app.data.SpeedLayer.nearby.get(nk)
+            if (freshNear != null) {
+                _nearby.value = freshNear
+                _busy.value = false
+                return@launch
+            }
+
             val idx = _index.value
             // Rust 常駐索引：喺 native heap 入面篩 + 排，淨係把結果傳過界
             val rustNear = RustIndex.nearbyStops(rustHandle, lat, lon, radiusMeters.toDouble(), 80)
@@ -2268,6 +2364,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .map { (s, d) -> NearbyStop(s, d, routesOfStop(idx, s)) }
             }
             _nearby.value = list
+            // 寫落加速層（空結果唔寫：費事一時冇網就鎖死 45 秒空白）
+            if (list.isNotEmpty()) com.hketa.app.data.SpeedLayer.nearby.put(nk, list)
             _busy.value = false
             if (list.isEmpty()) {
                 _message.value = str(R.string.nearby_empty)
@@ -2391,6 +2489,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 索引而家用緊邊種格式（Rust 二進制 / 純 Kotlin JSON）—— 畀設定頁顯示 */
     fun indexBackendLabel(): String = runCatching { store.backendLabel }.getOrDefault("Kotlin / JSON")
+
+    /**
+     * 加速層嘅命中率（設定頁顯示）。
+     *
+     * 顯示「命中 N / 未中 M」係特登嘅 —— 呢層純 Kotlin，Rust 有冇 build 到
+     * 都一樣生效，但要有一個位可以一眼睇到佢**真係**喺度做嘢。
+     */
+    fun speedLayerLabel(): String {
+        val (h, m) = com.hketa.app.data.SpeedLayer.stats()
+        return str(R.string.settings_speed_layer, h, m)
+    }
 
     fun consumeMessage() {
         _message.value = null
