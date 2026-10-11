@@ -222,7 +222,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             diag.forEach { (op, msg) ->
-                Muted("• ${op.labelText()}：${'$'}msg")
+                Muted("• ${op.labelText()}：$msg")
             }
         }
 
