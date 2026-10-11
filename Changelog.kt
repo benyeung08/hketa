@@ -37,6 +37,269 @@ object Changelog {
     /** 由新到舊 */
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.1.4",
+            date = "2026-10-10",
+            titleZhHant = "班次淨顯示一個方向，冇網都睇到",
+            titleZhHans = "班次只显示一个方向，没网也能看",
+            titleEn = "One direction at a time, and it works offline",
+            itemsZhHant = listOf(
+                "**加咗「官方時間表」連結**（解決「官方紙本時間表冇得顯示」）：查證過政府公開數據平台（data.gov.hk）**冇發車時間表** —— 運輸署路線資料嘅官方 data spec 淨係得 `serviceMode` 同 `journeyTime`，冇服務時間／班次／頭尾班車欄位；各營辦商嘅官方 ETA 接口亦只提供即時到站。唯一相關嘅係指去官方網頁嘅「班次連結」。所以新增 `OfficialTimetable`：專線小巴會**深鏈到運輸署官方路線頁**（`get_gmb_detail.php?route_id=…&lang=TC/SC/EN`，該頁有完整官方時間表）；其他營辦商就去官方路線查詢頁。**一律唔會自己編數據，亦唔會畀個未驗證嘅深鏈**",
+                "**班次淨係顯示一個方向**（解決「同一個站兩個方向撈埋一齊」）：官方接口會一次過返晒來回兩個方向（例如 38A 往荃灣 ＋ 38A 往美孚），以前全部撈埋顯示，要逐張卡睇目的地先分得清。**而家預設淨係顯示最快嗰班嘅方向**；想睇第個方向就撳上面嘅方向掣切換，想一次過睇晒就揀「全部方向」。得一個方向嘅路線唔會顯示切換掣，唔會阻地方",
+                "**真實地圖而家可以完全離線**（解決「第一次之後都要聯網攞 JS」）：以前就算瓦片有離線包，每次開地圖都仲要上 `unpkg.com` 攞 Leaflet 嘅 JS／CSS —— 一冇網就載唔到，直接退回示意圖。而家新增 `AssetCache`：第一次成功攞到就存落機並校驗內容（CSS 要有 `.leaflet-`、JS 要有 `L.map`，錯誤頁唔會當正貨），之後攔截請求直接用本地副本。所以**睇過一次地圖之後，飛機模式都出到真實地圖**",
+                "**班次表有離線快取**（解決「班次表一定要聯網」）：每條路線最新一次成功抓到嘅班次表會存落機。有網照舊抓新嘅；**冇網或者抓取失敗就自動顯示上次嗰份**，並用紅字標明「離線資料 · HH:mm 抓取（唔係即時班次）」，唔會再淨係彈一句「要連網先睇到」",
+                "**冇網都睇到班次**（解決「一冇網就淨低個空畫面」）：新增 `EtaCache`，記低每一次成功抓到嘅 ETA。有網照舊抓新嘅；**冇網或者官方接口冇回應就自動顯示上次嗰份**，車站頁會用紅字標明「冇網／官方接口冇回應，顯示嘅係 HH:mm 嘅資料」—— 寧願講明係幾點嘅資料，都唔好扮即時",
+                "**桌面小工具都有離線備援**：Widget 以前拉唔到 ETA 就全部變「—」。而家會退返上次成功嗰筆，並喺分鐘後面加「離線 · N 分前」，地鐵入面或者飛機模式都唔會再淨低個空 Widget",
+                "修好「城巴／小巴深度索引完成：新增 0 個車站」嘅問題：以前 `suspendCatching` 包住晒成條路線嘅抓取，只要其中**一個站**嘅 `/stop` 請求失敗或者超時，成條路線嘅路線-車站對應都會被一齊丟棄 —— 城巴每條路線有幾十個站，撞中一次就全條冇咗，所以最後顯示「新增 0」。而家**分兩層容錯**：路線-車站對應抓唔到先算失敗，車站座標逐個自己容錯，一個站失敗淨係少一個站；顯示嘅數字亦改為**真正新加**嘅數量（去重後再扣走索引已經有嘅），並會同時顯示成功路線數；如果全部路線都抓唔到，會明確講「全部抓唔到，請檢查網絡」而唔係扮「新增 0」",
+                "**「新增 0 個車站」唔會再誤導**：以前只要城巴 `/stop` 請求全部失敗（官方接口繁忙或者限流），畫面都淨係出「新增 0 個車站」，令人以為「已經補完、冇嘢要補」。而家會數住失敗次數：如果補完咗路線但一個車站座標都冇抓到，會明確講「補完 N 條路線，但 M 個車站座標抓唔到（官方接口繁忙或限流），請再撳一次」",
+                "**修好「索引診斷淨係顯示 `${'$'}msg`」嘅問題**：設定頁「索引診斷」嗰行嘅字串插值寫錯咗，變咗原樣輸出 `${'$'}msg`，睇唔到城巴／小巴到底咩事。而家會正確顯示原因（例如「城巴官方冇全量車站接口，車站需另行修復」）。**順帶修埋「診斷修好咗都唔會消失」**：診斷以前淨係喺建索引時「加」，修好之後唔會清，所以「需要修復」會永久掛住；而家一律按**目前索引嘅實際狀態**重算，補到車站／路線就會自動消失",
+                "**索引改為用 Rust 存（可選加速層）**（解決「索引 JSON 7 MB、字串重複」）：新增 `rust/` 嘅 Rust 索引庫 —— 緊湊二進制格式 ＋ 字串去重（interning）。實測（用真實 7.20 MB 索引）：**磁碟 7.20 MB → 1.23 MB（17%）**，25771 條字串全部共用同一個實例；附近車站同車站→路線嘅查詢結果同純 Kotlin 版**完全一致**。**一定會回退**：`.so` 唔存在或者加載失敗就行返原本嘅 JSON 路徑，功能完全一樣，所以本地 build 冇裝 Rust toolchain 都冇問題",
+            ),
+            itemsZhHans = listOf(
+                "**加了「官方时间表」链接**（解决「官方纸本时间表无法显示」）：查证过政府公开数据平台（data.gov.hk）**没有发车时间表** —— 运输署路线资料的官方 data spec 只有 `serviceMode` 和 `journeyTime`，没有服务时间／班次／头尾班车字段；各营运商的官方 ETA 接口也只提供实时到站。唯一相关的是指向官方网页的「班次链接」。所以新增 `OfficialTimetable`：专线小巴会**深链到运输署官方路线页**（`get_gmb_detail.php?route_id=…&lang=TC/SC/EN`，该页有完整官方时间表）；其他营运商就去官方路线查询页。**一律不会自己编数据，也不会给未验证的深链**",
+                "**班次只显示一个方向**（解决「同一个站两个方向混在一起」）：官方接口会一次过返回来回两个方向（例如 38A 往荃湾 ＋ 38A 往美孚），以前全部混在一起显示，要逐张卡看目的地才分得清。**现在默认只显示最快那班的方向**；想看另一个方向就按上面的方向按钮切换，想一次过看全部就选「全部方向」。只有一个方向的路线不会显示切换按钮，不会占地方",
+                "**真实地图现在可以完全离线**（解决「第一次之后都要联网取 JS」）：以前就算瓦片有离线包，每次开地图都还要上 `unpkg.com` 取 Leaflet 的 JS／CSS —— 一没网就载不到，直接退回示意图。现在新增 `AssetCache`：第一次成功取到就存到本机并校验内容（CSS 要有 `.leaflet-`、JS 要有 `L.map`，错误页不会当正货），之后拦截请求直接用本地副本。所以**看过一次地图之后，飞行模式都能显示真实地图**",
+                "**班次表有离线缓存**（解决「班次表一定要联网」）：每条路线最新一次成功抓到的班次表会存到本机。有网照旧抓新的；**没网或者抓取失败就自动显示上次那份**，并用红字标明「离线资料 · HH:mm 抓取（不是实时班次）」，不会再只弹一句「要联网才看得到」",
+                "**没网也能看到班次**（解决「一没网就只剩空画面」）：新增 `EtaCache`，记下每一次成功抓到的 ETA。有网照旧抓新的；**没网或者官方接口没回应就自动显示上次那份**，车站页会用红字标明「没网／官方接口没回应，显示的是 HH:mm 的资料」—— 宁愿讲明是几点的资料，也不要装作实时",
+                "**桌面小工具也有离线备用**：Widget 以前拉不到 ETA 就全部变「—」。现在会退回上次成功那笔，并在分钟后面加「离线 · N 分前」，地铁里面或者飞行模式都不会再只剩空 Widget",
+                "修好「城巴／小巴深度索引完成：新增 0 个车站」的问题：以前 `suspendCatching` 包住了整条路线的抓取，只要其中**一个站**的 `/stop` 请求失败或者超时，整条路线的路线-车站对应都会被一起丢弃 —— 城巴每条路线有几十个站，撞中一次就整条没了，所以最后显示「新增 0」。现在**分两层容错**：路线-车站对应抓不到才算失败，车站坐标逐个自己容错，一个站失败只是少一个站；显示的数字也改为**真正新增**的数量（去重后再扣掉索引已有的），并会同时显示成功路线数；如果全部路线都抓不到，会明确说「全部抓不到，请检查网络」而不是装作「新增 0」",
+                "**「新增 0 个车站」不会再误导**：以前只要城巴 `/stop` 请求全部失败（官方接口繁忙或者限流），画面都只出「新增 0 个车站」，让人以为「已经补完、没东西要补」。现在会记着失败次数：如果补完了路线但一个车站坐标都没抓到，会明确讲「补完 N 条路线，但 M 个车站坐标抓不到（官方接口繁忙或限流），请再点一次」",
+                "**修好「索引诊断只显示 `${'$'}msg`」的问题**：设置页「索引诊断」那一行的字符串插值写错了，变成原样输出 `${'$'}msg`，看不到城巴／小巴到底什么事。现在会正确显示原因（例如「城巴官方没有全量车站接口，车站需另行修复」）。**顺带修好「诊断修好了也不会消失」**：诊断以前只在建索引时「加」，修好后不会清，所以「需要修复」会一直挂着；现在一律按**目前索引的实际状态**重算，补到车站／路线就会自动消失",
+                "**索引改为用 Rust 存（可选加速层）**（解决「索引 JSON 7 MB、字符串重复」）：新增 `rust/` 的 Rust 索引库 —— 紧凑二进制格式 ＋ 字符串去重（interning）。实测（用真实 7.20 MB 索引）：**磁盘 7.20 MB → 1.23 MB（17%）**，25771 条字符串全部共用同一个实例；附近车站和车站→路线的查询结果和纯 Kotlin 版**完全一致**。**一定会回退**：`.so` 不存在或者加载失败就走回原本的 JSON 路径，功能完全一样，所以本地 build 没装 Rust toolchain 也没问题",
+            ),
+            itemsEn = listOf(
+                "**Added an \"Official timetable\" link** (fixes \"printed timetables can't be shown\"): confirmed that data.gov.hk has **no departure timetable** - the official data spec for the Transport Department route dataset only has `serviceMode` and `journeyTime`, with no service-hours, headway, or first/last-bus fields, and every operator's official ETA endpoint gives live arrivals only. The sole related field is a \"headway link\" pointing at the operator's own page. So a new `OfficialTimetable` deep-links **GMB routes straight to the TD's official route page** (`get_gmb_detail.php?route_id=...&lang=TC/SC/EN`, which carries a full official timetable); other operators open their official route-search page. **No data is invented and no unverified deep link is offered**",
+                "**Arrivals now show one direction at a time** (fixes \"both directions jumbled together\"): the operator returns both directions at once (e.g. 38A to Tsuen Wan plus 38A to Mei Foo), and they used to be interleaved so you had to read the destination on every card. **By default only the direction of the soonest trip is shown**; tap a direction chip to switch, or pick \"All directions\" to see everything at once. Routes with only one direction don't show the chips, so nothing is wasted",
+                "**The real map now works fully offline** (fixes \"still needed the network for JS after the first view\"): even with the tile pack in place, every map open still fetched Leaflet's JS/CSS from `unpkg.com`, so offline it failed and fell back to the schematic. A new `AssetCache` caches both files on first success and validates them (CSS must contain `.leaflet-`, JS must contain `L.map`, so error pages are rejected), then serves them by intercepting the request. Result: **after viewing a map once, it renders fully in airplane mode**",
+                "**The trip table has an offline cache** (fixes \"the trip table always needed a network\"): the last successfully fetched table for each route is stored on device. Online it still fetches fresh data; **offline or on failure it falls back to the last one**, clearly labelled in red as \"Offline data, fetched at HH:mm, not live\" instead of just saying a network is required",
+                "**Arrivals still show without a network** (fixes \"one lost signal and you get an empty screen\"): a new `EtaCache` stores every successful fetch. Online it fetches fresh as usual; **offline, or when the operator doesn't answer, it falls back to the last good data**, and the stop page labels it in red, saying which hour and minute the data is from. Better to say when the data is from than to pretend it's live",
+                "**The home-screen widget has an offline fallback too**: it used to show a column of dashes whenever arrivals couldn't be fetched. It now falls back to the last successful reading and appends \"Offline, N min ago\", so you don't get an empty widget in the MTR or in airplane mode",
+                "Fixed the Citybus and GMB deep index reporting 0 stops added: the whole fetch for a route was wrapped in a single `suspendCatching`, so if the `/stop` request for just **one** of its dozens of stops failed or timed out, that route's entire stop list was discarded along with it - one bad request wiped out the whole route, which is why the total came out as zero. There are now **two layers of fault tolerance**: a route only counts as failed when its route-stop list cannot be fetched, while stop coordinates are fetched individually so one bad stop costs only that stop. The number reported is now the count **actually added** (deduplicated, minus stops already in the index), shown alongside how many routes were fetched; and when every route fails it says so explicitly instead of reporting 0",
+                "**\"0 stops added\" no longer misleads**: if every Citybus `/stop` request failed (endpoint busy or rate-limited), the app still showed \"0 stops added\", which reads like nothing is left to fix. It now counts failures: if routes were mapped but no stop coordinates came back, it says clearly that N routes were mapped but M stop coordinates failed (endpoint busy or rate-limited) and asks you to tap again",
+                "**Fixed the index diagnostic showing a literal `${'$'}msg`**: the string interpolation on the Settings \"Index diagnostic\" line was written wrong, so it printed `${'$'}msg` verbatim and you could never see what was actually wrong with Citybus or GMB. It now shows the real reason (e.g. \"Citybus has no bulk-stop API - stops need a separate repair\"). **Also fixed \"the diagnostic never clears once fixed\"**: diagnostics were only ever *added* while building the index and never removed, so \"needs repair\" hung around forever; they are now recomputed from the **current index state**, so they disappear as soon as stops or routes are actually in place",
+                "**The index can now be stored in Rust (optional accelerator)** (fixes 「a 7 MB JSON index with duplicated strings」): a new Rust crate under `rust/` provides a compact binary format plus string interning. Measured on a real 7.20 MB index: **7.20 MB on disk becomes 1.23 MB (17%)**, with all 25771 strings shared as single instances; nearby-stop and stop-to-route queries return results **identical to the pure-Kotlin version**. **It always falls back**: if the `.so` is missing or fails to load, the original JSON path is used and nothing changes functionally, so a local build without the Rust toolchain is fine",
+            ),
+        ),
+
+        Entry(
+            version = "1.1.3.1",
+            date = "2026-10-10",
+            titleZhHant = "撳版本膠囊即睇更新內容",
+            titleZhHans = "按版本胶囊即看更新内容",
+            titleEn = "Tap the version pill to see what's new",
+            itemsZhHant = listOf(
+                "設定頁撳版本膠囊（或者撳 ⟳）而家會**彈出「檢查更新」對話框**（跟 code-to-app 原版行為）：對話框入面有版本膠囊、最新版本／目前版本、APK 大小、Release notes，底部係「關閉」同「下載」兩個掣；撳「下載」直接喺 App 內開始下載。以前撳完淨係喺膠囊下面換行狀態文字，睇唔到更新內容",
+                "修好**撳底部狀態欄嗰個版本膠囊會無啦啦跳去收藏頁**嘅問題：以前係 `if (hasUpdate) onCheckUpdate() else onOpenFavorites()` —— 即係冇新版嗰陣撳落去淨係跳頁，永遠唔會顯示更新內容。而家三處膠囊（底部狀態欄 / 設定頁 / 關於頁）**一律撳落去就檢查更新並彈出「檢查更新」對話框**",
+                "技術：版本號比較以前淨睇 3 段（`1.1.3.1` 會被當成 `1.1.3`），會令第 4 段嘅版本永遠唔會彈「有新版本」。而家 `Version` 支援第 4 段，`1.1.3.1` 正確咁新過 `1.1.3`；舊嘅三段同 `-beta` 寫法完全唔受影響"
+            ),
+            itemsZhHans = listOf(
+                "设置页按版本胶囊（或者按 ⟳）现在会**弹出「检查更新」对话框**（跟 code-to-app 原版行为）：对话框里面有版本胶囊、最新版本／当前版本、APK 大小、Release notes，底部是「关闭」和「下载」两个按钮；按「下载」直接在 App 内开始下载。以前按完只是在胶囊下面换一行状态文字，看不到更新内容",
+                "修好**按底部状态栏那个版本胶囊会无缘无故跳到收藏页**的问题：以前是 `if (hasUpdate) onCheckUpdate() else onOpenFavorites()` —— 也就是没有新版本时按下去只是跳页，永远不会显示更新内容。现在三处胶囊（底部状态栏 / 设置页 / 关于页）**一律按下去就检查更新并弹出「检查更新」对话框**",
+                "技术：版本号比较以前只看 3 段（`1.1.3.1` 会被当成 `1.1.3`），会让第 4 段的版本永远不弹「有新版本」。现在 `Version` 支持第 4 段，`1.1.3.1` 正确地新于 `1.1.3`；旧的三段和 `-beta` 写法完全不受影响"
+            ),
+            itemsEn = listOf(
+                "Tapping the version pill on the Settings page (or the ⟳ icon) now **opens the Check for updates dialog** (matching code-to-app): it shows the version pill, latest and current version, APK size and release notes, with Close and Download at the bottom \u2014 and Download starts the in-app download. Previously it only swapped the status line under the pill, so you never saw what was new",
+                "Fixed the **bottom-bar version pill jumping to Favourites instead of showing updates**: it read `if (hasUpdate) onCheckUpdate() else onOpenFavorites()`, so with no update pending the press only navigated away and you never saw the release notes. All three pills (bottom bar / Settings / About) now **always check for updates and open the Check for updates dialog**",
+                "Technical: version comparison only read 3 segments, so `1.1.3.1` collapsed to `1.1.3` and a fourth-segment release would never trigger the \"update available\" prompt. `Version` now reads the 4th segment, so `1.1.3.1` is correctly newer than `1.1.3`; existing three-segment and `-beta` forms are unaffected"
+            ),
+        ),
+
+        Entry(
+            version = "1.1.3",
+            date = "2026-10-09",
+            titleZhHant = "路線號打得齊 + App 名簡化",
+            titleZhHans = "路线号打得齐 + App 名简化",
+            titleEn = "Route entry fixed and app name simplified",
+            itemsZhHant = listOf(
+                "搜尋路線號而家支援「最多 3 個數字 + 最多 2 個英文」：鍵盤字母由 9 個補到 15 個（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 呢啲因為無 D、H、M、P、W、R、T 而**根本打唔到**；而家全部打到",
+                "輸入框加咗長度上限：**最多 3 個數字 + 最多 2 個英文**（合計 5 個字元）。以前冇上限，可以一直撳落去砌個永遠搜唔到嘅長字串；而家會數住數字同英文嘅數量，砌唔出嘅組合唔會再接受（例如 1234 淨收 123、1ABC 淨收 1AB）",
+                "輸入框提示改為「輸入路線號碼，如 1A、6、K51、N691」，一眼就知可以點打",
+                "App 名簡化：由「HKATE 巴士到站預報」改為淨係「HKATE」（桌面圖示下面、關於頁都係）；順手修好設定頁版本號硬編碼顯示「1.0.0」嘅 bug，而家會顯示實際版本",
+                "修好「連撳會食字、結果淨係入到一個數字」嘅 bug：以前鍵盤係 `vm.setQuery(query + it)`，`query` 係撳嗰刻**畫面上**嘅值；而 setQuery 會即時過濾 2099 條路線（喺主線程）拖慢重組，連撳兩下第二下會讀到舊值，「1」再撳「2」變咗「2」。而家改為 `appendQueryChar()`，喺 ViewModel 直接讀 `_query.value`（一定係最新值），連撳幾快都唔會食字；刪除鍵同理",
+                "更新功能改為**完全喺 App 內下載**，唔再開瀏覽器：設定頁同版本歷史嘅「下載」掣以前係 `openUrl()` 開外部瀏覽器，而家統一改為 `vm.downloadAndInstall()` —— App 內下載 APK、顯示進度條（%／MB）、校驗 SHA-256，下載完個掣變「安裝」直接開系統安裝器；撳掣可以取消，失敗可以重試"
+            ),
+            itemsZhHans = listOf(
+                "搜索路线号现在支持「最多 3 个数字 + 最多 2 个英文」：键盘字母由 9 个补到 15 个（A B C D E H K / M N P R S T W X），以前 1D、2H、51M、2E、P960、W3、R11、T6 这些因为没有 D、H、M、P、W、R、T 而**根本打不到**；现在全部打得到",
+                "输入框加了长度上限：**最多 3 个数字 + 最多 2 个英文**（合计 5 个字符）。以前没有上限，可以一直按下去拼出一个永远搜不到的长字符串；现在会数着数字和英文的数量，拼不出的组合不会再接受（例如 1234 只收 123、1ABC 只收 1AB）",
+                "输入框提示改为「输入路线号码，如 1A、6、K51、N691」，一眼就知道可以怎么打",
+                "App 名简化：由「HKATE 巴士到站预报」改为只有「HKATE」（桌面图标下面、关于页都是）；顺手修好设置页版本号硬编码显示「1.0.0」的 bug，现在会显示实际版本",
+                "修好「连按会吞字、结果只能输入一个数字」的 bug：以前键盘是 `vm.setQuery(query + it)`，`query` 是按下那一刻**画面上**的值；而 setQuery 会即时过滤 2099 条路线（在主线程）拖慢重组，连按两下第二下会读到旧值，「1」再按「2」变成了「2」。现在改为 `appendQueryChar()`，在 ViewModel 直接读 `_query.value`（一定是最新的值），连按多快都不会吞字；删除键同理",
+                "更新功能改为**完全在 App 内下载**，不再开浏览器：设置页和版本历史的「下载」按钮以前是 `openUrl()` 打开外部浏览器，现在统一改为 `vm.downloadAndInstall()` —— 在 App 内下载 APK、显示进度条（%／MB）、校验 SHA-256，下载完按钮变「安装」直接打开系统安装器；可以取消，失败可以重试"
+            ),
+            itemsEn = listOf(
+                "Route-number entry now supports up to 3 digits plus 2 letters. The keyboard went from 9 letters to 15 (A B C D E H K / M N P R S T W X) \u2014 routes like 1D, 2H, 51M, 2E, P960, W3, R11 and T6 were previously **impossible to type** because D, H, M, P, W, R and T were missing",
+                "The field now caps input at **3 digits and 2 letters** (5 characters). Nothing used to stop you building an endlessly long string that could never match; the field counts digits and letters and rejects impossible combinations (e.g. 1234 keeps only 123, 1ABC keeps only 1AB)",
+                "The field hint now reads \u201cRoute no., e.g. 1A, 6, K51, N691\u201d so the accepted format is obvious at a glance",
+                "Simplified the app name: \u201cHKATE \u2013 HK bus arrivals\u201d becomes just \u201cHKATE\u201d (both under the launcher icon and on the About page). Also fixed the Settings page hard-coding version 1.0.0 \u2014 it now shows the real version",
+                "Fixed characters being swallowed on fast key presses (which made it look like you could only type one digit): the keyboard called `vm.setQuery(query + it)` where `query` was the value **on screen** at that moment, and setQuery filters 2,099 routes on the main thread, delaying recomposition \u2014 so a second quick press still read the stale value and \u201c1\u201d then \u201c2\u201d became just \u201c2\u201d. It now calls `appendQueryChar()`, which reads `_query.value` inside the ViewModel (always current), so no press is lost however fast you type; the delete key works the same way",
+                "Updates now download **entirely inside the app** \u2014 no browser: the Download buttons on the Settings page and in version history used to call `openUrl()` and hand off to an external browser; they now go through `vm.downloadAndInstall()`, which fetches the APK in-app with a progress bar (%/MB), verifies SHA-256, then turns the button into Install to open the system installer. Tapping again cancels, and failures can be retried"
+            ),
+        ),
+
+        Entry(
+            version = "1.1.2",
+            date = "2026-10-09",
+            titleZhHant = "效能大優化：開 App 唔再卡",
+            titleZhHans = "效能大优化：开 App 不再卡",
+            titleEn = "Major performance work: app start no longer stalls",
+            itemsZhHant = listOf(
+                "效能：索引（約 7 MB JSON）嘅讀寫以前喺**主線程**做，開 App 會卡住（實測 load 187 ms + save 342 ms，低階手機估計約 2.6 秒）。而家改喺 IO 線程、用流式讀寫、寫檔改為原子替換（寫到一半崩潰都唔會損壞索引）",
+                "效能：附近車站以前每揾一個站都要掃晒全部 63150 條路線-車站對應（50 個站 = 約 315 萬次），而家建成一次索引表，之後 O(1) 查表；實測路線掃描由 454 萬次減到 6.3 萬次，快取命中後每次重整嘅計算由 352 ms 減到 6 ms（約 58 倍）"
+            ),
+            itemsZhHans = listOf(
+                "性能：索引（约 7 MB JSON）的读写以前在**主线程**做，开 App 会卡住（实测 load 187 ms + save 342 ms，低端手机估计约 2.6 秒）。现在改在 IO 线程、用流式读写、写档改为原子替换（写到一半崩溃都不会损坏索引）",
+                "性能：附近车站以前每找一个站都要扫完所有 63150 条路线-车站对应（50 个站 = 约 315 万次），现在建成一次索引表，之后 O(1) 查表；实测路线扫描由 454 万次减到 6.3 万次，缓存命中后每次重整的计算由 352 ms 减到 6 ms（约 58 倍）"
+            ),
+            itemsEn = listOf(
+                "Performance: the ~7 MB index JSON was read and written \u201c**on the main thread**\u201d, stalling app start (measured 187 ms load + 342 ms save; roughly 2.6 s on a low-end phone). It now runs on the IO thread with streaming codecs and an atomic temp-file rename, so a crash mid-write can no longer corrupt the index",
+                "Performance: finding nearby stops used to scan all 63,150 route-stop rows once per stop (50 stops = about 3.15 M iterations). It now builds the lookup once and resolves each stop in O(1): measured route scanning drops from 4.55 M to 63 K iterations, and with the cache warm each refresh costs 6 ms instead of 352 ms (about 58x)"
+            ),
+        ),
+
+        Entry(
+            version = "1.1.1",
+            date = "2026-10-09",
+            titleZhHant = "版本介面移植、班次表打直、路線公告",
+            titleZhHans = "版本界面移植、班次表打直、路线公告",
+            titleEn = "Version UI ported, vertical trip list, route notices",
+            itemsZhHant = listOf(
+                "版本膠囊版面全面跟足 code-to-app 原版 VersionPill：膠囊 padding 14/6、分隔符前後 6/6、掣距 8/10/10、三個掣尺寸 Sync 14 / History 15 / Copy 14、底色 surfaceContainerHigh @ 80%",
+                "全面移植 code-to-app 嘅「App 內下載 + 安裝」功能：唔使再開瀏覽器，撳「下載」直接喺 App 內下載 APK，會校驗 SHA-256（CI 自動生成），下載完撳「安裝」開系統安裝器",
+                "班次時間表改為打直顯示：一張卡一個站，由上到下就係行車次序；淨係顯示最快開出嗰班（第 1 班），站名會連埋站號（例如「海麗邨巴士總站 (SS667)」）",
+                "「公告」分頁改為**路線公告**，唔再顯示 App 更新公告：港鐵系顯示真·官方服務提示；其餘營辦商因為官方 ETA 接口冇公告欄位，改為由官方即時數據推導出「全線冇班次／部分站冇班次／班次間隔偏大／路線運作正常」，並一律標明「由官方數據推導」",
+                "修好搜尋頁鍵盤顯示唔到嘅問題：結果列表之前冇 weight，內容總高超出螢幕，鍵盤被推咗出畫面外；而家列表用 weight(1f) 食晒剩餘空間，鍵盤固定喺底，路線結果顯示喺鍵盤上面；字母圓鍵紫色亦加深咗，對比更清楚"
+            ),
+            itemsZhHans = listOf(
+                "版本胶囊版面全面跟足 code-to-app 原版 VersionPill：胶囊 padding 14/6、分隔符前后 6/6、按钮距 8/10/10、三个按钮尺寸 Sync 14 / History 15 / Copy 14、底色 surfaceContainerHigh @ 80%",
+                "全面移植 code-to-app 的「App 内下载 + 安装」功能：不用再开浏览器，点「下载」直接在 App 内下载 APK，会校验 SHA-256（CI 自动生成），下载完点「安装」开系统安装器",
+                "班次时间表改为打直显示：一张卡一个站，由上到下就是行车次序；只显示最快开出那班（第 1 班），站名会连埋站号（例如「海丽邨巴士总站 (SS667)」）",
+                "「公告」分页改为**路线公告**，不再显示 App 更新公告：港铁系显示真·官方服务提示；其余运营商因为官方 ETA 接口没公告字段，改为由官方即时数据推导出「全线没班次／部分站没班次／班次间隔偏大／路线运作正常」，并一律标明「由官方数据推导」",
+                "修好搜索页键盘显示不到的问题：结果列表之前没有 weight，内容总高超出屏幕，键盘被推到画面外；现在列表用 weight(1f) 吃掉剩余空间，键盘固定在底，路线结果显示在键盘上面；字母圆键紫色也加深了，对比更清楚"
+            ),
+            itemsEn = listOf(
+                "The version pill now matches the code-to-app VersionPill exactly: 14/6 pill padding, 6/6 around the separator, 8/10/10 icon gaps, Sync 14 / History 15 / Copy 14 dp, surfaceContainerHigh at 80%",
+                "Ported code-to-app\u2019s in-app download and install: no browser needed \u2014 tap Download to fetch the APK inside the app, with a SHA-256 check (generated by CI), then tap Install to open the system installer",
+                "The trip timetable is now vertical: one card per stop, top to bottom in travel order, showing only the next departure (trip 1), with stop codes in the name (e.g. \u201cHoi Lai Estate Bus Terminus (SS667)\u201d)",
+                "The Notices tab is now **route notices** rather than app announcements: the MTR family shows genuine official service alerts; since the other operators\u2019 arrival APIs have no notice field, the app now derives route condition from live official data (no trips at all / some stops empty / large headway / running normally), always labelled \u201cDerived from official data\u201d",
+                "Fixed the search keyboard not appearing: the results list had no weight, so the content overflowed and pushed the keyboard off-screen; the list now uses weight(1f), the keyboard stays pinned at the bottom and routes show above it. The round letter keys are also a deeper purple for better contrast"
+            ),
+        ),
+
+        Entry(
+            version = "1.1.0",
+            date = "2026-10-09",
+            titleZhHant = "路線頁加班次表同公告、搜尋頁改版",
+            titleZhHans = "路线页加班次表同公告、搜索页改版",
+            titleEn = "Route page gains trip timetable and notices; search page redesigned",
+            itemsZhHant = listOf(
+                "路線頁新增「班次」分頁：由官方即時到站預報構建班次表（第 N 班 = 各站預報嘅第 N 項），並推算班次間隔",
+                "班次表最多顯示 6 班車，沿線超過 12 個站會自動均勻取樣，唔會打爆官方接口",
+                "路線頁新增「公告」分頁：港鐵官方服務提示（改道／延誤／暫停），可撳「查看詳情」開連結",
+                "增設「觀察到嘅營運時段」：官方冇公開頭／尾班車接口，所以靠日常開 App 慢慢累積，會標明係觀察值而唔係官方公佈",
+                "搜尋頁版面改版：頂部加主色「搜尋」標題列、輸入框改白底「輸入路線號碼」",
+                "搜尋結果改為「路線號 ｜ 往 XX ｜ 箭頭」一列式，撳一下即開沿途車站",
+                "非九巴路線會顯示「目的地 - 營辦商」（例如「大澳 - 嶼巴」），下一行標示官方全名同「資料由 DATA.GOV.HK 提供」",
+                "路線專用鍵盤改為藍灰色調，數字鍵、字母圓鍵對比更清楚"
+            ),
+            itemsZhHans = listOf(
+                "路线页新增「班次」分页：由官方即时到站预报构建班次表（第 N 班 = 各站预报的第 N 项），并推算班次间隔",
+                "班次表最多显示 6 班车，沿线超过 12 个站会自动均匀取样，不会打爆官方接口",
+                "路线页新增「公告」分页：港铁官方服务提示（改道／延误／暂停），可点「查看详情」开链接",
+                "增设「观察到的营运时段」：官方没有公开头／尾班车接口，所以靠日常开 App 慢慢累积，会标明是观察值而不是官方公布",
+                "搜索页版面改版：顶部加主色「搜索」标题栏、输入框改白底「输入路线号码」",
+                "搜索结果改为「路线号 ｜ 往 XX ｜ 箭头」一列式，点一下即开沿途车站",
+                "非九巴路线会显示「目的地 - 运营商」（例如「大澳 - 屿巴」），下一行标示官方全名同「资料由 DATA.GOV.HK 提供」",
+                "路线专用键盘改为蓝灰色调，数字键、字母圆键对比更清楚"
+            ),
+            itemsEn = listOf(
+                "Route page gained a Trips tab: the timetable is built from the live official arrivals (trip N = the Nth prediction at each stop), with the headway derived from it",
+                "Shows up to 6 trips; routes with more than 12 stops are sampled evenly so the official endpoints aren\u2019t hammered",
+                "Route page gained a Notices tab with official MTR service alerts (diversion / delay / suspension) and a Details link",
+                "Added an \u201cobserved service window\u201d: there is no public first/last-bus API, so it accumulates as you use the app and is labelled as observed rather than official",
+                "Search page redesigned: a primary-coloured Search title bar and a white field reading \u201cEnter a route number\u201d",
+                "Results are now one row each \u2014 route number, destination, chevron \u2014 and a tap opens the stop list",
+                "Non-KMB routes show \u201cdestination - operator\u201d (e.g. \u201cTai O - NLB\u201d) with the official name and the DATA.GOV.HK credit underneath",
+                "The route keypad is now blue-grey, with clearer contrast on the digit and round letter keys"
+            )
+        ),
+
+        Entry(
+            version = "1.0.5",
+            date = "2026-10-09",
+            titleZhHant = "改名 HKATE、版本膠囊去徽章、背景修復收緊",
+            titleZhHans = "改名 HKATE、版本胶囊去徽章、背景修复收紧",
+            titleEn = "Renamed to HKATE, cleaner version pill, tighter background repair",
+            itemsZhHant = listOf(
+                "應用程式改名為 HKATE（顯示名「HKATE 巴士到站預報」），關於頁同複製版本號都跟埋改",
+                "版本膠囊跟足 code-to-app 原版：移除圓點徽章，版面變成「v1.0.5 · 6 + 三個掣」；有新版本時 versionCode 數字會轉紅，唔使靠徽章都睇得出",
+                "底部狀態欄、設定頁、關於頁三處膠囊繼續共用同一個元件，改一處三處都改",
+                "修好「背景補充緊城巴／小巴資料」提示永久掛住唔消失嘅問題：而家淨係「而家補緊」先顯示，補完即收",
+                "更重要：修好城巴／小巴車站其實從來冇自動補過嘅 bug —— 以前淨係第一次裝 App（重建索引）先會補，第二次開 App 起索引由磁碟載入就直接跳過，所以附近車站永遠淨係得九巴",
+                "背景修復改為靜默模式：唔彈訊息、唔掝忙碌狀態，唔會蓋住你自己開嘅動作",
+                "補齊簡體中文（values-b+zh+Hans）缺咗嘅 76 個字串，四份語言檔而家完全一致"
+            ),
+            itemsZhHans = listOf(
+                "应用程序改名为 HKATE（显示名「HKATE 巴士到站预报」），关于页同复制版本号都跟着改",
+                "版本胶囊跟足 code-to-app 原版：移除圆点徽章，版面变成「v1.0.5 · 6 + 三个按钮」；有新版本时 versionCode 数字会转红，不用靠徽章都看得出",
+                "底部状态栏、设置页、关于页三处胶囊继续共用同一个元件，改一处三处都改",
+                "修好「背景补充紧城巴／小巴资料」提示永久挂着不消失的问题：现在只有「正在补充」才显示，补充完即收",
+                "更重要：修好城巴／小巴车站其实从来没有自动补过的 bug —— 以前只有第一次装 App（重建索引）才会补，第二次开 App 起索引由磁盘载入就直接跳过，所以附近车站永远只有九巴",
+                "背景修复改为静默模式：不弹消息、不设置忙碌状态，不会盖住你自己开的动作",
+                "补齐简体中文（values-b+zh+Hans）缺了的 76 个字符串，四份语言文件现在完全一致"
+            ),
+            itemsEn = listOf(
+                "The app is now called HKATE (display name \u201cHKATE bus ETA\u201d), including the About page and the copy-version text",
+                "The version pill now matches code-to-app exactly: the dot badge is gone, so it reads \u201cv1.0.5 \u00b7 6\u201d plus three icons; when an update exists the version number turns red, so the badge isn\u2019t needed",
+                "The bottom bar, Settings and About still share one pill component, so a change lands in all three at once",
+                "Fixed the \u201cadding Citybus / GMB stops in the background\u201d note never going away: it now shows only while a repair is actually running",
+                "More importantly, fixed a bug where Citybus / GMB stops were never actually added: it only ran on first install (when the index was rebuilt) and was skipped on every later launch, so nearby stops were KMB-only forever",
+                "Background repair is now silent: no toast and no busy flag, so it won\u2019t interrupt whatever you started yourself",
+                "Filled in 76 strings missing from the Simplified Chinese (values-b+zh+Hans) file - all four language files now match"
+            )
+        ),
+        Entry(
+            version = "1.0.4",
+            date = "2026-10-09",
+            titleZhHant = "嶼巴英文名、地圖離線包、輕鐵自動掃描",
+            titleZhHans = "屿巴英文名、地图离线包、轻铁自动扫描",
+            titleEn = "NLB English names, offline map pack, auto Light Rail scan",
+            itemsZhHant = listOf(
+                "嶼巴站名補返英文：官方接口冇 name_en，所以內置咗約 90 個大嶼山站名嘅官方英文對照（政府地名 + 嶼巴站牌），唔係機器翻譯；查唔到一律維持中文",
+                "地圖離線包：睇過嘅路線會自動預取 zoom 12–16 嘅瓦片存落本地，WebView 攞瓦片時由本地攔截供給，飛機模式都出到真實地圖（唔再靠唔可靠嘅 WebView 快取）",
+                "輕鐵特別班次自動掃描：開「鐵路」分頁會自動喺背景掃（快取 7 日，過期自動重掃），唔使撳掣都有；手動即時重掃嘅掣照樣保留",
+                "主頁會提示「背景補充緊城巴／小巴資料」，唔會再無聲無息淨係出九巴",
+                "開 App 全自動：索引、ETA 資料修復、定位搵附近路線三樣都唔使再自己撳 —— 一開 App 就自動做",
+                "ETA 資料修復新增逐個營辦商修復：九巴／城巴／嶼巴／專線小巴／港鐵巴士／港鐵／輕鐵各有自己嘅修復掣，淨係換嗰個營辦商嘅資料，唔使成個索引重建",
+                "自動體檢：索引冇嘢／過期（超過 14 日）會開 App 自動重建，唔使去設定頁撳「ETA 資料修復」",
+                "定位權限統一喺開 App 嗰陣請求一次，主頁唔會再彈多次對話框",
+                "「版本更新」區塊改為 code-to-app 嗰種 VersionPill 膠囊：撳膠囊檢查更新，右邊三個掣係檢查更新／版本歷史／複製版本號",
+                "底部狀態欄、設定頁、關於頁三處嘅版本膠囊統一為同一個共用元件，樣式完全一致"
+            ),
+            itemsZhHans = listOf(
+                "屿巴站名补回英文：官方接口没有 name_en，所以内置了约 90 个大屿山站名的官方英文对照（政府地名 + 屿巴站牌），不是机器翻译；查不到一律维持中文",
+                "地图离线包：看过的路线会自动预取 zoom 12–16 的瓦片存到本地，WebView 取瓦片时由本地拦截供给，飞行模式都能出真实地图（不再靠不可靠的 WebView 缓存）",
+                "轻铁特别班次自动扫描：开「铁路」分页会自动在后台扫（缓存 7 天，过期自动重扫），不用按键都有；手动即时重扫的按钮照样保留",
+                "主页会提示「背景补充紧城巴／小巴资料」，不会再无声无息只有九巴",
+                "开 App 全自动：索引、ETA 资料修复、定位找附近路线三样都不用再自己按 —— 一开 App 就自动做",
+                "ETA 资料修复新增逐个运营商修复：九巴／城巴／屿巴／专线小巴／港铁巴士／港铁／轻铁各有自己的修复按钮，净系换那个运营商的资料，唔使成个索引重建",
+                "自动体检：索引没东西／过期（超过 14 天）会开 App 自动重建，不用去设置页按「ETA 资料修复」",
+                "定位权限统一在开 App 时请求一次，主页不会再弹多次对话框",
+                "「版本更新」区块改为 code-to-app 那种 VersionPill 胶囊：按胶囊检查更新，右边三个按钮是检查更新／版本历史／复制版本号",
+                "底部状态栏、设置页、关于页三处的版本胶囊统一为同一个共用组件，样式完全一致"
+            ),
+            itemsEn = listOf(
+                "NLB stops now have English names: the API has no name_en, so ~90 Lantau stop names ship with their official English names (government gazetteer + NLB signage) \u2014 not machine-translated; anything unmatched stays Chinese",
+                "Offline map pack: viewed routes prefetch zoom 12\u201316 tiles to disk and the WebView serves them locally, so real maps render even in airplane mode (no longer reliant on the unreliable WebView cache)",
+                "Light Rail special trips scan automatically: opening the Rail tab scans in the background (cached 7 days, rescans when stale) \u2014 no button press needed; the manual rescan button remains",
+                "Home now says when Citybus / GMB stops are being added in the background, instead of silently showing KMB only",
+                "Fully automatic on launch: index, ETA data repair and nearby-route location all run on startup - no buttons to press",
+                "ETA data repair now has a per-operator button for KMB / Citybus / NLB / GMB / MTR Bus / MTR / Light Rail - it swaps just that operator\u2019s data instead of rebuilding the whole index",
+                "Auto health check: an empty or stale index (older than 14 days) is rebuilt on startup, so you never need Settings then ETA data repair",
+                "Location permission is requested once at startup instead of the Home tab prompting repeatedly",
+                "The version-update block is now a code-to-app style VersionPill: tap the pill to check for updates, and the three icons are check / version history / copy version",
+                "The version pill in the bottom bar, Settings and About is now one shared component, so all three look identical"
+            )
+        ),
+        Entry(
             version = "1.0.3",
             date = "2026-10-08",
             titleZhHant = "已知限制大清掃：真實地圖、鐵路英文名、自動修復、版面重做",
@@ -57,7 +320,11 @@ object Changelog {
                 "支援 Android 17（API 37）：targetSdk 升到 37，面向最新系統",
                 "支援範圍：Android 8 – 17（minSdk 26 / targetSdk 37），Android 8 到 17 全部裝到",
                 "工具鏈升級：AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10（compileSdk 37 嘅硬門檻）",
-                "大屏自適應：Android 17 喺平板上會自動轉為可調整大小，版面唔會爆"
+                "大屏自適應：Android 17 喺平板上會自動轉為可調整大小，版面唔會爆",
+                "嶼巴站名補返英文：官方接口冇 name_en，內置咗約 90 個大嶼山站名嘅官方英文對照（唔係機器翻譯），查唔到維持中文",
+                "地圖離線包：睇過嘅路線自動預取瓦片存落本地，飛機模式都出到真實地圖（唔再靠 WebView 快取）",
+                "輕鐵特別班次自動掃描：開鐵路頁自動喺背景掃（快取 7 日），唔使撳掣；照樣可手動即時重掃",
+                "主頁會提示「背景補充緊城巴／小巴資料」，唔會再無聲淨係得九巴"
             ),
             itemsZhHans = listOf(
                 "路线地图改用真实地图：Leaflet + CARTO 深色瓦片，有底图有街道、可缩放点站名，不需 API key；离线自动退回示意图",
@@ -74,7 +341,11 @@ object Changelog {
                 "支持 Android 17（API 37）：targetSdk 升到 37，面向最新系统",
                 "支持范围：Android 8 – 17（minSdk 26 / targetSdk 37），Android 8 到 17 都能装",
                 "工具链升级：AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10（compileSdk 37 的硬门槛）",
-                "大屏自适应：Android 17 在平板上会自动转为可调整大小，版面不会爆"
+                "大屏自适应：Android 17 在平板上会自动转为可调整大小，版面不会爆",
+                "屿巴站名补回英文：官方接口没有 name_en，内置了约 90 个大屿山站名的官方英文对照（不是机器翻译），查不到维持中文",
+                "地图离线包：看过的路线自动预取瓦片存到本地，飞行模式都能出真实地图（不再靠 WebView 缓存）",
+                "轻铁特别班次自动扫描：开铁路页自动在后台扫（缓存 7 天），不用按键；照样可手动即时重扫",
+                "主页会提示「背景补充紧城巴／小巴资料」，不会再无声只有九巴"
             ),
             itemsEn = listOf(
                 "Route map now shows a real map: Leaflet + CARTO dark tiles with basemap, streets, zoom and tappable stop names — no API key. Falls back to the schematic view offline",
@@ -91,7 +362,11 @@ object Changelog {
                 "Android 17 (API 37) support: targetSdk raised to 37, targeting the newest platform",
                 "Support range: Android 8 – 17 (minSdk 26 / targetSdk 37) — installs on everything from Android 8 to 17",
                 "Toolchain upgrade: AGP 9.1.1 + Gradle 9.3.1 + Kotlin 2.2.10 — the hard minimum for compileSdk 37",
-                "Large-screen adaptive: Android 17 makes the app resizable on tablets, and the layout holds up"
+                "Large-screen adaptive: Android 17 makes the app resizable on tablets, and the layout holds up",
+                "NLB stops now have English names: the API has no name_en, so ~90 Lantau stops ship with their official English names (not machine-translated); unmatched names stay Chinese",
+                "Offline map pack: viewed routes prefetch their tiles locally, so real maps render even in airplane mode (no longer reliant on the WebView cache)",
+                "Light Rail special trips scan automatically: opening the Rail tab scans in the background (cached 7 days) - no button needed, and you can still rescan manually",
+                "Home now says when Citybus / GMB stops are being added in the background instead of silently showing KMB only"
             )
         ),
         Entry(
