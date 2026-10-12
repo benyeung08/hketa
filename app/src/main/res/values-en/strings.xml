@@ -349,4 +349,5 @@
     <string name="notice_disclaimer">Apart from the MTR family, which publishes official service alerts, the other operators\u2019 arrival APIs have no notice field. Items labelled \u201cDerived from official data\u201d are observations computed from live official arrivals \u2014 they are not official notices.</string>
     <string name="settings_index_backend">Index format: %1$s</string>
     <string name="settings_speed_layer">Speed layer: %1$d hits / %2$d misses</string>
+    <string name="settings_kernel">Kernel: %1$s</string>
 </resources>
