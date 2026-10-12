@@ -349,4 +349,5 @@
     <string name="notice_disclaimer">除咗港鐵系有官方服務公告之外，其他營辦商嘅官方 ETA 接口冇公告欄位。上面標「由官方數據推導」嘅項目，係由官方即時到站數據計算出嚟嘅觀察值，並非官方公告。</string>
     <string name="settings_index_backend">索引格式：%1$s</string>
     <string name="settings_speed_layer">加速層：命中 %1$d 次 / 未中 %2$d 次</string>
+    <string name="settings_kernel">核心：%1$s</string>
 </resources>
