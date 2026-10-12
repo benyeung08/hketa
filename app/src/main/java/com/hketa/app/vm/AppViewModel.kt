@@ -1804,11 +1804,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (stops.isEmpty()) return@launch
 
             // 太多站會打爆官方接口：淨係取樣最多 12 個（頭、尾、中間均勻）
-            val sampled = if (stops.size <= 12) stops else {
-                val step = (stops.size - 1) / 11.0
-                (0..11).map { stops[(it * step).toInt().coerceIn(0, stops.size - 1)] }
-                    .distinctBy { it.stop.id }
-            }
+            // ★ 取樣索引由 Rust kernel 計（純邏輯，有純 Kotlin 回退）
+            val sampled = com.hketa.app.data.RustKernel.sampleIndices(stops.size, 12)
+                .map { stops[it] }
+                .distinctBy { it.stop.id }
 
             _busy.value = true
             val results = coroutineScope {
@@ -1848,7 +1847,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            val trips = (0 until tripCount.coerceAtMost(6)).map { i ->
+            // ★ 砌班次表 ＋ 計班次間隔：由 Rust kernel 做（食 12 站 × 6 班，淨吐 6 班）
+            //   .so 唔喺度會返 null，嗰陣行下面嘅純 Kotlin 版，結果一樣。
+            val cols = results.map { (_, list) ->
+                com.hketa.app.data.RustKernel.encodeCol(list.map { e -> e.minutes to e.clock })
+            }
+            val built = com.hketa.app.data.RustKernel.buildTimetable(cols, 6)
+
+            val trips = built?.trips ?: (0 until tripCount.coerceAtMost(6)).map { i ->
                 com.hketa.app.data.Trip(
                     seq = i + 1,
                     cells = results.map { (_, list) ->
@@ -1864,7 +1870,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             // 班次間隔：用第一個站相鄰兩班嘅分鐘差
             val first = results.firstOrNull()?.second.orEmpty()
-            val headway = if (first.size >= 2) {
+            val headway = built?.headwayMin ?: if (first.size >= 2) {
                 val a = first[0].minutes
                 val b = first[1].minutes
                 if (a != null && b != null) (b - a).takeIf { it in 1..180 } else null
@@ -1999,53 +2005,72 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val noData = fetched.filter { it.second.isEmpty() }
         val all = fetched.flatMap { it.second }
 
-        // A. 全線冇班次
-        if (noData.size == fetched.size && fetched.isNotEmpty()) {
-            out.add(
-                com.hketa.app.data.Notice(
-                    title = str(R.string.notice_line_no_service_title),
-                    body = str(R.string.notice_line_no_service_body),
-                    time = str(R.string.notice_just_now),
-                    source = str(R.string.notice_source_derived)
-                )
-            )
-            return out
-        }
+        // 最大間隔（先計好，畀 Rust kernel 診斷用）
+        val mins0 = all.mapNotNull { it.minutes }.filter { it in 0..180 }.sorted()
+        val maxGap0 = if (mins0.size >= 2)
+            mins0.zipWithNext().map { (a, b) -> b - a }.filter { it > 0 }.maxOrNull()
+        else null
 
-        // B. 部分站冇班次
-        if (noData.isNotEmpty()) {
-            val names = noData.take(3).joinToString("、") {
-                it.first.name.ifBlank { it.first.id }
-            }
-            val more = if (noData.size > 3) str(R.string.notice_and_more, noData.size - 3) else ""
-            out.add(
-                com.hketa.app.data.Notice(
-                    title = str(R.string.notice_partial_no_data_title),
-                    body = str(R.string.notice_partial_no_data_body, names, more),
-                    time = str(R.string.notice_just_now),
-                    source = str(R.string.notice_source_derived)
-                )
-            )
-        }
-
-        // C / D. 班次間隔
-        val mins = all.mapNotNull { it.minutes }.filter { it in 0..180 }.sorted()
-        if (mins.size >= 2) {
-            val gaps = mins.zipWithNext().map { (a, b) -> b - a }.filter { it > 0 }
-            val maxGap = gaps.maxOrNull()
-            if (maxGap != null && maxGap >= 30) {
+        // ★ 狀況診斷由 Rust kernel 做（純邏輯，有純 Kotlin 回退）
+        //   注意：kernel 係「淨係出一個狀況」，所以下面四種係互斥 ——
+        //   以前可以同時出「部分站冇資料」＋「間隔偏大」，而家淨出最嚴重嗰個。
+        when (com.hketa.app.data.RustKernel.diagnose(fetched.size, noData.size, maxGap0 ?: 0)) {
+            0 -> {
+                // 一切正常 → 明確講「冇異常」，等用戶知道真係查過
                 out.add(
                     com.hketa.app.data.Notice(
-                        title = str(R.string.notice_sparse_title),
-                        body = str(
-                            if (maxGap >= 60) R.string.notice_very_sparse_body
-                            else R.string.notice_sparse_body,
-                            maxGap
-                        ),
+                        title = str(R.string.notice_line_normal_title),
+                        body = str(R.string.notice_line_normal_body),
                         time = str(R.string.notice_just_now),
                         source = str(R.string.notice_source_derived)
                     )
                 )
+                return out
+            }
+            1 -> {
+                // A. 全線冇班次
+                out.add(
+                    com.hketa.app.data.Notice(
+                        title = str(R.string.notice_line_no_service_title),
+                        body = str(R.string.notice_line_no_service_body),
+                        time = str(R.string.notice_just_now),
+                        source = str(R.string.notice_source_derived)
+                    )
+                )
+                return out
+            }
+            2 -> {
+                // B. 部分站冇班次
+                val names = noData.take(3).joinToString("、") {
+                    it.first.name.ifBlank { it.first.id }
+                }
+                val more = if (noData.size > 3) str(R.string.notice_and_more, noData.size - 3) else ""
+                out.add(
+                    com.hketa.app.data.Notice(
+                        title = str(R.string.notice_partial_no_data_title),
+                        body = str(R.string.notice_partial_no_data_body, names, more),
+                        time = str(R.string.notice_just_now),
+                        source = str(R.string.notice_source_derived)
+                    )
+                )
+            }
+            3, 4 -> {
+                // C / D. 班次間隔
+                val maxGap = maxGap0
+                if (maxGap != null && maxGap >= 30) {
+                    out.add(
+                        com.hketa.app.data.Notice(
+                            title = str(R.string.notice_sparse_title),
+                            body = str(
+                                if (maxGap >= 60) R.string.notice_very_sparse_body
+                                else R.string.notice_sparse_body,
+                                maxGap
+                            ),
+                            time = str(R.string.notice_just_now),
+                            source = str(R.string.notice_source_derived)
+                        )
+                    )
+                }
             }
         }
 
@@ -2486,6 +2511,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         out.sortBy { it.second }
         return out
     }
+
+    /**
+     * 領域核心（計數邏輯）而家由邊度做 —— 畀設定頁顯示。
+     *
+     * 同 [indexBackendLabel] 唔同：嗰個係「索引放邊度」，呢個係「由邊個計數」。
+     * 兩樣都係可選加速層，Rust 唔喺度就全部行純 Kotlin，功能完全一樣。
+     */
+    fun kernelLabel(): String =
+        if (com.hketa.app.data.RustKernel.available) "Rust / kernel"
+        else "Kotlin / fallback"
 
     /** 索引而家用緊邊種格式（Rust 二進制 / 純 Kotlin JSON）—— 畀設定頁顯示 */
     fun indexBackendLabel(): String = runCatching { store.backendLabel }.getOrDefault("Kotlin / JSON")
