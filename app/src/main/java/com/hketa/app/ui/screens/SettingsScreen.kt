@@ -214,6 +214,8 @@ fun SettingsScreen(
         // 講清楚而家用緊邊種索引格式 —— Rust 二進制定純 Kotlin JSON，
         // 等用戶（同我）一眼睇到 Rust 係咪真係生效
         Muted(stringResource(R.string.settings_index_backend, vm.indexBackendLabel()))
+        // 領域核心（砌班次表／取樣／診斷）由邊度計 —— 一樣有純 Kotlin 回退
+        Muted(stringResource(R.string.settings_kernel, vm.kernelLabel()))
         // 加速層嘅命中率 —— 呢層純 Kotlin，Rust 有冇 build 到都一樣生效
         Muted(vm.speedLayerLabel())
 
