@@ -349,4 +349,5 @@
     <string name="notice_disclaimer">除了港铁系有官方服务公告之外，其他运营商的官方 ETA 接口没公告字段。上面标「由官方数据推导」的项目，是由官方即时到站数据计算出来的观察值，并非官方公告。</string>
     <string name="settings_index_backend">索引格式：%1$s</string>
     <string name="settings_speed_layer">加速层：命中 %1$d 次 / 未中 %2$d 次</string>
+    <string name="settings_kernel">核心：%1$s</string>
 </resources>
