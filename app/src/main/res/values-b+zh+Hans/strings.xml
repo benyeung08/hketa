@@ -312,4 +312,5 @@
     <string name="notice_very_sparse_body">最长间隔超过 %1$d 分钟，班次极疏，可能受延误、改道或部分班次暂停影响。</string>
     <string name="settings_index_backend">索引格式：%1$s</string>
     <string name="settings_speed_layer">加速层：命中 %1$d 次 / 未中 %2$d 次</string>
+    <string name="settings_kernel">核心：%1$s</string>
 </resources>
