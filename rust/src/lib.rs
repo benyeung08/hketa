@@ -655,6 +655,8 @@ mod tests {
     }
 }
 
+pub mod kernel;
+
 #[cfg(feature = "android")]
 pub mod jni;
 

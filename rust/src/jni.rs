@@ -556,3 +556,127 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeNearbyRows(
         None => new_strings(&mut env, &[]),
     }
 }
+
+// ================================================================
+// kernel：領域核心（計數，唔係儲存）
+//
+// 對應 Kotlin `com.hketa.app.data.RustKernel`。
+// 每個函數都有逐行對應嘅純 Kotlin 回退，所以 .so 唔喺度都計到一樣嘅結果。
+//
+// 呢度全部用 `.get()` / `unwrap_or_default()`，一律唔 panic ——
+// panic 跨 FFI 邊界係 UB。
+
+use jni::objects::JObject;
+use jni::sys::{jobject, jsize};
+
+/// 讀一個 `String[]` 入嚟；失敗就當空陣列
+fn read_strings(env: &mut JNIEnv, arr: jobjectArray) -> Vec<String> {
+    if arr.is_null() {
+        return Vec::new();
+    }
+    let a = unsafe { JObject::from_raw(arr as jobject) };
+    let len = match env.get_array_length(&jni::objects::JObjectArray::from(a.clone())) {
+        Ok(n) => n as usize,
+        Err(_) => return Vec::new(),
+    };
+    let mut out: Vec<String> = Vec::with_capacity(len);
+    for i in 0..len {
+        let v = match env.get_object_array_element(&jni::objects::JObjectArray::from(a.clone()), i as jsize) {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        let s = match env.get_string(&JString::from(v)) {
+            Ok(s) => s.into(),
+            Err(_) => continue,
+        };
+        out.push(s);
+    }
+    out
+}
+
+/// kernel 版本；.so 唔喺度會係 0
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeKernelVersion(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    crate::kernel::KERNEL_VERSION
+}
+
+/// 取樣索引：`IntArray`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSampleIndices(
+    mut env: JNIEnv,
+    _class: JClass,
+    n: jint,
+    max: jint,
+) -> jintArray {
+    if n <= 0 || max <= 0 {
+        return new_ints(&mut env, &[]);
+    }
+    let idx = crate::kernel::sample_indices(n as usize, max as usize);
+    let out: Vec<jint> = idx.iter().map(|v| *v as jint).collect();
+    new_ints(&mut env, &out)
+}
+
+/// 砌班次表。輸入每站一欄，輸出見 `kernel::encode_timetable`
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeBuildTimetable(
+    mut env: JNIEnv,
+    _class: JClass,
+    cols: jobjectArray,
+    max_trips: jint,
+) -> jobjectArray {
+    if max_trips <= 0 {
+        return new_strings(&mut env, &[]);
+    }
+    let c = read_strings(&mut env, cols);
+    if c.is_empty() {
+        return new_strings(&mut env, &[]);
+    }
+    let (trips, hw) = crate::kernel::build_timetable(&c, max_trips as usize);
+    let rows = crate::kernel::encode_timetable(&trips, hw);
+    new_strings(&mut env, &rows)
+}
+
+/// 路線狀況診斷
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeDiagnose(
+    _env: JNIEnv,
+    _class: JClass,
+    total: jint,
+    no_data: jint,
+    max_gap: jint,
+) -> jint {
+    crate::kernel::diagnose(total as usize, no_data as usize, max_gap)
+}
+
+/// ETA 合併去重排序
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeMergeEta(
+    mut env: JNIEnv,
+    _class: JClass,
+    rows: jobjectArray,
+    cap: jint,
+) -> jobjectArray {
+    if cap <= 0 {
+        return new_strings(&mut env, &[]);
+    }
+    let r = read_strings(&mut env, rows);
+    if r.is_empty() {
+        return new_strings(&mut env, &[]);
+    }
+    let out = crate::kernel::merge_eta(&r, cap as usize);
+    new_strings(&mut env, &out)
+}
+
+/// 路線號正規化
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeNormalizeRoute<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    q: JString<'local>,
+) -> jobjectArray {
+    let s = jstr(&mut env, &q);
+    new_strings(&mut env, &[crate::kernel::normalize_route(&s)])
+}
