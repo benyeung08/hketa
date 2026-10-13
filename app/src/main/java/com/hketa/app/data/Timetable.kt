@@ -171,13 +171,47 @@ class TimetableCache(context: Context) {
     fun keyOf(routeKey: String): String =
         routeKey.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(120)
 
-    fun get(routeKey: String): Entry? = runCatching {
-        val f = File(dir, keyOf(routeKey) + ".json")
-        if (!f.exists()) return null
-        json.decodeFromString<Entry>(f.readText())
-    }.getOrNull()
+    /**
+     * 優先由 **Rust store** 讀；Rust 話冇就睇返舊嘅 JSON 檔，讀到會**順手搬遷**。
+     * 檔案入面嗰段 JSON 本身就包住 `atMs`，所以搬遷唔會改到抓取時間。
+     */
+    fun get(routeKey: String): Entry? {
+        if (RustStore.available) {
+            val k = keyOf(routeKey)
+            val raw = RustStore.get(NS, k)
+            if (raw != null) {
+                return runCatching { json.decodeFromString<Entry>(raw) }.getOrNull()
+            }
+            val oldText = runCatching {
+                val f = File(dir, k + ".json")
+                if (!f.exists()) return@runCatching null
+                f.readText()
+            }.getOrNull()
+            if (!oldText.isNullOrBlank()) {
+                RustStore.put(NS, k, oldText)          // 搬遷（原封不動）
+                return runCatching { json.decodeFromString<Entry>(oldText) }.getOrNull()
+            }
+            return null
+        }
+        return runCatching {
+            val f = File(dir, keyOf(routeKey) + ".json")
+            if (!f.exists()) return null
+            json.decodeFromString<Entry>(f.readText())
+        }.getOrNull()
+    }
 
     fun put(routeKey: String, table: RouteTimetable) {
+        if (RustStore.available) {
+            // 班次表唔係寫得好密，所以直接落碟（唔使等 flush）
+            runCatching {
+                if (RustStore.put(
+                        NS, keyOf(routeKey),
+                        json.encodeToString(Entry(table, System.currentTimeMillis()))
+                    )
+                ) RustStore.flush()
+            }
+            return
+        }
         runCatching {
             val f = File(dir, keyOf(routeKey) + ".json")
             val tmp = File(dir, keyOf(routeKey) + ".tmp")
@@ -191,6 +225,9 @@ class TimetableCache(context: Context) {
         System.currentTimeMillis() - entry.atMs > MAX_AGE_MS
 
     private companion object {
+        /** Rust store 嘅命名空間 */
+        const val NS = RustStore.NS_TIMETABLE
+
         // 2 小時：班次表係即時資料，舊過 2 個鐘只可作參考
         const val MAX_AGE_MS = 2 * 60 * 60 * 1000L
     }

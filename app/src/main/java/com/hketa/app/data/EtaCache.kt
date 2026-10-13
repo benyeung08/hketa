@@ -60,11 +60,34 @@ class EtaCache(context: Context) {
 
     private fun fileOf(key: String) = File(dir, "$key.json")
 
-    fun get(key: String): EtaCacheEntry? = runCatching {
-        val f = fileOf(key)
-        if (!f.exists()) return null
-        json.decodeFromString<EtaCacheEntry>(f.readText())
-    }.getOrNull()
+    /**
+     * 優先由 **Rust store**（native heap）讀；Rust 話冇就睇返舊嘅 JSON 檔，
+     * 讀到會**順手搬遷**落 Rust —— 檔案入面嗰段 JSON 本身就包住 `atMs`
+     * （真正嘅抓取時間），所以搬遷**唔會**令時間變成而家。
+     */
+    fun get(key: String): EtaCacheEntry? {
+        if (RustStore.available) {
+            val raw = RustStore.get(NS, key)
+            if (raw != null) {
+                return runCatching { json.decodeFromString<EtaCacheEntry>(raw) }.getOrNull()
+            }
+            val oldText = runCatching {
+                val f = fileOf(key)
+                if (!f.exists()) return@runCatching null
+                f.readText()
+            }.getOrNull()
+            if (!oldText.isNullOrBlank()) {
+                RustStore.put(NS, key, oldText)      // 搬遷（原封不動）
+                return runCatching { json.decodeFromString<EtaCacheEntry>(oldText) }.getOrNull()
+            }
+            return null
+        }
+        return runCatching {
+            val f = fileOf(key)
+            if (!f.exists()) return null
+            json.decodeFromString<EtaCacheEntry>(f.readText())
+        }.getOrNull()
+    }
 
     /**
      * 寫入快取。原子寫（.tmp → rename），寫到一半崩潰都唔會留低壞檔。
@@ -72,6 +95,17 @@ class EtaCache(context: Context) {
      */
     fun put(key: String, etas: List<CachedEta>) {
         if (etas.isEmpty()) return      // 空結果唔寫，費事覆蓋咗有用嘅舊資料
+        if (RustStore.available) {
+            // ETA 寫得好密，所以**淨係改記憶體**，落碟交畀 `RustStore.flush()`
+            // （例如保存索引嗰陣一齊做）—— 唔可以每筆寫一次檔。
+            runCatching {
+                RustStore.put(
+                    NS, key,
+                    json.encodeToString(EtaCacheEntry(key, etas, System.currentTimeMillis()))
+                )
+            }
+            return
+        }
         runCatching {
             val f = fileOf(key)
             val tmp = File(dir, "$key.tmp")
@@ -102,6 +136,9 @@ class EtaCache(context: Context) {
 
     /** 由官方 EtaEntry 轉做快取格式 */
     companion object {
+        /** Rust store 嘅命名空間 */
+        private const val NS = RustStore.NS_ETA
+
         /** 超過 30 分鐘就算「太舊」 */
         const val STALE_MS = 30 * 60 * 1000L
 

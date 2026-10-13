@@ -32,12 +32,40 @@ class FavoritesStore(context: Context) {
         encodeDefaults = true
     }
 
-    fun all(): List<FavoriteStop> = runCatching {
-        val raw = prefs.getString(KEY, null) ?: return emptyList()
-        json.decodeFromString<List<FavoriteStop>>(raw)
-    }.getOrDefault(emptyList())
+    /**
+     * 優先由 **Rust store**（native heap）讀；Rust 唔喺度就用 `SharedPreferences`。
+     *
+     * Rust 有但係冇資料嗰陣，會**順手搬遷**舊嘅 SharedPreferences 資料
+     * —— 所以升級上嚟嘅用戶唔會唔見咗收藏。
+     */
+    fun all(): List<FavoriteStop> {
+        if (RustStore.available) {
+            val raw = RustStore.get(NS, KEY)
+            if (raw != null) {
+                return runCatching { json.decodeFromString<List<FavoriteStop>>(raw) }
+                    .getOrDefault(emptyList())
+            }
+            val old = runCatching {
+                prefs.getString(KEY, null)?.let { json.decodeFromString<List<FavoriteStop>>(it) }
+            }.getOrNull()
+            if (!old.isNullOrEmpty()) {
+                save(old)          // 搬遷
+                return old
+            }
+            return emptyList()
+        }
+        return runCatching {
+            val raw = prefs.getString(KEY, null) ?: return emptyList()
+            json.decodeFromString<List<FavoriteStop>>(raw)
+        }.getOrDefault(emptyList())
+    }
 
     private fun save(list: List<FavoriteStop>) {
+        if (RustStore.available) {
+            // 收藏係用戶關鍵資料 —— 寫完即刻落碟，唔好等 flush
+            if (RustStore.put(NS, KEY, json.encodeToString(list))) RustStore.flush()
+            return
+        }
         runCatching { prefs.edit().putString(KEY, json.encodeToString(list)).apply() }
     }
 
@@ -73,6 +101,8 @@ class FavoritesStore(context: Context) {
 
     companion object {
         private const val KEY = "favorites"
+        /** Rust store 嘅命名空間 */
+        private const val NS = RustStore.NS_FAVORITES
 
         fun from(stop: StopDef, route: RouteDef? = null): FavoriteStop = FavoriteStop(
             op = stop.op,

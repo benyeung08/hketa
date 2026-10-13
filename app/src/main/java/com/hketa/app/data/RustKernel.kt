@@ -1,9 +1,21 @@
 package com.hketa.app.data
 
 /**
- * 領域核心嘅 Rust 實作（kernel）—— **計數，唔係儲存**。
+ * **HKETA 嘅 Rust 內核 —— Kotlin 側唯一入口。**
  *
- * 同 `RustIndex`（索引放邊度、點樣查）唔同，呢度搬嘅係**實際嘅運算邏輯**：
+ * 一個 `.so`（`libhketa_store.so`）三件事，全部由呢個 object 對外：
+ *
+ * | 模組（Rust 側） | 負責 | 呢度嘅 API |
+ * |---|---|---|
+ * | `rust/src/index.rs` | **儲存**（緊湊二進制 ＋ 字串去重）＋ **常駐記憶體**（native heap） | `nativeIndex*` |
+ * | `rust/src/kernel.rs` | **計數**（取樣、班次表、診斷、ETA 合併） | `sampleIndices` 等 |
+ * | `rust/src/speed.rs` | **TTL 快取**（payload 放 native heap） | `speed*` |
+ *
+ * 「內存與儲存」以前係另一個 object（`RustIndex`），而家**併入內核**：
+ * 共用同一個 `System.loadLibrary`、同一個 [available] 判斷，JNI 亦全部改咗名做
+ * `Java_com_hketa_app_data_RustKernel_nativeIndex*`。
+ *
+ * 內核負責嘅係**計算**：
  *
  * | 邏輯 | 說明 |
  * |---|---|
@@ -32,7 +44,7 @@ package com.hketa.app.data
  *
  * ## 跨邊界格式
  *
- * 同 `RustIndex` 一樣**唔用 JSON**。字段之間用 `\u001F`，字段內部用 `\u001E`，
+ * 跨邊界同索引一樣**唔用 JSON**。字段之間用 `\u001F`，字段內部用 `\u001E`，
  * 同一欄入面多個 pair 用 `;`。分鐘數「冇資料」編碼做 `"N"`。
  */
 object RustKernel {
@@ -54,8 +66,11 @@ object RustKernel {
         get() {
             if (!tried) {
                 tried = true
-                loaded = runCatching { System.loadLibrary("hketa_store"); true }
-                    .getOrDefault(false)
+                loaded = runCatching {
+                    System.loadLibrary("hketa_store")
+                    // 叫一次最簡單嘅 native 方法，確認個 library 真係啱版本
+                    nativeIndexVersion() >= 1
+                }.getOrDefault(false)
             }
             return loaded
         }
@@ -213,6 +228,466 @@ object RustKernel {
         return out?.firstOrNull() ?: q.trim().uppercase()
     }
 
+    // ---------------------------------------------------------------- 索引：儲存 ＋ 常駐記憶體
+    //
+    // 「內存與儲存」而家都係**內核**嘅一部分（Rust 側喺 `rust/src/index.rs`）：
+    //
+    // * **儲存**：緊湊二進制格式 ＋ 字串去重，7.20 MB JSON → 1.04 MB
+    // * **常駐記憶體**：索引放喺 native heap（`Box::leak`），Kotlin 淨係揸住一個 `Long`
+    // * **查詢喺 Rust 側做**：淨係把「要顯示嗰幾十筆」傳過界
+    //
+    // 以前呢截係另一個 object（`RustIndex`），而家併入內核 —— 共用同一個
+    // `System.loadLibrary`、同一個 `available` 判斷，Kotlin 側入口得一個。
+
+    /** 由碟上嘅二進制索引建一個「一次性」handle；用完要 [nativeIndexFree] */
+    external fun nativeIndexLoad(path: String): Long
+
+    /** 由 JSON 建一個「一次性」handle（第一次建索引嗰陣用） */
+    external fun nativeIndexFromJson(json: String): Long
+
+    /** 寫落碟（原子寫） */
+    external fun nativeIndexSave(handle: Long, path: String): Boolean
+
+    /** 釋放一次性 handle */
+    external fun nativeIndexFree(handle: Long)
+
+    /** 索引格式版本；`.so` 唔喺度會係 0 */
+    external fun nativeIndexVersion(): Int
+
+    /** `[routes, stops, routeStops, strings]` */
+    external fun nativeIndexStats(handle: Long): IntArray?
+
+    external fun nativeIndexBuiltAt(handle: Long): Long
+
+    /** 去重後嘅字串表 —— Kotlin 側當做共用嘅 `String` 池 */
+    external fun nativeIndexStrings(handle: Long): Array<String>?
+
+    /** 每條路線 9 個 int：`op, bound, route, routeId, orig, origEn, dest, destEn, serviceType` */
+    external fun nativeIndexRoutes(handle: Long): IntArray?
+
+    /** 每個站 4 個 int：`op, id, name, nameEn` */
+    external fun nativeIndexStops(handle: Long): IntArray?
+
+    /** `lat, lon` 交替 */
+    external fun nativeIndexStopsLatLon(handle: Long): DoubleArray?
+
+    /** 每筆 7 個 int：`op, bound, seq, route, serviceType, stopId, routeId` */
+    external fun nativeIndexRouteStops(handle: Long): IntArray?
+
+    /** 半徑內嘅車站，按距離排。每項 2 個 int：`stop 下標, 距離米` */
+    external fun nativeIndexNearby(handle: Long, lat: Double, lon: Double, radiusM: Double): IntArray?
+
+    /** 某個站有邊啲路線 —— 返回字串表索引 */
+    external fun nativeIndexRoutesAtStop(handle: Long, op: String, stopId: String): IntArray?
+
+    // ---------- 常駐（Rust 完全擁有記憶體）----------
+
+    /** 由碟上嘅二進制索引開一個常駐 handle；失敗返回 0 */
+    external fun nativeIndexOpen(path: String): Long
+
+    /** 由 JSON 建一個常駐 handle（第一次建索引嗰陣用） */
+    external fun nativeIndexOpenJson(json: String): Long
+
+    /** 收返 handle，並釋放 native heap 上面嘅索引 */
+    external fun nativeIndexClose(handle: Long)
+
+    /** 常駐索引數量（診斷用，正常係 1） */
+    external fun nativeIndexResidentCount(): Int
+
+    /** 把常駐索引寫落碟（原子寫） */
+    external fun nativeIndexSaveResident(handle: Long, path: String): Boolean
+
+    external fun nativeIndexStatsResident(handle: Long): IntArray?
+
+    external fun nativeIndexBuiltAtResident(handle: Long): Long
+
+    /** 搵路線。每行：`op|route|bound|serviceType|routeId|orig|dest` */
+    external fun nativeIndexSearchRoutes(handle: Long, query: String, limit: Int): Array<String>?
+
+    /** 搵車站。每行：`op|id|name|nameEn|lat|lon|route1,route2,…` */
+    external fun nativeIndexSearchStops(handle: Long, query: String, limit: Int): Array<String>?
+
+    /** 某條路線嘅車站（按 seq）。每行：`op|stopId|seq|name|nameEn|lat|lon` */
+    external fun nativeIndexRouteStopsRows(
+        handle: Long, op: String, route: String, bound: String, serviceType: String
+    ): Array<String>?
+
+    /** 半徑內嘅車站。每行：`op|id|name|nameEn|lat|lon|distM` */
+    external fun nativeIndexNearbyRows(
+        handle: Long, lat: Double, lon: Double, radiusM: Double, limit: Int
+    ): Array<String>?
+
+    // ---------- 高階封裝 ----------
+
+    /**
+     * 由 Rust handle 砌返一個 `IndexData`（一次性 handle 用）。
+     *
+     * 重點：**所有字串都係由 `strings` 陣列攞** —— 所以同一個站名出現
+     * 幾百次，JVM 入面都係同一個 `String` 實例，唔會開幾百份。
+     */
+    fun toIndexData(handle: Long): IndexData? {
+        if (handle == 0L) return null
+        return runCatching {
+            val strings = nativeIndexStrings(handle) ?: return null
+            val routesRaw = nativeIndexRoutes(handle) ?: return null
+            val stopsRaw = nativeIndexStops(handle) ?: return null
+            val latLon = nativeIndexStopsLatLon(handle) ?: return null
+            val rsRaw = nativeIndexRouteStops(handle) ?: return null
+            val builtAt = nativeIndexBuiltAt(handle)
+            val ops = Operator.values()
+
+            fun str(i: Int): String = if (i in strings.indices) strings[i] else ""
+
+            val routes = ArrayList<RouteDef>(routesRaw.size / 9)
+            var i = 0
+            while (i + 8 < routesRaw.size) {
+                val op = ops.getOrNull(routesRaw[i]) ?: Operator.KMB
+                val bound = routesRaw[i + 1]
+                routes.add(
+                    RouteDef(
+                        op = op,
+                        route = str(routesRaw[i + 2]),
+                        bound = boundStr(bound),
+                        serviceType = str(routesRaw[i + 8]),
+                        routeId = str(routesRaw[i + 3]),
+                        orig = str(routesRaw[i + 4]),
+                        dest = str(routesRaw[i + 6])
+                    )
+                )
+                i += 9
+            }
+
+            val stops = ArrayList<StopDef>(stopsRaw.size / 4)
+            i = 0
+            var j = 0
+            while (i + 3 < stopsRaw.size) {
+                val lat = if (j < latLon.size) latLon[j] else 0.0
+                val lon = if (j + 1 < latLon.size) latLon[j + 1] else 0.0
+                stops.add(
+                    StopDef(
+                        op = ops.getOrNull(stopsRaw[i]) ?: Operator.KMB,
+                        id = str(stopsRaw[i + 1]),
+                        name = str(stopsRaw[i + 2]),
+                        nameEn = str(stopsRaw[i + 3]),
+                        lat = lat,
+                        lon = lon
+                    )
+                )
+                i += 4
+                j += 2
+            }
+
+            val routeStops = ArrayList<RouteStopDef>(rsRaw.size / 7)
+            i = 0
+            while (i + 6 < rsRaw.size) {
+                routeStops.add(
+                    RouteStopDef(
+                        op = ops.getOrNull(rsRaw[i]) ?: Operator.KMB,
+                        route = str(rsRaw[i + 3]),
+                        bound = boundStr(rsRaw[i + 1]),
+                        serviceType = str(rsRaw[i + 4]),
+                        stopId = str(rsRaw[i + 5]),
+                        seq = rsRaw[i + 2],
+                        routeId = str(rsRaw[i + 6])
+                    )
+                )
+                i += 7
+            }
+
+            IndexData(
+                version = 2,
+                builtAt = if (builtAt != 0L) builtAt else System.currentTimeMillis(),
+                routes = routes,
+                stops = stops,
+                routeStops = routeStops
+            )
+        }.getOrNull()
+    }
+
+    private fun boundStr(b: Int): String = when (b) {
+        1 -> "O"
+        2 -> "I"
+        else -> ""
+    }
+
+    /** Rust 搵車站／附近車站嘅一行結果 */
+    data class StopRow(
+        val stop: StopDef,
+        /** 該站停靠嘅路線號（已排序） */
+        val routes: List<String>,
+        /** 距離（米）；`nearbyRows` 先會有，否則 0 */
+        val distM: Int = 0
+    )
+
+    /** Rust 搵路線嘅結果（已經係 `RouteDef`，可以直接畀 UI） */
+    fun searchRoutes(handle: Long, query: String, limit: Int): List<RouteDef> {
+        if (handle == 0L || query.isBlank() || !available) return emptyList()
+        val rows = runCatching { nativeIndexSearchRoutes(handle, query.trim(), limit) }
+            .getOrNull() ?: return emptyList()
+        val out = ArrayList<RouteDef>(rows.size)
+        for (row in rows) {
+            val f = row.split(SEP)
+            if (f.size < 7) continue
+            val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+            out.add(
+                RouteDef(
+                    op = op,
+                    route = f[1],
+                    bound = f[2],
+                    serviceType = f[3],
+                    routeId = f[4],
+                    orig = f[5],
+                    dest = f[6]
+                )
+            )
+        }
+        return out
+    }
+
+    /** Rust 搵車站嘅結果 */
+    fun searchStops(handle: Long, query: String, limit: Int): List<StopRow> {
+        if (handle == 0L || query.isBlank() || !available) return emptyList()
+        val rows = runCatching { nativeIndexSearchStops(handle, query.trim(), limit) }
+            .getOrNull() ?: return emptyList()
+        val out = ArrayList<StopRow>(rows.size)
+        for (row in rows) {
+            val f = row.split(SEP)
+            if (f.size < 7) continue
+            val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+            val routes = if (f[6].isEmpty()) emptyList() else f[6].split(",")
+            out.add(
+                StopRow(
+                    stop = StopDef(
+                        op = op,
+                        id = f[1],
+                        name = f[2],
+                        nameEn = f[3],
+                        lat = f[4].toDoubleOrNull() ?: 0.0,
+                        lon = f[5].toDoubleOrNull() ?: 0.0
+                    ),
+                    routes = routes
+                )
+            )
+        }
+        return out
+    }
+
+    /** 某條路線（某方向）嘅車站，按 `seq` 排 */
+    fun routeStops(
+        handle: Long, op: Operator, route: String, bound: String, serviceType: String
+    ): List<Pair<Int, StopDef>> {
+        if (handle == 0L || !available) return emptyList()
+        val rows = runCatching {
+            nativeIndexRouteStopsRows(handle, op.name, route, bound, serviceType)
+        }.getOrNull() ?: return emptyList()
+        val out = ArrayList<Pair<Int, StopDef>>(rows.size)
+        for (row in rows) {
+            val f = row.split(SEP)
+            if (f.size < 7) continue
+            val o = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+            out.add(
+                (f[2].toIntOrNull() ?: 0) to StopDef(
+                    op = o,
+                    id = f[1],
+                    name = f[3],
+                    nameEn = f[4],
+                    lat = f[5].toDoubleOrNull() ?: 0.0,
+                    lon = f[6].toDoubleOrNull() ?: 0.0
+                )
+            )
+        }
+        return out
+    }
+
+    /** 半徑內嘅車站，按距離排 */
+    fun nearbyStops(
+        handle: Long, lat: Double, lon: Double, radiusM: Double, limit: Int
+    ): List<StopRow> {
+        if (handle == 0L || !available) return emptyList()
+        val rows = runCatching { nativeIndexNearbyRows(handle, lat, lon, radiusM, limit) }
+            .getOrNull() ?: return emptyList()
+        val out = ArrayList<StopRow>(rows.size)
+        for (row in rows) {
+            val f = row.split(SEP)
+            if (f.size < 7) continue
+            val op = runCatching { Operator.valueOf(f[0]) }.getOrNull() ?: continue
+            out.add(
+                StopRow(
+                    stop = StopDef(
+                        op = op,
+                        id = f[1],
+                        name = f[2],
+                        nameEn = f[3],
+                        lat = f[4].toDoubleOrNull() ?: 0.0,
+                        lon = f[5].toDoubleOrNull() ?: 0.0
+                    ),
+                    routes = emptyList(),
+                    distM = f[6].toIntOrNull() ?: 0
+                )
+            )
+        }
+        return out
+    }
+
+    /** 常駐索引嘅統計：`[routes, stops, routeStops, strings]` */
+    fun statsResident(handle: Long): IntArray? {
+        if (handle == 0L || !available) return null
+        return runCatching { nativeIndexStatsResident(handle) }.getOrNull()
+    }
+
+    fun builtAtResident(handle: Long): Long {
+        if (handle == 0L || !available) return 0L
+        return runCatching { nativeIndexBuiltAtResident(handle) }.getOrDefault(0L)
+    }
+
+    // ---------------------------------------------------------------- 加速層
+
+    /** namespace：ETA（車站頁） */
+    const val NS_ETA: Int = 0
+    /** namespace：班次表 */
+    const val NS_TIMETABLE: Int = 1
+    /** namespace：附近車站 */
+    const val NS_NEARBY: Int = 2
+    /** namespace：路線嘅車站（站序） */
+    const val NS_ROUTE_STOPS: Int = 3
+
+    /**
+     * 加速層係咪由 Rust 持有。
+     *
+     * 同 [available] 同一個條件（`.so` 載到），分開寫係因為語義唔同：
+     * 呢度係「快取由邊度管」，[available] 係「計數由邊度做」。
+     */
+    val speedAvailable: Boolean get() = available
+
+    /**
+     * 寫入加速層。
+     *
+     * @return true = Rust 收咗；false = 要行 Kotlin 版 `Memo`
+     */
+    fun speedPut(ns: Int, key: String, payload: String, nowMs: Long): Boolean {
+        if (!available) return false
+        return runCatching { nativeSpeedPut(ns, key, payload, nowMs) }.getOrDefault(false)
+    }
+
+    /** 淨係攞未過期嘅；過期就 null（Rust 會計一次 miss） */
+    fun speedGet(ns: Int, key: String, nowMs: Long): String? {
+        if (!available) return null
+        return runCatching { nativeSpeedGet(ns, key, nowMs) }.getOrNull()
+    }
+
+    /** 唔理過期照攞（stale-while-revalidate 用），唔計數 */
+    fun speedPeek(ns: Int, key: String): String? {
+        if (!available) return null
+        return runCatching { nativeSpeedPeek(ns, key) }.getOrNull()
+    }
+
+    /** 呢條 key 幾時抓落嚟（冇就 0） */
+    fun speedAt(ns: Int, key: String): Long {
+        if (!available) return 0L
+        return runCatching { nativeSpeedAt(ns, key) }.getOrDefault(0L)
+    }
+
+    fun speedRemove(ns: Int, key: String) {
+        if (!available) return
+        runCatching { nativeSpeedRemove(ns, key) }
+    }
+
+    fun speedClear(ns: Int) {
+        if (!available) return
+        runCatching { nativeSpeedClear(ns) }
+    }
+
+    fun speedClearAll() {
+        if (!available) return
+        runCatching { nativeSpeedClearAll() }
+    }
+
+    /** 命中次數（設定頁顯示） */
+    fun speedHits(ns: Int): Long {
+        if (!available) return 0L
+        return runCatching { nativeSpeedHits(ns) }.getOrDefault(0L)
+    }
+
+    /** 未中次數（設定頁顯示） */
+    fun speedMisses(ns: Int): Long {
+        if (!available) return 0L
+        return runCatching { nativeSpeedMisses(ns) }.getOrDefault(0L)
+    }
+
+    // ---------------------------------------------------------------- 儲存（store）
+    //
+    // 成個 APK 嘅「記憶體與儲存」：`rust/src/store.rs`。
+    // 高層封裝喺 `RustStore`（命名空間常量、init、回退），呢度淨係 JNI 嘅直譯。
+
+    /** 初始化 store 根目錄（建目錄 ＋ 掃描已有命名空間） */
+    fun storeInit(root: String): Boolean {
+        if (!available) return false
+        return runCatching { nativeStoreInit(root) }.getOrDefault(false)
+    }
+
+    /** store 係咪已經初始化（[available] 係「.so 載到」，唔同） */
+    fun storeReady(): Boolean {
+        if (!available) return false
+        return runCatching { nativeStoreReady() }.getOrDefault(false)
+    }
+
+    fun storePut(ns: String, key: String, value: String, nowMs: Long): Boolean {
+        if (!available) return false
+        return runCatching { nativeStorePut(ns, key, value, nowMs) }.getOrDefault(false)
+    }
+
+    fun storeGet(ns: String, key: String): String? {
+        if (!available) return null
+        return runCatching { nativeStoreGet(ns, key) }.getOrNull()
+    }
+
+    fun storeAt(ns: String, key: String): Long {
+        if (!available) return 0L
+        return runCatching { nativeStoreAt(ns, key) }.getOrDefault(0L)
+    }
+
+    fun storeDel(ns: String, key: String): Boolean {
+        if (!available) return false
+        return runCatching { nativeStoreDel(ns, key) }.getOrDefault(false)
+    }
+
+    fun storeKeys(ns: String): Array<String>? {
+        if (!available) return null
+        return runCatching { nativeStoreKeys(ns) }.getOrNull()
+    }
+
+    fun storeClear(ns: String): Boolean {
+        if (!available) return false
+        return runCatching { nativeStoreClear(ns) }.getOrDefault(false)
+    }
+
+    fun storeCount(ns: String): Long {
+        if (!available) return 0L
+        return runCatching { nativeStoreCount(ns) }.getOrDefault(0L)
+    }
+
+    fun storeBytes(ns: String): Long {
+        if (!available) return 0L
+        return runCatching { nativeStoreBytes(ns) }.getOrDefault(0L)
+    }
+
+    /** 把所有 dirty 命名空間原子落碟 */
+    fun storeFlush(): Boolean {
+        if (!available) return false
+        return runCatching { nativeStoreFlush() }.getOrDefault(false)
+    }
+
+    fun storeNamespaces(): Array<String>? {
+        if (!available) return null
+        return runCatching { nativeStoreNamespaces() }.getOrNull()
+    }
+
+    /** 例如 `ns=6 keys=1234 bytes=567890 hits=.. misses=..` */
+    fun storeStats(): String? {
+        if (!available) return null
+        return runCatching { nativeStoreStats() }.getOrNull()
+    }
+
     // ---------------------------------------------------------------- JNI
 
     private external fun nativeKernelVersion(): Int
@@ -221,4 +696,32 @@ object RustKernel {
     private external fun nativeDiagnose(total: Int, noData: Int, maxGap: Int): Int
     private external fun nativeMergeEta(rows: Array<String>, cap: Int): Array<String>?
     private external fun nativeNormalizeRoute(q: String): Array<String>?
+
+    private external fun nativeSpeedPut(ns: Int, key: String, payload: String, nowMs: Long): Boolean
+    private external fun nativeSpeedGet(ns: Int, key: String, nowMs: Long): String?
+    private external fun nativeSpeedPeek(ns: Int, key: String): String?
+    private external fun nativeSpeedAt(ns: Int, key: String): Long
+    private external fun nativeSpeedRemove(ns: Int, key: String)
+    private external fun nativeSpeedClear(ns: Int)
+    private external fun nativeSpeedClearAll()
+    private external fun nativeSpeedHits(ns: Int): Long
+    private external fun nativeSpeedMisses(ns: Int): Long
+    private external fun nativeStoreInit(root: String): Boolean
+    private external fun nativeStoreReady(): Boolean
+    private external fun nativeStorePut(
+        ns: String,
+        key: String,
+        value: String,
+        nowMs: Long
+    ): Boolean
+    private external fun nativeStoreGet(ns: String, key: String): String?
+    private external fun nativeStoreAt(ns: String, key: String): Long
+    private external fun nativeStoreDel(ns: String, key: String): Boolean
+    private external fun nativeStoreKeys(ns: String): Array<String>?
+    private external fun nativeStoreClear(ns: String): Boolean
+    private external fun nativeStoreCount(ns: String): Long
+    private external fun nativeStoreBytes(ns: String): Long
+    private external fun nativeStoreFlush(): Boolean
+    private external fun nativeStoreNamespaces(): Array<String>?
+    private external fun nativeStoreStats(): String?
 }
