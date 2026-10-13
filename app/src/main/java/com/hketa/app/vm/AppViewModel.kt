@@ -30,6 +30,12 @@ import com.hketa.app.util.AppLocale
 import com.hketa.app.data.StopWithSeq
 import com.hketa.app.data.UpdateChecker
 import com.hketa.app.data.UpdateState
+// ⚠️ RustKernel 喺 com.hketa.app.data，而呢個檔案喺 com.hketa.app.vm ——
+// Kotlin **唔會**自動 import 第個 package，漏咗就會報
+//   e: Unresolved reference 'RustKernel'
+// 而且因為返回類型推斷唔到，會連帶爆一堆 `Flow<uninferred ERROR CLASS>`、
+// `Unresolved reference 'stop' / 'distM'` 等假錯誤（其實全部係同一個原因）。
+import com.hketa.app.data.RustKernel
 import com.hketa.app.R
 import com.hketa.app.location.LocationProvider
 import kotlinx.coroutines.delay
