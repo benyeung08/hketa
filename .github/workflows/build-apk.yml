@@ -381,6 +381,77 @@ jobs:
 
           PY
 
+      # ---- 塊註釋配對（Kotlin 塊註釋**可以嵌套**，一定要計深度）----
+      #
+      # 呢個係一個超級隱蔽嘅坑：注释**文字入面**有 `/*` 就會開一層嵌套，
+      # 從此成個檔案都被吞落註釋入面。真實案例（RustStore.kt）：
+      #
+      #     * | Leaflet 資源包 | `filesDir/hketa_assets/*.css｜js` |
+      #                                                 ^^ `/*.css` 入面嘅 `/*`
+      #
+      # 結果：`RustStore.kt:166:1 Syntax error: Unclosed comment`
+      #       → 成個 object 唔存在 → 引用佢嘅檔案全部
+      #         `Unresolved reference 'RustStore'`（一堆連鎖錯誤，好難睇出源頭）
+      - name: Preflight - Kotlin block comments balance
+        run: |
+          set -u
+          python3 - <<'PY' || exit 1
+          import glob, sys
+
+          def scan(path):
+              s = open(path, encoding='utf-8').read()
+              n = len(s); i = 0; depth = 0; stack = []
+              errs = []; line = 1; col = 1
+              def adv(k):
+                  nonlocal i, line, col
+                  for _ in range(k):
+                      if s[i] == '\n': line += 1; col = 1
+                      else: col += 1
+                      i += 1
+              while i < n:
+                  c = s[i]
+                  if c == '"':                       # 字串（含 """ 同跳脫）
+                      if s.startswith('"""', i):
+                          j = s.find('"""', i + 3); j = n if j < 0 else j + 3
+                      else:
+                          j = i + 1
+                          while j < n:
+                              if s[j] == '\\': j += 2; continue
+                              if s[j] == '"': j += 1; break
+                              j += 1
+                      adv(j - i); continue
+                  if s.startswith('//', i):          # 行註釋
+                      j = s.find('\n', i); j = n if j < 0 else j
+                      adv(j - i); continue
+                  if s.startswith('/*', i):          # 塊註釋（**可嵌套**）
+                      stack.append((line, col)); depth += 1; adv(2); continue
+                  if s.startswith('*/', i):
+                      if depth == 0:
+                          errs.append(f"{path}:{line}:{col} 多出嚟嘅 `*/`")
+                      else:
+                          depth -= 1; stack.pop()
+                      adv(2); continue
+                  adv(1)
+              for (l, cc) in stack:
+                  errs.append(
+                      f"{path}:{l}:{cc} 塊註釋冇關閉（或者入面有多餘嘅 `/*`，"
+                      f"例如寫咗 `assets/*.css` 呢類路徑）"
+                  )
+              return errs
+
+          files = sorted(glob.glob('app/src/main/java/**/*.kt', recursive=True))
+          allb = []
+          for p in files:
+              allb += scan(p)
+          if allb:
+              print("::error::Kotlin 塊註釋唔平衡 —— 會搞到成個檔案被吞落註釋入面")
+              for b in allb[:40]:
+                  print("  " + b)
+              sys.exit(1)
+          print("Kotlin 塊註釋配對：全部通過 ✔（掃咗 %d 個檔）" % len(files))
+
+          PY
+
       - name: Preflight - verify required files
         run: |
           set -u
