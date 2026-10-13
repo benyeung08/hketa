@@ -37,7 +37,7 @@ import java.io.File
  *
  * ## Rust 快取層（可選）
  *
- * 如果 `libhketa_store.so` 用得到（`RustIndex.available`），索引會改為
+ * 如果 `libhketa_store.so` 用得到（`RustKernel.available`），索引會改為
  * 寫入 **緊湊二進制**（`hketa_index.bin`）而唔係 JSON：
  *
  * ```
@@ -106,14 +106,14 @@ class IndexStore(context: Context) {
     /** 索引而家用緊邊種格式（畀 UI 顯示／除錯用） */
     val backendLabel: String
         get() = when {
-            !RustIndex.available -> "Kotlin / JSON"
+            !RustKernel.available -> "Kotlin / JSON"
             binFile.exists() && binFile.length() > 0 -> "Rust / binary"
             else -> "Kotlin / JSON"
         }
 
     // ============ 常駐索引（Rust 完全擁有記憶體）============
 
-    /** 二進制索引嘅路徑（畀 `RustIndex.nativeOpen` 用） */
+    /** 二進制索引嘅路徑（畀 `RustKernel.nativeIndexOpen` 用） */
     val binPath: String get() = binFile.absolutePath
 
     /**
@@ -126,16 +126,16 @@ class IndexStore(context: Context) {
      * 失敗一律返回 0（呼叫方行返純 Kotlin 路徑）。
      */
     fun openResident(): Long {
-        if (!RustIndex.available) return 0L
+        if (!RustKernel.available) return 0L
         return runCatching {
             if (binFile.exists() && binFile.length() > 0L) {
-                RustIndex.nativeOpen(binFile.absolutePath)
+                RustKernel.nativeIndexOpen(binFile.absolutePath)
             } else {
                 if (!file.exists() || file.length() == 0L) return 0L
                 val text = file.readText()
-                val h = RustIndex.nativeOpenJson(text)
+                val h = RustKernel.nativeIndexOpenJson(text)
                 if (h == 0L) return 0L
-                if (RustIndex.nativeSaveResident(h, binFile.absolutePath)) {
+                if (RustKernel.nativeIndexSaveResident(h, binFile.absolutePath)) {
                     // 遷移成功 —— 7 MB 嘅 JSON 唔使再留喺磁碟
                     runCatching { file.delete() }
                 }
@@ -146,8 +146,8 @@ class IndexStore(context: Context) {
 
     /** 把常駐索引寫落碟（原子寫：`.tmp` 再 rename） */
     fun saveResident(handle: Long): Boolean {
-        if (handle == 0L || !RustIndex.available) return false
-        return runCatching { RustIndex.nativeSaveResident(handle, binFile.absolutePath) }
+        if (handle == 0L || !RustKernel.available) return false
+        return runCatching { RustKernel.nativeIndexSaveResident(handle, binFile.absolutePath) }
             .getOrDefault(false)
     }
 
@@ -166,22 +166,22 @@ class IndexStore(context: Context) {
 
     /** 由 Rust 二進制讀。失敗一律返回 null（呼叫方會回退 JSON）。 */
     private fun readRust(): IndexData? {
-        if (!RustIndex.available) return null
+        if (!RustKernel.available) return null
         if (!binFile.exists() || binFile.length() == 0L) return null
         return runCatching {
-            val h = RustIndex.nativeLoad(binFile.absolutePath)
+            val h = RustKernel.nativeIndexLoad(binFile.absolutePath)
             if (h == 0L) return null
             try {
-                RustIndex.toIndexData(h)
+                RustKernel.toIndexData(h)
             } finally {
-                RustIndex.nativeFree(h)
+                RustKernel.nativeIndexFree(h)
             }
         }.getOrNull()
     }
 
     private fun write(data: IndexData) {
         // Rust 可用 → 寫二進制，然後刪走舊 JSON（唔使再佔 7 MB）
-        if (RustIndex.available && writeRust(data)) {
+        if (RustKernel.available && writeRust(data)) {
             runCatching { if (file.exists()) file.delete() }
             return
         }
@@ -191,12 +191,12 @@ class IndexStore(context: Context) {
     /** Kotlin → JSON 字串 → Rust → 二進制。失敗返回 false，呼叫方行返 JSON。 */
     private fun writeRust(data: IndexData): Boolean = runCatching {
         val text = json.encodeToString(data)
-        val h = RustIndex.nativeFromJson(text)
+        val h = RustKernel.nativeIndexFromJson(text)
         if (h == 0L) return false
         try {
-            RustIndex.nativeSave(h, binFile.absolutePath)
+            RustKernel.nativeIndexSave(h, binFile.absolutePath)
         } finally {
-            RustIndex.nativeFree(h)
+            RustKernel.nativeIndexFree(h)
         }
     }.getOrDefault(false)
 

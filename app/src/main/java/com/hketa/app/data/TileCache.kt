@@ -69,7 +69,7 @@ class TileCache(context: Context) {
         runCatching {
             withContext(Dispatchers.IO) {
                 val url = "https://a.$host/dark_all/$z/$x/$y.png"
-                val req = Request.Builder().url(url).header("User-Agent", "HKETA-Android/1.0").build()
+                val req = Request.Builder().url(url).header("User-Agent", "HKATE-Android/1.0").build()
                 Http.client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@use
                     val body = resp.body ?: return@use

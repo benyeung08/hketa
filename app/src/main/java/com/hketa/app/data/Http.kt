@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 object Http {
 
-    private const val UA = "HKETA-Android/1.0"
+    private const val UA = "HKATE-Android/1.0"
 
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
