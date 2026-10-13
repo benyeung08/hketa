@@ -48,6 +48,9 @@ object AppLocale {
     /** true = 目前係英文介面 */
     fun isEnglish(): Boolean = current() == EN
 
+    /** 係咪簡體中文（用嚟揀官方網頁嘅 SC/TC 參數） */
+    fun isSimplified(): Boolean = current() == ZH_HANS
+
     /**
      * 把任意語言標籤歸一化成本 App 支援嘅值之一。
      * 繁簡判斷同時睇 region（TW/HK/MO ↔ CN/SG）同 script（Hant ↔ Hans）。
