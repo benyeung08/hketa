@@ -51,7 +51,14 @@ fun RouteKeyboard(
     onDone: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val letters = listOf("A", "B", "C", "E", "K", "M", "N", "S", "X")
+    // 香港路線號實際會用到嘅字母：
+    //   前綴 A(機場) B(邊境) E(機場快線) K(港鐵接駁) N(通宵) P(東涌) R(迪士尼) S(特別)
+    //   後綴 A B C D E H K M N P R S T W X（例：1A、6C、51M、2E、B3X、N691、P960、W3）
+    // 以前淨係得 9 個（A B C E K M N S X），搞到 1D / 2H / P960 / W3 / R11 呢啲打唔到。
+    val letterRows = listOf(
+        listOf("A", "B", "C", "D", "E", "H", "K"),
+        listOf("M", "N", "P", "R", "S", "T", "W", "X")
+    )
 
     // 藍灰色底（跟第二張圖嗰個鍵盤色調）
     val kbBg = Color(0xFF3A4252)
@@ -109,14 +116,15 @@ fun RouteKeyboard(
 
             Spacer(Modifier.height(10.dp))
 
-            // ---- 路線字母（圓形）----
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-            ) {
-                letters.forEach { c ->
-                    LetterKey(c) { onKey(c) }
+            // ---- 路線字母（圓形，兩排）----
+            letterRows.forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                ) {
+                    row.forEach { c -> LetterKey(c) { onKey(c) } }
                 }
+                Spacer(Modifier.height(6.dp))
             }
 
             Spacer(Modifier.height(2.dp))
@@ -152,7 +160,7 @@ private fun DigitKey(label: String, modifier: Modifier = Modifier, onClick: () -
 private fun LetterKey(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(34.dp)
             .clip(CircleShape)
             // 圖50 嗰個鍵盤：字母係明顯嘅紫色圓鍵
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
@@ -161,7 +169,7 @@ private fun LetterKey(label: String, onClick: () -> Unit) {
     ) {
         Text(
             text = label,
-            fontSize = 16.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White
         )
