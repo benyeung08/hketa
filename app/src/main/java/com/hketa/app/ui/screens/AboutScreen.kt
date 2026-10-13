@@ -57,7 +57,7 @@ import com.hketa.app.vm.AppViewModel
 /**
  * code-to-app 嘅 `VersionPill`（`AboutScreen.kt` 第 386–457 行）原樣移植。
  *
- *   v1.0.4 · 5   ● 0        ⟳   ◷   ▤
+ *   v1.0.4 · 5              ⟳   ◷   ▤
  *   └── 版本名 · versionCode ──┘   │    │    └─ 複製版本號
  *                                  │    └─ 版本歷史
  *                                  └─ 檢查更新（撳成個膠囊都得）

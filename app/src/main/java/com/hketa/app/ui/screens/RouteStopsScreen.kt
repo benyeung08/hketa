@@ -42,6 +42,9 @@ import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
+import androidx.compose.ui.platform.LocalContext
+import com.hketa.app.data.OfficialTimetable
+import com.hketa.app.util.AppLocale
 
 /** 分頁：0=車站 1=班次 2=公告 */
 private const val TAB_STOPS = 0
@@ -225,6 +228,40 @@ private fun TimetableTab(
 
         // 說明：講清楚呢份表係點嚟嘅，唔會令人以為係官方紙本時刻表
         Muted(stringResource(R.string.tt_note))
+
+        // ★ 官方時間表：上面嗰份係由即時 ETA 構建，呢度畀條真正嘅官方連結
+        val curRoute = route
+        if (curRoute != null) {
+            val english = AppLocale.isEnglish()
+            val simplified = AppLocale.isSimplified()
+            val url = remember(curRoute.key, english, simplified) {
+                OfficialTimetable.url(
+                    op = curRoute.op,
+                    route = curRoute.route,
+                    routeId = curRoute.routeId,
+                    english = english,
+                    simplified = simplified
+                )
+            }
+            if (url != null) {
+                val ctx = LocalContext.current
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { openUrl(ctx, url) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        stringResource(
+                            if (OfficialTimetable.deepLinked(curRoute.op, curRoute.routeId))
+                                R.string.tt_official else R.string.tt_official_goto
+                        )
+                    )
+                }
+                // 講清點解要開網頁，唔係懶
+                Spacer(Modifier.height(4.dp))
+                Muted(stringResource(R.string.tt_official_note))
+            }
+        }
 
         // ★ 離線提示：呢份係冇網時由本地快取顯示嘅，要講明唔係即時
         if (offline && cacheAt > 0L) {
@@ -419,5 +456,14 @@ private fun NoticesTab(
                 }
             }
         }
+    }
+}
+
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 }

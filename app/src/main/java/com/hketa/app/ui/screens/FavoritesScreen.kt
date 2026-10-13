@@ -36,6 +36,7 @@ import com.hketa.app.data.FavoriteStop
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
+import com.hketa.app.ui.titleWithCode
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
@@ -122,7 +123,7 @@ private fun FavoriteRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${fav.displayName()}（${fav.id}）",
+                        text = fav.titleWithCode(),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )

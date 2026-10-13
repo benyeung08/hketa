@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
+import com.hketa.app.ui.displayName
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
@@ -87,7 +88,7 @@ fun NearbyScreen(
                 ) {
                     Column(Modifier.padding(12.dp)) {
                         Text(
-                            text = item.stop.name,
+                            text = item.stop.displayName(),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold
                         )

@@ -39,6 +39,11 @@ import com.hketa.app.ui.titleWithCode
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Arrangement
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,8 +54,14 @@ fun EtaScreen(
     val stop by vm.selectedStop.collectAsState()
     val route by vm.selectedRoute.collectAsState()
     val etas by vm.etas.collectAsState()
+    // 離線快取：冇網／官方接口冇回應嗰陣顯示嘅係上次嗰份
+    val offline by vm.etaOffline.collectAsState()
+    val cacheAt by vm.etaCacheAt.collectAsState()
     val busy by vm.busy.collectAsState()
     val favorites by vm.favorites.collectAsState()
+    // 方向篩選（null = 自動：淨係顯示最快嗰班嘅方向）
+    val direction by vm.etaDirection.collectAsState()
+    val directions by vm.etaDirections.collectAsState()
     // 用局部 val 接住 —— delegated property（`by collectAsState()`）compiler 唔會幫你 smart cast
     val curStop = stop
     val isFav = if (curStop != null)
@@ -58,6 +69,25 @@ fun EtaScreen(
     else false
     val dash = stringResource(R.string.eta_dash)
     val soon = stringResource(R.string.eta_soon)
+
+    /**
+     * 淨係顯示一個方向 —— 解決「兩個方向嘅班次撈埋一齊」。
+     * - 自動（預設）：用最快嗰班嘅 dest
+     * - 手動揀咗：淨係顯示嗰個
+     * - 「全部」：照舊全部顯示
+     */
+    val shownEtas = remember(etas, direction, directions) {
+        val all = AppViewModel.ALL_DIRECTIONS
+        when {
+            direction == all -> etas
+            direction != null -> etas.filter { it.dest == direction }
+            else -> {
+                // 自動：淨係顯示最快嗰班嘅方向
+                val first = etas.firstOrNull { it.dest.isNotBlank() }?.dest
+                if (first == null) etas else etas.filter { it.dest == first }
+            }
+        }
+    }
 
     // 每 20 秒自動刷新
     LaunchedEffect(stop?.op?.name, stop?.id) {
@@ -158,13 +188,57 @@ fun EtaScreen(
             }
         }
 
+        // ---- 方向切換：一次過淨係睇一個方向 ----
+        if (directions.size > 1) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                directions.forEach { d ->
+                    val on = direction == d
+                    FilterChip(
+                        selected = on,
+                        onClick = { vm.setEtaDirection(if (on) null else d) },
+                        label = { Text(stringResource(R.string.route_bound_to, d)) }
+                    )
+                }
+                FilterChip(
+                    selected = direction == AppViewModel.ALL_DIRECTIONS,
+                    onClick = {
+                        vm.setEtaDirection(
+                            if (direction == AppViewModel.ALL_DIRECTIONS) null
+                            else AppViewModel.ALL_DIRECTIONS
+                        )
+                    },
+                    label = { Text(stringResource(R.string.eta_all_directions)) }
+                )
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
+
+        // ★ 離線提示：呢份係冇網時由本地快取顯示嘅，要講明唔係即時
+        if (offline && cacheAt > 0L) {
+            Text(
+                stringResource(
+                    R.string.eta_offline_hint,
+                    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                        .format(java.util.Date(cacheAt))
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(8.dp))
+        }
 
         when {
             busy && etas.isEmpty() -> Muted(stringResource(R.string.eta_loading))
             etas.isEmpty() -> Muted(stringResource(R.string.eta_empty))
             else -> LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                itemsIndexed(etas) { i, e ->
+                itemsIndexed(shownEtas) { i, e ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
