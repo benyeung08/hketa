@@ -350,4 +350,6 @@
     <string name="settings_index_backend">索引格式：%1$s</string>
     <string name="settings_speed_layer">加速层：命中 %1$d 次 / 未中 %2$d 次</string>
     <string name="settings_kernel">核心：%1$s</string>
+    <string name="settings_store">储存：%1$s</string>
+    <string name="settings_speed_layer_backend">加速层：%1$s · 命中 %2$d 次 / 未中 %3$d 次</string>
 </resources>
