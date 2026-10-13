@@ -62,41 +62,172 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # ---- Rust 索引庫（可選）----
-      # 呢個步驟**失敗都唔會令 build 紅**（continue-on-error）——
-      # App 側有純 Kotlin 回退：冇 .so 就用返 JSON，功能完全一樣。
-      # 所以就算 Rust toolchain／NDK 有問題，APK 照出。
-      - name: Build Rust index store (optional)
+      # ---- Rust 內核 ----
+      #
+      # 一個 .so 擁有四件事：索引儲存＋常駐記憶體、計數、TTL 快取、持久化 KV。
+      #
+      # 保證出到 .so，按優先次序三條路：
+      #   1. repo 已提交預編譯 .so（app/src/main/jniLibs/**）→ 直接用，零 toolchain
+      #   2. CI 快取還原上次嘅 .so
+      #   3. 現場 cargo ndk 編譯
+      #
+      # 三條路都失敗先行純 Kotlin 回退（App 側一定有回退，功能一樣），
+      # 但**必定印完整 log + ::error::**，唔會靜默默吞咗。
+      #
+      # 舊版寫 `set -u` 而冇 `-e`：cargo 失敗返 101，但腳本繼續行落去，
+      # 尾嗰句 `find` 返 0 就**蓋咗個失敗** —— 所以你只會見到一句 warning，
+      # 永遠唔知點解失敗。呢個正係「Rust 索引層係可選」呢條限制一直
+      # 解決唔到嘅真正原因：失敗從來冇被報出嚟。
+      - name: Restore cached .so
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs
+          key: hketa-so-${{ hashFiles('rust/src/*.rs', 'rust/Cargo.toml') }}
+          restore-keys: |
+            hketa-so-
+
+      - name: Install Rust toolchain
+        continue-on-error: true
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi,aarch64-linux-android,x86_64-linux-android
+
+      - name: Install cargo-ndk
+        continue-on-error: true
+        uses: taiki-e/install-action@cargo-ndk
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # ---- 逐個核對 Rust 源碼有冇上傳 ----
+      #
+      # 呢個係「Rust 內核永遠 build 唔到」嘅**頭號原因**：`lib.rs` 寫咗
+      # `pub mod index;` 但 `rust/src/index.rs` 根本冇上傳 → cargo 第一句就
+      # `error: file not found for module` → exit 101 → 冇 .so → 行純 Kotlin。
+      #
+      # 因為手動上傳成日漏檔，而家由 `lib.rs` 入面嘅 `pub mod` 反推出
+      # 應該有邊啲 .rs，逐個驗，缺邊個就**指名道姓**話你知。
+      - name: Verify Rust kernel sources
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          fail=0
+          need() {
+            if [ ! -f "$1" ]; then
+              echo "::error::缺少 Rust 源碼 $1 —— 唔 upload 呢個檔，cargo 一定失敗"
+              fail=1
+            else
+              echo "  ok  $1  ($(wc -c < "$1") bytes)"
+            fi
+          }
+
+          echo "--- rust/ 基本檔 ---"
+          need rust/Cargo.toml
+          need rust/src/lib.rs
+          need rust/src/jni.rs
+
+          echo "--- 由 lib.rs 嘅 pub mod 反推應該有邊啲 .rs ---"
+          if [ -f rust/src/lib.rs ]; then
+            mods=$(grep -oE '^[[:space:]]*pub[[:space:]]+mod[[:space:]]+[a-z_]+;' rust/src/lib.rs \
+                   | grep -oE '[a-z_]+;' | tr -d ';' | sort -u)
+            for m in $mods; do
+              if [ -f "rust/src/$m.rs" ]; then
+                echo "  ok  rust/src/$m.rs  ($(wc -c < "rust/src/$m.rs") bytes)"
+              elif [ -f "rust/src/$m/mod.rs" ]; then
+                echo "  ok  rust/src/$m/mod.rs"
+              else
+                echo "::error::lib.rs 宣告咗 \`pub mod $m;\`，但搵唔到 rust/src/$m.rs —— 要 upload 佢"
+                fail=1
+              fi
+            done
+          fi
+
+          echo "--- Kotlin 側殘留舊檔 ---"
+          if [ -f app/src/main/java/com/hketa/app/data/RustIndex.kt ]; then
+            echo "::warning::RustIndex.kt 仲喺度（已被 RustKernel.kt 取代，建議 git rm）"
+          fi
+
+          echo "--- rust/src/ 實際有嘅檔 ---"
+          ls -1 rust/src/ 2>/dev/null || echo "（rust/src 唔存在！）"
+
+          if [ "$fail" != "0" ]; then
+            echo "::error::Rust 源碼唔齊 —— cargo 會失敗，APK 會行純 Kotlin 回退"
+          else
+            echo "Rust 源碼齊晒 ✔"
+          fi
+
+      - name: Build Rust kernel
         id: rust
         continue-on-error: true
         run: |
-          set -u
-          echo "--- 安裝 Rust ---"
-          rustup toolchain install stable --profile minimal
-          rustup target add armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
-          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          set -euo pipefail
+          SO=app/src/main/jniLibs
+          mkdir -p "$SO"
 
-          echo "--- 搵／裝 NDK ---"
-          if [ ! -d "$ANDROID_HOME/ndk" ] || [ -z "$(ls -A "$ANDROID_HOME/ndk" 2>/dev/null)" ]; then
-            CM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-            [ -x "$CM" ] || CM=$(command -v sdkmanager)
+          echo "--- 1) repo 有冇預編譯 .so？---"
+          if ls "$SO"/*/libhketa_store.so >/dev/null 2>&1; then
+            echo "✔ repo 已有預編譯 .so —— 直接用，唔使 Rust toolchain"
+            ls -la "$SO"/*/libhketa_store.so
+            echo "mode=prebuilt" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "mode=build" >> "$GITHUB_OUTPUT"
+
+          echo "--- 2) 搵／裝 NDK ---"
+          if [ ! -d "${ANDROID_HOME}/ndk" ] || [ -z "$(ls -A "${ANDROID_HOME}/ndk" 2>/dev/null)" ]; then
+            CM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+            [ -x "$CM" ] || CM=$(command -v sdkmanager || true)
             if [ -n "$CM" ]; then
-              yes | "$CM" --install "ndk;26.1.10909125" > /dev/null 2>&1 || \
-                yes | "$CM" --install "ndk-bundle" > /dev/null 2>&1 || true
+              yes | "$CM" --install "ndk;26.1.10909125" || \
+                yes | "$CM" --install "ndk-bundle" || true
             fi
           fi
-          ls -1 "$ANDROID_HOME/ndk" 2>/dev/null || echo "（搵唔到 NDK，下面會失敗但可以繼續）"
+          ls -1 "${ANDROID_HOME}/ndk" 2>/dev/null || echo "（搵唔到 NDK）"
 
-          echo "--- cargo ndk build ---"
+          echo "--- 3) cargo-ndk 喺唔喺度？---"
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            echo "冇預編譯版，由 source 砌（慢，最後手段）"
+            cargo install cargo-ndk --locked || cargo install cargo-ndk
+          fi
+
+          echo "--- 4) cargo ndk build ---"
           cd rust
           cargo ndk \
             -t armeabi-v7a \
             -t arm64-v8a \
             -t x86_64 \
             -o ../app/src/main/jniLibs \
-            build --release --features android
-          echo "--- 産出 ---"
-          find ../app/src/main/jniLibs -name '*.so' -exec ls -la {} \;
+            build --release --features android 2>&1 | tee /tmp/cargo-build.log
+          cd ..
+          echo "--- 產出 ---"
+          ls -la "$SO"/*/libhketa_store.so
+
+      - name: Verify .so (never silent)
+        if: always()
+        run: |
+          set -uo pipefail
+          SO=app/src/main/jniLibs
+          found=$(find "$SO" -name 'libhketa_store.so' 2>/dev/null | sort)
+          if [ -n "$found" ]; then
+            echo "Rust 內核：已打包 ✔"
+            echo "$found" | while read -r f; do echo "  $f ($(stat -c%s "$f") bytes)"; done
+          else
+            echo "::error::Rust 內核冇打包到 —— App 會行純 Kotlin 回退（功能一樣，但冇慳到位）"
+            echo "cargo 有冇跑到？mode=${{ steps.rust.outputs.mode }}"
+            if [ -f /tmp/cargo-build.log ]; then
+              echo "===== cargo build log（尾 80 行）====="
+              tail -80 /tmp/cargo-build.log
+            fi
+            echo "===== 想一勞永逸：本地跑 rust/build-android.sh，把 .so commit 入 repo ====="
+          fi
 
       # Android 17 (API 37) 需要 platforms;android-37 + build-tools;36.0.0。
       # runner 預裝嘅 cmdline-tools 通常太舊，**根本唔知有 android-37 呢個包**，
@@ -105,6 +236,68 @@ jobs:
       # 預檢：喺開 build 之前逐項核對，缺乜講乜。
       # 之前幾次 CI 紅，都係「檔案未上傳成功」或「舊檔殘留」造成，
       # 但 Gradle 嘅報錯好難直接對返邊個檔案 —— 呢步會一次過講清楚。
+      # ---- Kotlin 字串健全性（compileReleaseKotlin 之前就捉到）----
+      #
+      # 呢個係**最常令 build 紅**嘅一類錯，而 Gradle 嘅報錯淨係畀
+      # `e: Changelog.kt:51:520 Syntax error: Expecting '"'` 呢句 ——
+      # 唔講邊個字串、唔講點解，好難對返去改。
+      #
+      # 三種我實際踩過嘅坑：
+      #   1. 字串冇收尾引號（寫長文案時漏咗最尾嗰個 `"`）
+      #   2. 字串入面有未轉義嘅 `"`（例如英文寫 `"now"`、`"Storage: …"`）
+      #   3. 兩個逗號 `,,`（腳本批次產生時留下）
+      #
+      # 而家逐行驗：未轉義嘅引號數要係**雙數**（已排除 `"""` 同 char literal `'"'`），
+      # 有問題就**指名邊個檔案第幾行第幾列**。
+      - name: Preflight - Kotlin string sanity
+        run: |
+          set -u
+          python3 - <<'PY' || exit 1
+          import glob, sys
+
+          def scan(path):
+              bad = []
+              code = open(path, encoding='utf-8').read()
+              for i, l in enumerate(code.split('\n'), 1):
+                  # raw string 分隔行（""" 開始或結束）→ 跳過引號計數
+                  if l.count('"""') % 2 == 1:
+                      continue
+                  pos = []
+                  j = 0
+                  while j < len(l):
+                      c = l[j]
+                      if c == '\\':
+                          j += 2; continue
+                      # char literal：嚴格匹配 'X' 或 '\X'
+                      if c == "'" and j + 2 < len(l) and (
+                              l[j+2] == "'" or (l[j+1] == '\\' and j + 3 < len(l) and l[j+3] == "'")):
+                          j += 3 if l[j+1] != '\\' else 4
+                          continue
+                      if c == '"':
+                          pos.append(j + 1); j += 1; continue
+                      j += 1
+                  if len(pos) % 2 != 0:
+                      bad.append(f"{path}:{i}:{pos[-1] if pos else 0} 字串冇收尾引號（未轉義引號 {len(pos)} 個 @ {pos[:8]}）")
+                      continue
+                  if len(pos) > 2 and len(l) > 200:
+                      bad.append(f"{path}:{i}:{pos[1]} 長字串入面疑似有未轉義嘅雙引號（{len(pos)} 個 @ {pos[:8]}）—— 要寫成 \\\"")
+                  if ',,' in l:
+                      bad.append(f"{path}:{i}:{l.index(',,')+1} 有兩個連續逗號")
+              return bad
+
+          allb = []
+          files = sorted(glob.glob('app/src/main/java/**/*.kt', recursive=True))
+          for p in files:
+              allb += scan(p)
+          if allb:
+              print("FAIL", len(allb))
+              for b in allb[:40]:
+                  print("  ", b)
+              sys.exit(1)
+          print("Kotlin 字串健全性：全部通過 ✔（掃咗 %d 個檔）" % len(files))
+
+          PY
+
       - name: Preflight - verify required files
         run: |
           set -u
@@ -475,15 +668,6 @@ jobs:
 
       # 失敗時把完整 log 印落 step log（唔使下載 artifact 都睇到），
       # 並抽出「最有用嗰 60 行」—— 冇 log 就好難判斷錯乜。
-      - name: Report Rust backend
-        if: always()
-        run: |
-          if find app/src/main/jniLibs -name 'libhketa_store.so' 2>/dev/null | grep -q .; then
-            echo "Rust 索引庫：已打包 ✔"
-          else
-            echo "::warning::Rust 索引庫冇打包 —— App 會行純 Kotlin / JSON 路徑（功能一樣，只係冇慳到）"
-          fi
-
       - name: Dump build log on failure
         if: failure() && hashFiles('/tmp/release-build.log') != ''
         run: |
