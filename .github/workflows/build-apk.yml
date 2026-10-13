@@ -645,6 +645,49 @@ jobs:
       #     Error: Process completed with exit code 1.
       # 完全睇唔到係邊一步。而家一律變警告，Gradle 照跑；真係缺檔嘅話
       # Gradle 自己會報得更準（講明邊個檔案邊一行）。
+      # 呢個係真實踩過嘅坑：`AppViewModel.kt` 喺 `com.hketa.app.vm`，
+      # 用到 `com.hketa.app.data.RustKernel`，但漏咗 import ——
+      # Kotlin **唔會**自動 import 第個 package，會報
+      #   e: Unresolved reference 'RustKernel'
+      # 仲會連帶爆一堆假錯誤（Flow<uninferred ERROR CLASS>、stop / distM unresolved），
+      # 睇落好似好多嘢壞咗，其實淨係差一行 import。
+      - name: Preflight - cross-package imports
+        id: preflight_imports
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import re, glob, sys, collections
+          ROOT = "app/src/main/java/com/hketa/app"
+          # 1) 收集 com.hketa.app.data 入面所有 top-level 宣告名
+          decl = collections.defaultdict(set)
+          for p in glob.glob(ROOT + "/data/*.kt"):
+              s = open(p, encoding="utf-8").read()
+              for m in re.finditer(
+                  r'^(?:object|class|data class|interface|enum class|fun|val|var|const val)\s+([A-Za-z_]\w*)',
+                  s, re.M):
+                  decl[m.group(1)].add(p)
+          bad = []
+          # 2) 逐個檔案：有冇「裸用」呢啲名，但唔喺 data package 又冇 import
+          for p in glob.glob(ROOT + "/**/*.kt", recursive=True):
+              s = open(p, encoding="utf-8").read()
+              m = re.search(r'^package\s+([\w.]+)', s, re.M)
+              pkg = m.group(1) if m else ""
+              if pkg == "com.hketa.app.data":
+                  continue
+              imports = set(re.findall(r'^import\s+([\w.]+)\s*$', s, re.M))
+              for name in decl:
+                  if not re.search(r'(?<![\w.])' + name + r'\s*[.(]', s):
+                      continue
+                  if ("com.hketa.app.data." + name) in imports:
+                      continue
+                  bad.append((p, name))
+          if bad:
+              for p, name in sorted(set(bad)):
+                  print("::warning::%s 用到 com.hketa.app.data.%s 但冇 import —— Kotlin 唔會自動 import 第個 package" % (p, name))
+              sys.exit(1)
+          print("全部通過 ✔（掃咗 %d 個 .kt）" % len(glob.glob(ROOT + "/**/*.kt", recursive=True)))
+          PY
+
       - name: Report which preflight step flagged
         id: pf_summary
         if: always()
