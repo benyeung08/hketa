@@ -32,7 +32,59 @@ permissions:
   contents: write
 
 jobs:
+  # ---- 先驗 workflow 本身 ----
+  #
+  # `uses:` 解析唔到係 **job 層面**嘅錯：GitHub 喺 job 開始之前就要搵到個 action，
+  # 搵唔到就成個 job 直接紅，**一個 step 都未跑到**。所以 `continue-on-error`、
+  # preflight step 全部救唔到 —— 只能靠喺**另一個 job** 事先驗。
+  #
+  # 最常踩嘅坑：`taiki-e/install-action@cargo-ndk`
+  #   `@` 後面係 git ref（版本），唔係工具名；工具名要用 `with: tool:`
+  # 呢度會逐條 `uses:` 驗 ref 係咪「版本樣」（v1 / v1.2.3 / 40 位 SHA / master|main|stable），
+  # 唔係就指名道姓報出嚟。
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Validate uses: refs"
+        run: |
+          set -u
+          python3 - <<'PY' || exit 1
+          import glob, re, sys
+
+          # 合法嘅 ref：v1 / v1.2 / v1.2.3 / 40 位 SHA / 常見分支名
+          OK = re.compile(r'^(v\d+(\.\d+)*|[0-9a-f]{40}|master|main|stable|latest)$')
+
+          bad = []
+          for p in sorted(glob.glob('.github/workflows/*.yml') + glob.glob('.github/workflows/*.yaml')):
+              for i, line in enumerate(open(p, encoding='utf-8').read().split('\n'), 1):
+                  m = re.search(r'^\s*-?\s*uses:\s*(\S+)\s*$', line)
+                  if not m:
+                      continue
+                  ref = m.group(1)
+                  if ref.startswith('./') or ref.startswith('docker://'):
+                      continue
+                  if '@' not in ref:
+                      bad.append(f"{p}:{i} `{ref}` 冇 @版本（會用 default branch，唔穩定）")
+                      continue
+                  name, ver = ref.rsplit('@', 1)
+                  if not OK.match(ver):
+                      bad.append(
+                          f"{p}:{i} `{ref}` —— `@` 後面要係版本（v1 / v1.2.3 / 40 位 SHA），"
+                          f"「{ver}」唔係。\n"
+                          f"        係咪想寫 `{name}@v2` 再配 `with: tool: {ver}`？"
+                      )
+
+          if bad:
+              print("::error::workflow 有解析唔到嘅 action —— 會令成個 job 未開始就紅")
+              for b in bad:
+                  print("  " + b)
+              sys.exit(1)
+          print("workflow `uses:` 檢查：全部通過 ✔")
+          PY
+
   build:
+    needs: workflow-lint
     runs-on: ubuntu-latest
 
     # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
@@ -92,9 +144,40 @@ jobs:
         with:
           targets: armv7-linux-androideabi,aarch64-linux-android,x86_64-linux-android
 
+      # ⚠️ 唔好再喺度用第三方 action！
+      #
+      # 之前寫咗 `uses: taiki-e/install-action@cargo-ndk`，但 `@` 後面係 **git ref
+      # （版本）**，唔係工具名 —— 所以 GitHub 會去搵一個叫 `cargo-ndk` 嘅 tag，
+      # 搵唔到就成個 job 喺**開始之前**直接失敗：
+      #     Error: Unable to resolve action `taiki-e/install-action@cargo-ndk`,
+      #            unable to find version `cargo-ndk`
+      # 呢類錯係 job 層面，所以 `continue-on-error` 同任何 step 都救唔到 ——
+      # 一個 step 都未跑到就已經紅咗。
+      #
+      # 正確寫法係 `uses: taiki-e/install-action@v2` + `with: tool: cargo-ndk`，
+      # 但為咗唔再依賴第三方 action（佢改名／刪 tag 會即刻令 build 紅），
+      # 而家改為**自己裝**：有預編譯就用，冇就 `cargo install`，永遠唔會 fail 個 job。
       - name: Install cargo-ndk
         continue-on-error: true
-        uses: taiki-e/install-action@cargo-ndk
+        run: |
+          set -u
+          if command -v cargo-ndk >/dev/null 2>&1; then
+            echo "✔ cargo-ndk 已經喺度：$(command -v cargo-ndk)"
+            cargo-ndk --version || true
+            exit 0
+          fi
+          echo "cargo-ndk 唔喺度，嘗試安裝…"
+          if command -v cargo >/dev/null 2>&1; then
+            cargo install cargo-ndk --locked 2>&1 | tail -5 || \
+              cargo install cargo-ndk 2>&1 | tail -5 || true
+          else
+            echo "::warning::冇 cargo，裝唔到 cargo-ndk；下面 Build Rust kernel 會自己處理"
+          fi
+          if command -v cargo-ndk >/dev/null 2>&1; then
+            echo "✔ 裝好：$(command -v cargo-ndk)"
+          else
+            echo "::warning::裝唔到 cargo-ndk —— Rust 內核呢次會行純 Kotlin 回退，APK 照出"
+          fi
 
       - name: Cache cargo registry + target
         uses: actions/cache@v4
