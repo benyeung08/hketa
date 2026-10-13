@@ -1,6 +1,9 @@
 //! # JNI 綁定
 //!
-//! 對應 Kotlin `com.hketa.app.data.RustIndex`。
+//! 對應 Kotlin `com.hketa.app.data.RustKernel` —— **唯一**嘅 Kotlin 入口。
+//!
+//! 索引（儲存 ＋ 常駐記憶體）、內核（計數）、加速層（TTL 快取）三組 JNI
+//! 全部掛喺 `RustKernel` 呢個 class 名下（`nativeIndex*` / `native*` / `nativeSpeed*`）。
 //!
 //! ## 跨邊界嘅資料格式
 //!
@@ -57,7 +60,7 @@ fn new_doubles(env: &mut JNIEnv, data: &[jdouble]) -> jdoubleArray {
 // ---------------------------------------------------------------- 生命週期
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeLoad<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexLoad<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     path: JString<'local>,
@@ -70,7 +73,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeLoad<'local>(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeFromJson<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexFromJson<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     json: JString<'local>,
@@ -83,7 +86,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeFromJson<'local>(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSave<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexSave<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -101,7 +104,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSave<'local>(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeFree(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexFree(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -114,7 +117,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeFree(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeVersion(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexVersion(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
@@ -125,7 +128,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeVersion(
 
 /// `[routes, stops, routeStops, strings]`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStats(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexStats(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -144,7 +147,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStats(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeBuiltAt(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexBuiltAt(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -158,7 +161,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeBuiltAt(
 
 /// 去重後嘅字串表 —— Kotlin 側會當做共用嘅 `String` 池
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStrings<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexStrings<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -183,7 +186,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStrings<'local>(
 
 /// 每條路線 9 個 int：`op, bound, route, routeId, orig, origEn, dest, destEn, serviceType`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRoutes(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexRoutes(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -209,7 +212,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRoutes(
 
 /// 每個站 4 個 int：`op, id, name, nameEn`（座標另外用 `nativeStopsLatLon`）
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStops(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexStops(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -230,7 +233,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStops(
 
 /// `lat, lon` 交替
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStopsLatLon(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexStopsLatLon(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -249,7 +252,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStopsLatLon(
 
 /// 每筆 7 個 int：`op, bound, seq, route, serviceType, stopId, routeId`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRouteStops(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexRouteStops(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -275,7 +278,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRouteStops(
 
 /// 半徑內嘅車站，按距離排。每項 2 個 int：`stop 下標, 距離米`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeNearby(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexNearby(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -298,7 +301,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeNearby(
 
 /// 某個站有邊啲路線 —— 返回字串表索引
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRoutesAtStop<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexRoutesAtStop<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -352,7 +355,7 @@ fn new_strings(env: &mut JNIEnv, rows: &[String]) -> jobjectArray {
 
 /// 由碟上嘅二進制索引開一個常駐 handle；失敗返回 0
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpen<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexOpen<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     path: JString<'local>,
@@ -366,7 +369,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpen<'local>(
 
 /// 由 JSON 建一個常駐 handle（第一次建索引嗰陣用）
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpenJson<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexOpenJson<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     json: JString<'local>,
@@ -380,7 +383,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeOpenJson<'local>(
 
 /// 收返常駐 handle，並釋放 native heap 上面嘅索引
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeClose(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexClose(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -392,7 +395,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeClose(
 
 /// 常駐索引嘅數量（診斷用，正常應該係 1）
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeResidentCount(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexResidentCount(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
@@ -401,7 +404,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeResidentCount(
 
 /// 把常駐索引寫落碟（原子寫：`.tmp` 再 rename）
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSaveResident<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexSaveResident<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -422,7 +425,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSaveResident<'loc
 
 /// `[routes, stops, routeStops, strings]`（常駐版）
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStatsResident(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexStatsResident(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -445,7 +448,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeStatsResident(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeBuiltAtResident(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexBuiltAtResident(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -461,7 +464,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeBuiltAtResident(
 
 /// 搵路線。每行：`op|route|bound|serviceType|routeId|orig|dest`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchRoutes<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexSearchRoutes<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -483,7 +486,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchRoutes<'loc
 
 /// 搵車站。每行：`op|id|name|nameEn|lat|lon|route1,route2,…`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchStops<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexSearchStops<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -505,7 +508,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeSearchStops<'loca
 
 /// 某條路線嘅車站（按 seq）。每行：`op|stopId|seq|name|nameEn|lat|lon`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRouteStopsRows<'local>(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexRouteStopsRows<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -536,7 +539,7 @@ pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeRouteStopsRows<'l
 
 /// 半徑內嘅車站。每行：`op|id|name|nameEn|lat|lon|distM`
 #[no_mangle]
-pub extern "system" fn Java_com_hketa_app_data_RustIndex_nativeNearbyRows(
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexNearbyRows(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
@@ -679,4 +682,288 @@ pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeNormalizeRoute<'
 ) -> jobjectArray {
     let s = jstr(&mut env, &q);
     new_strings(&mut env, &[crate::kernel::normalize_route(&s)])
+}
+
+// ---------------------------------------------------------------- 加速層
+
+/// 由 `String` 造一個 `jstring`；失敗就返 null（Kotlin 側當 miss）
+fn new_jstring(env: &mut JNIEnv, s: &str) -> jni::sys::jobject {
+    match env.new_string(s) {
+        Ok(v) => JObject::from(v).as_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// 加速層：寫入。成功返 1，失敗返 0（Kotlin 側會改行 Kotlin 版 `Memo`）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedPut<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: jint,
+    key: JString<'local>,
+    payload: JString<'local>,
+    now_ms: jlong,
+) -> jboolean {
+    let k = jstr(&mut env, &key);
+    let v = jstr(&mut env, &payload);
+    if crate::speed::put(ns, &k, &v, now_ms) {
+        1
+    } else {
+        0
+    }
+}
+
+/// 加速層：淨係返未過期嘅；過期／冇就返 null
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedGet<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: jint,
+    key: JString<'local>,
+    now_ms: jlong,
+) -> jni::sys::jobject {
+    let k = jstr(&mut env, &key);
+    match crate::speed::get(ns, &k, now_ms) {
+        Some(s) => new_jstring(&mut env, &s),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// 加速層：唔理過期照返（stale-while-revalidate 用）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedPeek<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: jint,
+    key: JString<'local>,
+) -> jni::sys::jobject {
+    let k = jstr(&mut env, &key);
+    match crate::speed::peek(ns, &k) {
+        Some(s) => new_jstring(&mut env, &s),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// 加速層：呢條 key 幾時抓落嚟（冇就 0）
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedAt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: jint,
+    key: JString<'local>,
+) -> jlong {
+    let k = jstr(&mut env, &key);
+    crate::speed::at(ns, &k)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedRemove<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: jint,
+    key: JString<'local>,
+) {
+    let k = jstr(&mut env, &key);
+    crate::speed::remove(ns, &k);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedClear(
+    _env: JNIEnv,
+    _class: JClass,
+    ns: jint,
+) {
+    crate::speed::clear(ns);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedClearAll(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    crate::speed::clear_all();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedHits(
+    _env: JNIEnv,
+    _class: JClass,
+    ns: jint,
+) -> jlong {
+    crate::speed::hits(ns)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeSpeedMisses(
+    _env: JNIEnv,
+    _class: JClass,
+    ns: jint,
+) -> jlong {
+    crate::speed::misses(ns)
+}
+
+// ---------------------------------------------------------------- 儲存（store）
+//
+// 成個 APK 嘅「記憶體與儲存」統一由 `crate::store` 擁有：收藏、ETA 快取、
+// 班次表快取、輕鐵特別班次、Leaflet 資源包 —— 五個命名空間。
+// Kotlin 側 `RustStore` 係唯一入口；`.so` 唔喺度就一律回退原本嘅 Kotlin 實作。
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreInit<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    root: JString<'local>,
+) -> jboolean {
+    let r = jstr(&mut env, &root);
+    if crate::store::init(&r) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreReady<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jboolean {
+    if crate::store::ready() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStorePut<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+    key: JString<'local>,
+    value: JString<'local>,
+    now_ms: jlong,
+) -> jboolean {
+    let n = jstr(&mut env, &ns);
+    let k = jstr(&mut env, &key);
+    let v = jstr(&mut env, &value);
+    if crate::store::put(&n, &k, &v, now_ms) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreGet<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+    key: JString<'local>,
+) -> jni::sys::jobject {
+    let n = jstr(&mut env, &ns);
+    let k = jstr(&mut env, &key);
+    match crate::store::get(&n, &k) {
+        Some(s) => new_jstring(&mut env, &s),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreAt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+    key: JString<'local>,
+) -> jlong {
+    let n = jstr(&mut env, &ns);
+    let k = jstr(&mut env, &key);
+    crate::store::at(&n, &k)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreDel<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+    key: JString<'local>,
+) -> jboolean {
+    let n = jstr(&mut env, &ns);
+    let k = jstr(&mut env, &key);
+    if crate::store::del(&n, &k) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreKeys<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+) -> jobjectArray {
+    let n = jstr(&mut env, &ns);
+    new_strings(&mut env, &crate::store::keys(&n))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreClear<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+) -> jboolean {
+    let n = jstr(&mut env, &ns);
+    if crate::store::clear(&n) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreCount<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+) -> jlong {
+    let n = jstr(&mut env, &ns);
+    crate::store::count(&n)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreBytes<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ns: JString<'local>,
+) -> jlong {
+    let n = jstr(&mut env, &ns);
+    crate::store::bytes(&n)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreFlush<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jboolean {
+    if crate::store::flush() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreNamespaces<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jobjectArray {
+    new_strings(&mut env, &crate::store::namespaces())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeStoreStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jni::sys::jobject {
+    new_jstring(&mut env, &crate::store::stats())
 }
