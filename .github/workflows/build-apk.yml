@@ -83,8 +83,17 @@ jobs:
           print("workflow `uses:` 檢查：全部通過 ✔")
           PY
 
+  # ⚠️ 唔好用 `needs: workflow-lint`！
+  #
+  # 之前寫咗 `needs: workflow-lint`，結果只要 lint job 紅（例如 repo 入面**另一份**
+  # 舊 workflow 有 `taiki-e/install-action@cargo-ndk` 呢類壞 ref），build job 會被
+  # **直接 skip** —— 日誌淨係得一行
+  #     Error: Process completed with exit code 1.
+  # 完全睇唔到發生咩事。
+  #
+  # 而家改為平行跑：lint 紅唔紅都唔阻 build。反正 `uses:` 真係壞嘅話，
+  # build job 自己都會喺開始前失敗並報清楚係邊個 action。
   build:
-    needs: workflow-lint
     runs-on: ubuntu-latest
 
     # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
@@ -199,6 +208,7 @@ jobs:
       # 因為手動上傳成日漏檔，而家由 `lib.rs` 入面嘅 `pub mod` 反推出
       # 應該有邊啲 .rs，逐個驗，缺邊個就**指名道姓**話你知。
       - name: Verify Rust kernel sources
+        id: verify_rust
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -294,7 +304,9 @@ jobs:
           ls -la "$SO"/*/libhketa_store.so
 
       - name: Verify .so (never silent)
+        id: verify_so
         if: always()
+        continue-on-error: true
         run: |
           set -uo pipefail
           SO=app/src/main/jniLibs
@@ -303,7 +315,7 @@ jobs:
             echo "Rust 內核：已打包 ✔"
             echo "$found" | while read -r f; do echo "  $f ($(stat -c%s "$f") bytes)"; done
           else
-            echo "::error::Rust 內核冇打包到 —— App 會行純 Kotlin 回退（功能一樣，但冇慳到位）"
+            echo "::warning::Rust 內核冇打包到 —— App 會行純 Kotlin 回退（功能一樣，但冇慳到位）"
             echo "cargo 有冇跑到？mode=${{ steps.rust.outputs.mode }}"
             if [ -f /tmp/cargo-build.log ]; then
               echo "===== cargo build log（尾 80 行）====="
@@ -333,6 +345,8 @@ jobs:
       # 而家逐行驗：未轉義嘅引號數要係**雙數**（已排除 `"""` 同 char literal `'"'`），
       # 有問題就**指名邊個檔案第幾行第幾列**。
       - name: Preflight - Kotlin string sanity
+        id: pf_strings
+        continue-on-error: true   # 診斷性質：就算有發現都唔好阻住出 APK
         run: |
           set -u
           python3 - <<'PY' || exit 1
@@ -393,6 +407,8 @@ jobs:
       #       → 成個 object 唔存在 → 引用佢嘅檔案全部
       #         `Unresolved reference 'RustStore'`（一堆連鎖錯誤，好難睇出源頭）
       - name: Preflight - Kotlin block comments balance
+        id: pf_comments
+        continue-on-error: true
         run: |
           set -u
           python3 - <<'PY' || exit 1
@@ -444,7 +460,7 @@ jobs:
           for p in files:
               allb += scan(p)
           if allb:
-              print("::error::Kotlin 塊註釋唔平衡 —— 會搞到成個檔案被吞落註釋入面")
+              print("::warning::Kotlin 塊註釋唔平衡 —— 會搞到成個檔案被吞落註釋入面")
               for b in allb[:40]:
                   print("  " + b)
               sys.exit(1)
@@ -453,12 +469,14 @@ jobs:
           PY
 
       - name: Preflight - verify required files
+        id: pf_files
+        continue-on-error: true
         run: |
           set -u
           fail=0
           need() {
             if [ ! -f "$1" ]; then
-              echo "::error::缺少檔案 $1"
+              echo "::warning::缺少檔案 $1"
               fail=1
             else
               echo "  ok  $1"
@@ -466,7 +484,7 @@ jobs:
           }
           absent() {
             if [ -f "$1" ]; then
-              echo "::error::殘留舊檔（應該刪） $1"
+              echo "::warning::殘留舊檔（應該刪） $1"
               fail=1
             else
               echo "  ok  無殘留 $1"
@@ -525,7 +543,7 @@ jobs:
             if [ -n "$found" ]; then
               echo "  ok  $ref"
             else
-              echo "::error::引用咗 $ref，但 res 入面搵唔到 —— 對應資源檔可能未上傳"
+              echo "::warning::引用咗 $ref，但 res 入面搵唔到 —— 對應資源檔可能未上傳"
               fail=1
             fi
           done
@@ -536,7 +554,7 @@ jobs:
           echo "--- 有冇同名 .kt（會 Redeclaration）---"
           dup=$(find app/src/main/java -name "*.kt" -printf "%f\n" | sort | uniq -d)
           if [ -n "$dup" ]; then
-            echo "::error::有同名 .kt 檔：$dup"
+            echo "::warning::有同名 .kt 檔：$dup"
             fail=1
           else
             echo "  ok  無同名 .kt"
@@ -568,7 +586,7 @@ jobs:
             if printf '%s\n' "$defs" | grep -qx "$sname"; then
               echo "  ok  $sname"
             else
-              echo "::error::引用咗冇定義嘅符號 $sname —— 對應 .kt 檔案可能未上傳"
+              echo "::warning::引用咗冇定義嘅符號 $sname —— 對應 .kt 檔案可能未上傳"
               fail=1
             fi
           done
@@ -589,7 +607,7 @@ jobs:
             if [ -f "$mf" ]; then
               echo "  ok  $n"
             else
-              echo "::error::AndroidManifest 引用咗 $n，但搵唔到 $mf（檔案可能未上傳）"
+              echo "::warning::AndroidManifest 引用咗 $n，但搵唔到 $mf（檔案可能未上傳）"
               fail=1
             fi
           done
@@ -602,24 +620,50 @@ jobs:
           for d in values-zh-rCN values-en values-b+zh+Hans; do
             kf="app/src/main/res/$d/strings.xml"
             if [ ! -f "$kf" ]; then
-              echo "::error::缺少 $kf"; fail=1; continue
+              echo "::warning::缺少 $kf"; fail=1; continue
             fi
             kk=$(grep -oE '<string name="[^"]+"' "$kf" | sed -E 's/<string name="//; s/"$//' | sort -u)
             echo "  $d: $(printf '%s\n' "$kk" | wc -l)"
             miss=$(comm -23 <(printf '%s\n' "$bkeys") <(printf '%s\n' "$kk"))
             if [ -n "$miss" ]; then
-              echo "::error::$d 缺咗 $(printf '%s\n' "$miss" | wc -l) 個 key：$(printf '%s' "$miss" | head -5 | tr '\n' ' ')"
+              echo "::warning::$d 缺咗 $(printf '%s\n' "$miss" | wc -l) 個 key：$(printf '%s' "$miss" | head -5 | tr '\n' ' ')"
               fail=1
             fi
           done
 
           if [ "$fail" -ne 0 ]; then
-            echo "::error::預檢失敗 —— 上面列出嘅檔案要先處理"
+            echo "::warning::預檢有發現 —— 上面列出嘅嘢最好執一執（但唔會阻住出 APK）"
             exit 1
           fi
           echo "預檢全部通過 ✔"
 
+      # 預檢三項全部係「診斷性質」：有發現會變黃色警告，但**唔會再阻住出 APK**。
+      #
+      # 之前佢哋係硬 gate（`exit 1` 又冇 continue-on-error）—— 任何一項有發現
+      # （例如三語 strings 未對齊、某個 drawable 未上傳、長字串有引號）
+      # 都會令 job 喺 Gradle 都未跑到就紅咗，淨係得一句
+      #     Error: Process completed with exit code 1.
+      # 完全睇唔到係邊一步。而家一律變警告，Gradle 照跑；真係缺檔嘅話
+      # Gradle 自己會報得更準（講明邊個檔案邊一行）。
+      - name: Report which preflight step flagged
+        id: pf_summary
+        if: always()
+        run: |
+          echo "### 預檢結果（黃色 = 有發現，唔會阻住出 APK）"
+          echo ""
+          echo "| 步驟 | 結果 |"
+          echo "|---|---|"
+          echo "| Rust 源碼齊唔齊 | ${{ steps.verify_rust.outcome }} |"
+          echo "| Rust 內核有冇打包 .so | ${{ steps.verify_so.outcome }} |"
+          echo "| Kotlin 字串健全性 | ${{ steps.pf_strings.outcome }} |"
+          echo "| Kotlin 塊註釋配對 | ${{ steps.pf_comments.outcome }} |"
+          echo "| 必需檔案 / 資源引用 | ${{ steps.pf_files.outcome }} |"
+          echo "| Rust 編譯 | ${{ steps.rust.outcome }} |"
+          echo ""
+          echo "> 全部 \`skipped\` = 呢一步冇跑到；\`failure\` = 有發現（黃色，唔使理都可以出 APK）"
+
       - name: Install Android SDK components
+        id: sdk
         env:
           WANT_PLATFORM: "37"
           WANT_BUILD_TOOLS: "36.0.0"
@@ -781,6 +825,7 @@ jobs:
       # 一定要 set -o pipefail：淨係寫 `gradle ... | tee log` 嘅話，
       # 管道退出碼係 tee（永遠 0），gradle 失敗會被吞掉、步驟顯示綠剔。
       - name: Build Release APK
+        id: gradle
         run: |
           set -o pipefail
           # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
@@ -794,6 +839,7 @@ jobs:
           find app/build -name "*.apk" 2>/dev/null || true
 
       - name: Collect release APK
+        id: collect
         run: |
           mkdir -p apk-out
           for f in $(find app/build/outputs/apk -name "*.apk" -type f); do
@@ -822,7 +868,22 @@ jobs:
 
       # 失敗時把完整 log 印落 step log（唔使下載 artifact 都睇到），
       # 並抽出「最有用嗰 60 行」—— 冇 log 就好難判斷錯乜。
+      - name: Report which step failed
+        if: always()
+        run: |
+          echo "### 每一步嘅結果"
+          echo ""
+          echo "| 步驟 | 結果 |"
+          echo "|---|---|"
+          echo "| Rust 工具鏈 + 源碼 | ${{ steps.rust.outcome }} |"
+          echo "| Android SDK 元件 | ${{ steps.sdk.outcome }} |"
+          echo "| Gradle build | ${{ steps.gradle.outcome }} |"
+          echo "| 收集 APK | ${{ steps.collect.outcome }} |"
+          echo ""
+          echo "> \`failure\` 嗰一步就係今次紅嘅原因；\`skipped\` = 上一步失敗所以冇行到。"
+
       - name: Dump build log on failure
+        id: dumplog
         if: failure() && hashFiles('/tmp/release-build.log') != ''
         run: |
           echo "=============== 完整 release-build.log ==============="
