@@ -350,4 +350,6 @@
     <string name="settings_index_backend">Index format: %1$s</string>
     <string name="settings_speed_layer">Speed layer: %1$d hits / %2$d misses</string>
     <string name="settings_kernel">Kernel: %1$s</string>
+    <string name="settings_store">Storage: %1$s</string>
+    <string name="settings_speed_layer_backend">Speed layer: %1$s · %2$d hits / %3$d misses</string>
 </resources>
