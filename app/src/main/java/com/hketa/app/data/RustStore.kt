@@ -14,7 +14,7 @@ import java.io.File
  * | 輕鐵特別班次 | 一個 `hketa_lr_special.json` |
  * | ETA 離線快取 | 一個目錄一堆 `.json` |
  * | 班次表離線快取 | 一個目錄一堆 `.json` |
- * | Leaflet 資源包 | `filesDir/hketa_assets/*.css｜js` |
+ * | Leaflet 資源包 | `filesDir/hketa_assets/` 入面嘅 css｜js 檔 |
  *
  * 而家統一交畀 `rust/src/store.rs`：
  *
