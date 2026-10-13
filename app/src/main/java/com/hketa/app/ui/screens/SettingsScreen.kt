@@ -216,8 +216,11 @@ fun SettingsScreen(
         Muted(stringResource(R.string.settings_index_backend, vm.indexBackendLabel()))
         // 領域核心（砌班次表／取樣／診斷）由邊度計 —— 一樣有純 Kotlin 回退
         Muted(stringResource(R.string.settings_kernel, vm.kernelLabel()))
-        // 加速層嘅命中率 —— 呢層純 Kotlin，Rust 有冇 build 到都一樣生效
+        // 加速層由邊度管 ＋ 命中率 —— 由 Rust 內核持有，.so 唔喺度就回退 Kotlin
         Muted(vm.speedLayerLabel())
+        // 成個 APK 嘅「記憶體與儲存」由邊度擁有 —— 收藏／ETA／班次表／輕鐵特別班次
+        // 全部住喺 Rust 嘅 native heap，.so 唔喺度就各 store 行返原本寫法
+        Muted(stringResource(R.string.settings_store, vm.storeLabel()))
 
         // ---- 索引診斷：講清楚邊個營辦商點解係 0 ----
         val diag = vm.indexErrors.collectAsState().value
