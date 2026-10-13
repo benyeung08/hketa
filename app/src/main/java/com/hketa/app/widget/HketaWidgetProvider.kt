@@ -12,6 +12,7 @@ import android.widget.RemoteViews
 import com.hketa.app.MainActivity
 import com.hketa.app.R
 import com.hketa.app.data.suspendCatching
+import com.hketa.app.data.EtaCache
 import com.hketa.app.data.EtaRepository
 import com.hketa.app.data.FavoritesStore
 import com.hketa.app.data.Operator
@@ -78,16 +79,22 @@ class HketaWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    /** 逐個收藏站拉 ETA，揀最快嗰班 */
+    /**
+     * 逐個收藏站拉 ETA，揀最快嗰班。
+     *
+     * **冇網都唔會淨低個空 Widget**：拉唔到（冇網／官方接口出事）
+     * 就退返 [EtaCache] 上次成功抓到嘅資料，並標「離線 · N 分鐘前」。
+     */
     private suspend fun buildRows(context: Context): List<WidgetRow> {
         val favs = FavoritesStore(context).all().take(MAX_ROWS)
         if (favs.isEmpty()) return emptyList()
 
         val repo = EtaRepository()
+        val cache = EtaCache(context)
         return coroutineScope {
             favs.map { fav ->
                 async {
-                    val eta = suspendCatching {
+                    val liveEta = suspendCatching {
                         when (fav.op) {
                             Operator.KMB -> repo.kmbEta(fav.id).let { all ->
                                 (if (fav.route.isBlank()) all else all.filter { it.route == fav.route })
@@ -123,11 +130,36 @@ class HketaWidgetProvider : AppWidgetProvider() {
                         }
                     }.getOrNull()
 
-                    WidgetRow(
-                        stop = fav.name.ifBlank { fav.id },
-                        route = eta?.route ?: fav.route,
-                        minutes = eta?.minutes
-                    )
+                    val ck = cache.keyOf(fav.id, fav.op, fav.route)
+
+                    if (liveEta != null) {
+                        // 成功：寫落快取，下次冇網都用得着
+                        cache.put(ck, EtaCache.from(listOf(liveEta)))
+                        WidgetRow(
+                            stop = fav.name.ifBlank { fav.id },
+                            route = liveEta.route.ifBlank { fav.route },
+                            minutes = liveEta.minutes
+                        )
+                    } else {
+                        // ★ 失敗／冇網：退返上次成功嗰筆，標明離線
+                        val hit = cache.get(ck)
+                        val old = hit?.etas?.firstOrNull()
+                        if (old != null) {
+                            WidgetRow(
+                                stop = fav.name.ifBlank { fav.id },
+                                route = old.route.ifBlank { fav.route },
+                                minutes = old.minutes,
+                                offline = true,
+                                ageMin = cache.ageMinutes(hit)
+                            )
+                        } else {
+                            WidgetRow(
+                                stop = fav.name.ifBlank { fav.id },
+                                route = fav.route,
+                                minutes = null
+                            )
+                        }
+                    }
                 }
             }.awaitAll()
         }
@@ -162,13 +194,17 @@ class HketaWidgetProvider : AppWidgetProvider() {
             val row = RemoteViews(context.packageName, R.layout.widget_row)
             row.setTextViewText(R.id.row_stop, r.stop)
             row.setTextViewText(R.id.row_route, r.route)
+            // 離線嗰陣喺分鐘後面加「離線 · N 分前」，
+            // 因為舊 ETA 會誤導 —— 一定要講明唔係即時
+            val minText = when {
+                r.minutes == null -> "—"
+                r.minutes!! <= 0 -> context.getString(R.string.widget_now)
+                else -> context.getString(R.string.widget_minutes, r.minutes!!)
+            }
             row.setTextViewText(
                 R.id.row_min,
-                when {
-                    r.minutes == null -> "—"
-                    r.minutes!! <= 0 -> context.getString(R.string.widget_now)
-                    else -> context.getString(R.string.widget_minutes, r.minutes!!)
-                }
+                if (r.offline) "$minText  ${context.getString(R.string.widget_offline, r.ageMin)}"
+                else minText
             )
             views.addView(R.id.widget_container, row)
         }
@@ -197,6 +233,10 @@ class HketaWidgetProvider : AppWidgetProvider() {
     private data class WidgetRow(
         val stop: String,
         val route: String,
-        val minutes: Int?
+        val minutes: Int?,
+        /** 係咪離線快取（拉唔到新資料，顯示嘅係上次嗰筆） */
+        val offline: Boolean = false,
+        /** 快取咗幾耐（分鐘） */
+        val ageMin: Int = 0
     )
 }
