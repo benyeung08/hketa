@@ -568,23 +568,37 @@ pub extern "system" fn Java_com_hketa_app_data_RustKernel_nativeIndexNearbyRows(
 //
 // 呢度全部用 `.get()` / `unwrap_or_default()`，一律唔 panic ——
 // panic 跨 FFI 邊界係 UB。
+//
+// ⚠️ 唔好再喺度寫 `use jni::objects::JObject;` —— 檔案頭（第 336 行）已經
+// import 咗，再寫一次會報：
+//   error[E0252]: the name `JObject` is defined multiple times
+// （同一個 module 入面，`use` 只能有一次。）
 
-use jni::objects::JObject;
 use jni::sys::{jobject, jsize};
 
 /// 讀一個 `String[]` 入嚟；失敗就當空陣列
+///
+/// ⚠️ jni 0.21 只實現咗 `From<JObject> for JObjectArray`，**冇**
+/// `From<*mut _jobject>` —— 所以唔可以寫 `JObjectArray::from(a.clone())`
+/// （`.clone()` 會 deref 落 raw pointer，就報：
+/// `the trait bound JObjectArray<'_>: From<*mut _jobject> is not satisfied`）。
+/// 要先用 `JObject::from_raw` 包返個 `JObject` 出嚟。
 fn read_strings(env: &mut JNIEnv, arr: jobjectArray) -> Vec<String> {
     if arr.is_null() {
         return Vec::new();
     }
     let a = unsafe { JObject::from_raw(arr as jobject) };
-    let len = match env.get_array_length(&jni::objects::JObjectArray::from(a.clone())) {
+    let ja = jni::objects::JObjectArray::from(a);
+    let len = match env.get_array_length(&ja) {
         Ok(n) => n as usize,
-        Err(_) => return Vec::new(),
+        Err(_) => {
+            std::mem::forget(ja);
+            return Vec::new();
+        }
     };
     let mut out: Vec<String> = Vec::with_capacity(len);
     for i in 0..len {
-        let v = match env.get_object_array_element(&jni::objects::JObjectArray::from(a.clone()), i as jsize) {
+        let v = match env.get_object_array_element(&ja, i as jsize) {
             Ok(o) => o,
             Err(_) => continue,
         };
@@ -594,6 +608,9 @@ fn read_strings(env: &mut JNIEnv, arr: jobjectArray) -> Vec<String> {
         };
         out.push(s);
     }
+    // `ja` 係由 Java 傳入嘅 local ref 借返嚟 —— drop 佢會 delete 咗個
+    // local ref（JVM 自己會管），所以一定要 forget。
+    std::mem::forget(ja);
     out
 }
 

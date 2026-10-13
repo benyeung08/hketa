@@ -940,13 +940,32 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+/// `ptr::NonNull<Index>` 本身**唔係 `Send`**（raw pointer 預設唔 Send），
+/// 但 `static` 要求 `Sync`，而 `Mutex<T>: Sync` 又要 `T: Send` —— 所以直接
+/// 擺 `NonNull` 入 `static` 會報：
+///
+/// ```text
+/// error[E0277]: `NonNull<Index>` cannot be sent between threads safely
+///     --> src/index.rs:949:15
+/// ```
+///
+/// 呢度嘅指標全部係 `Box::leak` 出嚟：地址永遠唔會變（唔會因為 `HashMap`
+/// rehash 而搬走），活到 `resident_remove` 先回收，而且**所有存取都喺
+/// `Mutex` 入面排隊** —— 所以標記 `Send` 係啱嘅。
+#[derive(Clone, Copy)]
+struct SendPtr(ptr::NonNull<Index>);
+
+// SAFETY: 見上面 `SendPtr` 嘅註解：指標由 `Box::leak` 嚟、地址穩定、
+// 全部存取都喺 `Mutex` 入面。
+unsafe impl Send for SendPtr {}
+
 /// `handle -> *mut Index`
 ///
 /// 入面放嘅係 **`Box::leak` 出嚟嘅指標**：`Index` 本體喺 native heap，
 /// 地址永遠唔會變（唔會因為 `HashMap` rehash 而搬走），所以攞到嘅係
 /// `&'static mut Index`，**唔使任何 unsafe 轉型**。
-fn registry() -> &'static Mutex<HashMap<u64, ptr::NonNull<Index>>> {
-    static R: OnceLock<Mutex<HashMap<u64, ptr::NonNull<Index>>>> = OnceLock::new();
+fn registry() -> &'static Mutex<HashMap<u64, SendPtr>> {
+    static R: OnceLock<Mutex<HashMap<u64, SendPtr>>> = OnceLock::new();
     R.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -963,7 +982,7 @@ pub fn resident_insert(idx: Index) -> u64 {
         Ok(mut m) => {
             match ptr::NonNull::new(leaked as *mut Index) {
                 Some(p) => {
-                    m.insert(id, p);
+                    m.insert(id, SendPtr(p));
                     id
                 }
                 None => 0,
@@ -976,7 +995,7 @@ pub fn resident_insert(idx: Index) -> u64 {
 pub fn resident_get(id: u64) -> Option<&'static mut Index> {
     let p = match registry().lock() {
         Ok(m) => match m.get(&id) {
-            Some(p) => *p,
+            Some(p) => p.0,
             None => return None,
         },
         Err(_) => return None,
@@ -994,7 +1013,7 @@ pub fn resident_remove(id: u64) {
     };
     if let Some(p) = p {
         unsafe {
-            drop(Box::from_raw(p.as_ptr()));
+            drop(Box::from_raw(p.0.as_ptr()));
         }
     }
 }
