@@ -882,16 +882,33 @@ jobs:
           echo ""
           echo "> \`failure\` 嗰一步就係今次紅嘅原因；\`skipped\` = 上一步失敗所以冇行到。"
 
+      # ⚠️ 之前嘅條件係：
+      #     if: failure() && hashFiles('/tmp/release-build.log') != ''
+      #
+      # `hashFiles()` **淨係會掃 $GITHUB_WORKSPACE**，而 /tmp 喺 workspace 出面 ——
+      # 所以佢永遠返空字串 → 條件永遠 false → **呢一步永遠 skipped**。
+      #
+      # 結果就係：Gradle 失敗咗，但完整 log 從來冇印出嚟，你淨係見到一句
+      #     Error: Process completed with exit code 1.
+      # 完全唔知邊度錯 —— 呢個正係「點解次次都淨係得一行」嘅原因。
+      #
+      # 而家改為 `if: failure()`，並且把 log 抄入 workspace（上傳都穩陣啲）。
       - name: Dump build log on failure
         id: dumplog
-        if: failure() && hashFiles('/tmp/release-build.log') != ''
+        if: failure()
         run: |
+          mkdir -p build-logs
+          cp /tmp/*-build.log build-logs/ 2>/dev/null || true
           echo "=============== 完整 release-build.log ==============="
-          cat /tmp/release-build.log || true
+          cat /tmp/release-build.log 2>/dev/null || echo "(冇 release-build.log)"
           echo
-          echo "=============== 錯誤摘要（頭 60 行）==============="
+          echo "=============== 錯誤摘要（頭 80 行，會同時變紅色 annotation）==============="
           grep -nE 'e: |error: |FAILED|FAILURE:|\* What went wrong|Caused by|Execution failed' \
-            /tmp/release-build.log | head -60 || true
+            /tmp/release-build.log 2>/dev/null | head -80 \
+            | while IFS= read -r line; do echo "::error::$line"; echo "$line"; done
+          echo
+          echo "=============== 最尾 40 行 ==============="
+          tail -40 /tmp/release-build.log 2>/dev/null || true
 
       - name: Write errors to job summary
         if: failure()
