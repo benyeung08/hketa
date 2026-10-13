@@ -20,7 +20,6 @@ import com.hketa.app.data.RailData
 import com.hketa.app.data.RailLine
 import com.hketa.app.data.RouteDef
 import com.hketa.app.data.RouteStopDef
-import com.hketa.app.data.RustIndex
 import com.hketa.app.data.StopDef
 import com.hketa.app.data.GitHubRelease
 import com.hketa.app.data.LocatePhase
@@ -292,6 +291,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // 成個 APK 嘅「記憶體與儲存」交畀 Rust 內核。
+        // 失敗（.so 唔喺度／建唔到目錄）就各個 store 自動行返原本嘅 Kotlin 實作。
+        runCatching { com.hketa.app.data.RustStore.init(app) }
         restartCountdown()
     }
 
@@ -595,14 +597,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun syncResident() {
         // 索引換咗 → 附近車站／班次表嘅舊結果已經唔啱，加速層要清
         com.hketa.app.data.SpeedLayer.clearAll()
-        runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
+        runCatching { if (rustHandle != 0L) RustKernel.nativeIndexClose(rustHandle) }
         rustHandle = runCatching { store.openResident() }.getOrDefault(0L)
     }
 
     /** 記憶體入面嘅索引改咗、但仲未寫落碟 → 收返 handle，改用純 Kotlin 查詢 */
     private fun dropResident() {
         com.hketa.app.data.SpeedLayer.clearAll()
-        runCatching { if (rustHandle != 0L) RustIndex.nativeClose(rustHandle) }
+        runCatching { if (rustHandle != 0L) RustKernel.nativeIndexClose(rustHandle) }
         rustHandle = 0L
     }
 
@@ -851,6 +853,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        // 索引落碟嗰陣順便把 Rust store（ETA 快取等）一齊落碟
+        runCatching { com.hketa.app.data.RustStore.flush() }
         syncResident()
         refreshDiagnostics()
     }
@@ -944,6 +948,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = data
         store.saveSuspend(data)
+        // 索引落碟嗰陣順便把 Rust store（ETA 快取等）一齊落碟
+        runCatching { com.hketa.app.data.RustStore.flush() }
         syncResident()
         refreshDiagnostics()
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
@@ -1367,7 +1373,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val upper = key.uppercase()
 
         // Rust 常駐索引：喺 native heap 入面搜，淨係把結果傳過界
-        val rust = RustIndex.searchRoutes(rustHandle, key, 150)
+        val rust = RustKernel.searchRoutes(rustHandle, key, 150)
         val fromIndex = if (rust.isNotEmpty()) {
             rust
         } else {
@@ -1407,7 +1413,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val idx = _index.value
 
         // Rust 常駐索引：喺 native heap 入面搜，淨係把結果傳過界
-        val rustStops = RustIndex.searchStops(rustHandle, key, 80)
+        val rustStops = RustKernel.searchStops(rustHandle, key, 80)
         if (rustStops.isNotEmpty()) {
             _stopResults.value = rustStops.map { row ->
                 StopHit(stop = row.stop, routes = row.routes)
@@ -1517,7 +1523,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun stopsFromIndex(rd: RouteDef): List<StopWithSeq> {
         // Rust 常駐索引：喺 native heap 入面過濾 + 按 seq 排
-        val rust = RustIndex.routeStops(
+        val rust = RustKernel.routeStops(
             rustHandle, rd.op, rd.route, rd.bound, rd.serviceType
         )
         if (rust.isNotEmpty()) {
@@ -1794,7 +1800,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val tk = com.hketa.app.data.SpeedLayer.routeKey(
                 rd.op, rd.route, rd.bound, rd.serviceType
             )
-            val freshTt = com.hketa.app.data.SpeedLayer.timetable.get(tk)
+            val freshTt = com.hketa.app.data.SpeedLayer.ttGet(tk)
             if (freshTt != null) {
                 _routeTimetable.value = freshTt
                 return@launch
@@ -1901,7 +1907,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _timetableCacheAt.value = 0L
             _routeTimetable.value = table
             // 寫落加速層：90 秒內切返嚟唔使再打 12 個請求
-            com.hketa.app.data.SpeedLayer.timetable.put(tk, table)
+            com.hketa.app.data.SpeedLayer.ttPut(tk, table)
         }
     }
 
@@ -2103,19 +2109,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             //   - 完全冇         → 先轉圈，正常抓取
             //
             val ck = com.hketa.app.data.SpeedLayer.etaKeyOf(stop, route)
-            val fresh = com.hketa.app.data.SpeedLayer.eta.get(ck)
+            val fresh = com.hketa.app.data.SpeedLayer.etaGet(ck)
             if (fresh != null) {
                 _etas.value = fresh
-                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.eta.atOf(ck)
+                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.etaAt(ck)
                 _busy.value = false
                 return@launch
             }
 
-            val stale = com.hketa.app.data.SpeedLayer.eta.peek(ck)
+            val stale = com.hketa.app.data.SpeedLayer.etaPeek(ck)
             if (stale != null) {
                 // 先畀畫面有嘢睇，跟住靜默刷新 —— 唔再對住轉圈
                 _etas.value = stale
-                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.eta.atOf(ck)
+                _lastUpdateAt.value = com.hketa.app.data.SpeedLayer.etaAt(ck)
                 _busy.value = false
             } else {
                 _busy.value = true
@@ -2136,7 +2142,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // 成功：寫落快取，下次冇網都用得着
                 cache.put(diskKey, com.hketa.app.data.EtaCache.from(list))
                 val sorted = list.sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
-                com.hketa.app.data.SpeedLayer.eta.put(ck, sorted)
+                com.hketa.app.data.SpeedLayer.etaPut(ck, sorted)
                 _etas.value = sorted
                 _busy.value = false
                 return@launch
@@ -2370,7 +2376,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             // ★ 加速層：自動定位每 60 秒重整一次，位置郁少少唔應該重新計
             val nk = com.hketa.app.data.SpeedLayer.nearbyKey(lat, lon, radiusMeters)
-            val freshNear = com.hketa.app.data.SpeedLayer.nearby.get(nk)
+            val freshNear = com.hketa.app.data.SpeedLayer.nearGet(nk)
             if (freshNear != null) {
                 _nearby.value = freshNear
                 _busy.value = false
@@ -2379,7 +2385,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             val idx = _index.value
             // Rust 常駐索引：喺 native heap 入面篩 + 排，淨係把結果傳過界
-            val rustNear = RustIndex.nearbyStops(rustHandle, lat, lon, radiusMeters.toDouble(), 80)
+            val rustNear = RustKernel.nearbyStops(rustHandle, lat, lon, radiusMeters.toDouble(), 80)
             val list = if (rustNear.isNotEmpty()) {
                 rustNear.map { row -> NearbyStop(row.stop, row.distM, routesOfStop(idx, row.stop)) }
             } else {
@@ -2390,7 +2396,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             _nearby.value = list
             // 寫落加速層（空結果唔寫：費事一時冇網就鎖死 45 秒空白）
-            if (list.isNotEmpty()) com.hketa.app.data.SpeedLayer.nearby.put(nk, list)
+            if (list.isNotEmpty()) com.hketa.app.data.SpeedLayer.nearPut(nk, list)
             _busy.value = false
             if (list.isEmpty()) {
                 _message.value = str(R.string.nearby_empty)
@@ -2417,6 +2423,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         _index.value = merged
         store.saveSuspend(merged)
+        // 索引落碟嗰陣順便把 Rust store（ETA 快取等）一齊落碟
+        runCatching { com.hketa.app.data.RustStore.flush() }
         syncResident()
         refreshDiagnostics()
     }
@@ -2518,6 +2526,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 同 [indexBackendLabel] 唔同：嗰個係「索引放邊度」，呢個係「由邊個計數」。
      * 兩樣都係可選加速層，Rust 唔喺度就全部行純 Kotlin，功能完全一樣。
      */
+    /**
+     * 成個 APK 嘅「記憶體與儲存」由邊度擁有 —— 畀設定頁顯示。
+     *
+     * `Rust / store · N 個命名空間 · M 條 · X KB`：收藏、ETA 快取、班次表快取、
+     * 輕鐵特別班次全部住喺 **native heap**。`.so` 唔喺度就顯示
+     * `Kotlin / fallback`（各 store 行返原本寫法，功能一樣）。
+     */
+    fun storeLabel(): String = com.hketa.app.data.RustStore.statsLine()
+
     fun kernelLabel(): String =
         if (com.hketa.app.data.RustKernel.available) "Rust / kernel"
         else "Kotlin / fallback"
@@ -2528,12 +2545,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 加速層嘅命中率（設定頁顯示）。
      *
-     * 顯示「命中 N / 未中 M」係特登嘅 —— 呢層純 Kotlin，Rust 有冇 build 到
-     * 都一樣生效，但要有一個位可以一眼睇到佢**真係**喺度做嘢。
+     * 顯示「由邊度管 ＋ 命中 N / 未中 M」係特登嘅 —— 而家呢層由 **Rust 內核**
+     * 持有（`.so` 唔喺度就行返 Kotlin 版），要有一個位可以一眼睇到
+     * 佢**真係**喺度做嘢、同埋而家行緊邊條路徑。
      */
     fun speedLayerLabel(): String {
         val (h, m) = com.hketa.app.data.SpeedLayer.stats()
-        return str(R.string.settings_speed_layer, h, m)
+        return str(
+            R.string.settings_speed_layer_backend,
+            com.hketa.app.data.SpeedLayer.backendLabel(),
+            h,
+            m
+        )
     }
 
     fun consumeMessage() {
