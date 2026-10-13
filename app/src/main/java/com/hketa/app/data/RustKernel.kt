@@ -60,6 +60,7 @@ object RustKernel {
 
     private var loaded = false
     private var tried = false
+    private var loadError: String? = null
 
     /** `.so` 係咪載到；載唔到所有函數都會行純 Kotlin 版 */
     val available: Boolean
@@ -70,9 +71,23 @@ object RustKernel {
                     System.loadLibrary("hketa_store")
                     // 叫一次最簡單嘅 native 方法，確認個 library 真係啱版本
                     nativeIndexVersion() >= 1
-                }.getOrDefault(false)
+                }.onFailure { loadError = it.message ?: it.javaClass.simpleName }
+                    .getOrDefault(false)
             }
             return loaded
+        }
+
+    /**
+     * 載入失敗嘅原因（`.so` 冇打包 / ABI 唔夾 / JNI 符號唔啱），載到會係 `null`。
+     *
+     * 呢個係用嚟**驗證「Rust 內核係可選」呢條限制係咪真係解決咗** ——
+     * 設定頁睇到 `null` 即係 .so 入咗 APK；見到字即係仲差啲乜，
+     * 唔使靠估。
+     */
+    val loadErrorText: String?
+        get() {
+            if (!tried) available
+            return loadError
         }
 
     /** kernel 版本；`.so` 唔喺度會係 0 */
