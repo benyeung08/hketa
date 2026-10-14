@@ -12,6 +12,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +39,7 @@ import com.hketa.app.ui.screens.RailScreen
 import com.hketa.app.ui.screens.RouteStopsScreen
 import com.hketa.app.ui.screens.SearchScreen
 import com.hketa.app.R
+import com.hketa.app.data.UpdateState
 import com.hketa.app.ui.StatusBar
 import com.hketa.app.ui.UpdateDialog
 import com.hketa.app.ui.VersionHistorySheet
@@ -84,10 +87,53 @@ fun AppRoot(
         }
     }
 
+    // ★ 狀態欄嗰粒版本膠囊（第二張圖）撳落去 → **唔再彈「發現新版本」大對話框**。
+    //   改為：靜默檢查，有新版就彈底部細提示條（Snackbar）附「下載更新」掣。
+    //   完整 Release notes 同版本歷史交畀設定頁／◷ 版本歷史，唔再塞落對話框。
+    val updateState by vm.updateState.collectAsState()
+    // ⚠️ 一定要喺 @Composable 作用域讀：LaunchedEffect 嘅 lambda 係 suspend，
+    //   入面**唔可以**叫 collectAsState()（Kotlin 會報 @Composable invocations
+    //   can only happen from the context of a @Composable function）。
+    val updateError by vm.updateError.collectAsState()
+    var pillCheckPending by remember { mutableStateOf(false) }
+
+    LaunchedEffect(updateState, pillCheckPending) {
+        if (!pillCheckPending) return@LaunchedEffect
+        // 仲檢查緊 → 等下次狀態變咗先處理
+        if (updateState == UpdateState.CHECKING) return@LaunchedEffect
+        pillCheckPending = false
+        when (updateState) {
+            UpdateState.AVAILABLE -> {
+                val tag = vm.updateInfo.value?.tag_name.orEmpty()
+                val result = snackbar.showSnackbar(
+                    message = context.getString(R.string.update_available, tag),
+                    actionLabel = context.getString(R.string.update_download),
+                    duration = SnackbarDuration.Long
+                )
+                // 撳咗「下載更新」→ App 內下載 + 校驗 + 開安裝器
+                if (result == SnackbarResult.ActionPerformed) {
+                    vm.updateInfo.value?.let { vm.downloadAndInstall(it) }
+                }
+            }
+            UpdateState.UP_TO_DATE -> snackbar.showSnackbar(
+                context.getString(R.string.update_latest)
+            )
+            UpdateState.NO_RELEASE -> snackbar.showSnackbar(
+                context.getString(R.string.update_no_release)
+            )
+            UpdateState.ERROR -> snackbar.showSnackbar(
+                context.getString(R.string.update_failed, updateError.orEmpty())
+            )
+            else -> Unit
+        }
+    }
+
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Dest.SEARCH
 
     var showHistory by remember { mutableStateOf(false) }
+    // 設定頁／關於頁嗰個「檢查更新」掣**保留**大對話框（用戶明確要求），
+    // 所以 showUpdate 仍然留喺度 —— 淨係狀態欄膠囊改咗行 Snackbar。
     var showUpdate by remember { mutableStateOf(false) }
 
     // 版本歷史（移植自 code-to-app）：線上 Releases + 本地內置 changelog
@@ -186,8 +232,10 @@ fun AppRoot(
                 StatusBar(
                     vm = vm,
                     onCheckUpdate = {
+                        // ★ 狀態欄膠囊：檢查但**唔彈**大對話框 ——
+                        //   結果交畀上面嗰個 LaunchedEffect 彈 Snackbar
                         vm.checkUpdate(true)
-                        showUpdate = true
+                        pillCheckPending = true
                     },
                     onOpenFavorites = {
                         navController.navigate(Dest.FAVORITES) {
