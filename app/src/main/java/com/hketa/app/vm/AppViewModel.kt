@@ -116,6 +116,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          */
         private val RE_TRAILING_PAREN = Regex("[（(][^（(）)]*[）)]\\s*$")
         private val RE_WHITESPACE = Regex("\\s+")
+
+        /**
+         * 冇揀路線（睇成個站）嗰陣，最多額外查幾多條聯營路線。
+         *
+         * 城巴接口一定要帶路線號，唔似九巴一個請求攞晒全站，
+         * 所以唔設上限嘅話一個巴士總站可以打二三十個請求。
+         */
+        private const val JOINT_MAX_ROUTES = 8
+
+        /**
+         * 主頁最多畀幾個站做「聯營額外查」。
+         *
+         * 主頁一次過查 [HOME_MAX_STOPS] 個站，逐個再去查另一間公司會令
+         * 請求數翻倍，所以淨係揀頭幾個**真係有聯營線**嘅站。
+         * 而且下面仲有一層慳：淨係查「呢個站本身有嘅聯營路線」，
+         * 通常得一兩條 —— 唔係 [JOINT_MAX_ROUTES] 條全查。
+         */
+        private const val HOME_JOINT_MAX_STOPS = 3
     }
 
     /** 取本地化字串（語言切換後 Application 資源會跟住變） */
@@ -1697,7 +1715,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 Operator.LRT -> repo.lightRailEta(stop.id, etaText())
             }
         }.getOrDefault(emptyList())
-        return list to alert
+        // 聯營路線：加埋同一個站牌另一間巴士公司嘅班次
+        return mergeJoint(list, stop, route) to alert
     }
 
     // ============ APK 下載 + 安裝（移植自 code-to-app ApkUpdateInstaller）============
@@ -2279,23 +2298,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun etasForFavorite(fav: FavoriteStop): List<EtaEntry> = when (fav.op) {
-        Operator.KMB -> repo.kmbEta(fav.id).let { all ->
-            if (fav.route.isBlank()) all.take(6)
-            else all.filter { it.route == fav.route }
+    private suspend fun etasForFavorite(fav: FavoriteStop): List<EtaEntry> {
+        val base = when (fav.op) {
+            Operator.KMB -> repo.kmbEta(fav.id).let { all ->
+                if (fav.route.isBlank()) all.take(6)
+                else all.filter { it.route == fav.route }
+            }
+            Operator.LRT -> repo.lightRailEta(fav.id, etaText())
+            Operator.MTR_HR -> {
+                val line = RailData.linesOf(getApplication(), Operator.MTR_HR, fav.id)
+                    .firstOrNull()?.id
+                if (line == null) emptyList()
+                else repo.mtrHeavyRailEta(line, fav.id, etaText()) {
+                    RailData.nameOf(getApplication(), Operator.MTR_HR, it, AppLocale.isEnglish())
+                }.first
+            }
+            Operator.CTB -> if (fav.route.isBlank()) emptyList() else repo.ctbEta(fav.id, fav.route)
+            Operator.NLB -> if (fav.routeId.isBlank()) emptyList() else repo.nlbEta(fav.routeId, fav.id)
+            Operator.GMB -> if (fav.routeId.isBlank()) emptyList() else repo.gmbEta(fav.id, fav.routeId)
+            Operator.MTR_BUS -> repo.mtrBus(fav.route).second
         }
-        Operator.LRT -> repo.lightRailEta(fav.id, etaText())
-        Operator.MTR_HR -> {
-            val line = RailData.linesOf(getApplication(), Operator.MTR_HR, fav.id).firstOrNull()?.id
-            if (line == null) emptyList()
-            else repo.mtrHeavyRailEta(line, fav.id, etaText()) {
-                RailData.nameOf(getApplication(), Operator.MTR_HR, it, AppLocale.isEnglish())
-            }.first
-        }
-        Operator.CTB -> if (fav.route.isBlank()) emptyList() else repo.ctbEta(fav.id, fav.route)
-        Operator.NLB -> if (fav.routeId.isBlank()) emptyList() else repo.nlbEta(fav.routeId, fav.id)
-        Operator.GMB -> if (fav.routeId.isBlank()) emptyList() else repo.gmbEta(fav.id, fav.routeId)
-        Operator.MTR_BUS -> repo.mtrBus(fav.route).second
+        // 聯營路線：加埋同一個站牌另一間巴士公司嘅班次
+        val stop = StopDef(
+            op = fav.op,
+            id = fav.id,
+            name = fav.name,
+            nameEn = fav.nameEn,
+            lat = fav.lat,
+            lon = fav.lon
+        )
+        val route = if (fav.route.isBlank()) null
+        else RouteDef(op = fav.op, route = fav.route, dest = fav.dest)
+        return mergeJoint(base, stop, route)
     }
 
     fun isFavorite(stop: StopDef, route: RouteDef? = null): Boolean {
@@ -2345,12 +2379,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .take(HOME_MAX_STOPS)
             }
 
+            //
+            // 聯營路線（101、104 呢類九巴＋城巴一齊營運）：主頁都要撈埋
+            // 另一間公司嘅班次，否則畫面一樣淨係得九巴。
+            //
+            // 但主頁一次過查 HOME_MAX_STOPS 個站，逐個再查另一間會令請求
+            // 數翻倍，所以先**用索引篩**：淨係「呢個站真係有聯營線」嘅站
+            // 先會額外查，而且最多 HOME_JOINT_MAX_STOPS 個。
+            // 實際請求數仲會再少一截 —— 淨係查呢個站本身有嗰一兩條聯營線。
+            //
+            val jointSet = jointRoutes(idx)
+            val jointAllowed: Set<StopDef> = if (jointSet.isEmpty()) emptySet()
+            else stops.asSequence()
+                .filter { (st, _) -> st.op == Operator.KMB || st.op == Operator.CTB }
+                .filter { (st, _) -> routesOfStop(idx, st).any { it in jointSet } }
+                .take(HOME_JOINT_MAX_STOPS)
+                .map { it.first }
+                .toSet()
+
             val items = coroutineScope {
                 stops.map { (st, dist) ->
                     async {
                         // O(1) 查表（以前係逐個站掃 63150 條 routeStops）
                         val routes = routesOfStop(idx, st)
-                        val etas = suspendCatching {
+                        val base = suspendCatching {
                             when (st.op) {
                                 // 九巴：一個請求攞晒全站路線預報
                                 Operator.KMB -> repo.kmbEta(st.id)
@@ -2388,8 +2440,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }.getOrDefault(emptyList())
                             .sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
-                            .take(6)
-                        HomeItem(st, routes, etas, dist)
+                        // 聯營路線：加埋同一個站牌另一間巴士公司嘅班次
+                        val etas = if (st in jointAllowed) mergeJoint(base, st, null, routes.toSet())
+                        else base
+                        HomeItem(st, routes, etas.take(6), dist)
                     }
                 }.awaitAll()
             }
@@ -2662,6 +2716,162 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val na = normStopName(a.name)
         if (na.isBlank() || na != normStopName(b.name)) return false
         return d == null || d <= NEARBY_NAME_MERGE_M
+    }
+
+    // ============ 聯營路線：同一個站牌、兩間巴士公司 ============
+
+    /**
+     * ## 點解要呢段
+     *
+     * 過海隧道線（101、104、111…）呢類**聯營路線**係九巴同城巴一齊營運：
+     * 同一個站牌，兩間公司各自派車，班次係各自計嘅。
+     *
+     * 但九巴同城巴喺同一個站有**各自嘅 station id**，而 `etasFor()` 淨係查
+     * 其中一間 —— 結果就係「以為得九巴有車」，城巴嗰啲班次永遠唔會出現，
+     * 明明站牌上寫住兩間公司都有呢條線。
+     *
+     * 所以：查完自己嗰間，再搵**同一個站牌嘅另一間公司**嗰個站，
+     * 把佢嘅班次撈埋入嚟、按時間排好 —— 用戶先至睇到「下一班係九巴定城巴」。
+     */
+
+    /** 聯營路線號嘅快取；用 [IndexData] 物件身份做 key（同 [routesByStop] 一樣） */
+    private var jointRoutesSet: Set<String>? = null
+    private var jointRoutesFor: IndexData? = null
+
+    /**
+     * 邊啲路線號係**聯營**（九巴同城巴都有份營運）。
+     *
+     * 判據刻意唔係淨係「路線號兩邊都有」—— 九巴 1 號同埋城巴 1 號係
+     * **兩條完全唔同嘅線**（一條去尖沙咀、一條去堅尼地城）。
+     * 所以再要求**有共同目的地**，先至算同一條線。
+     */
+    private fun jointRoutes(idx: IndexData): Set<String> {
+        val cached = jointRoutesSet
+        if (cached != null && jointRoutesFor === idx) return cached
+
+        val kmbDest = HashMap<String, HashSet<String>>()
+        val ctbDest = HashMap<String, HashSet<String>>()
+        for (r in idx.routes) {
+            val d = r.dest.trim()
+            if (r.route.isBlank() || d.isBlank()) continue
+            when (r.op) {
+                Operator.KMB -> kmbDest.getOrPut(r.route) { HashSet() }.add(d)
+                Operator.CTB -> ctbDest.getOrPut(r.route) { HashSet() }.add(d)
+                else -> Unit
+            }
+        }
+        val out = HashSet<String>()
+        for ((route, ds) in kmbDest) {
+            val other = ctbDest[route] ?: continue
+            if (ds.any { it in other }) out.add(route)
+        }
+        jointRoutesSet = out
+        jointRoutesFor = idx
+        return out
+    }
+
+    /**
+     * 同一個站牌、另一間巴士公司嗰個站。
+     *
+     * **同名優先** —— 站名係最可靠嘅「同一個站」證據（座標會有誤差，
+     * 而且城巴有啲站仲未補到經緯度）。同名搵唔到先用座標 ≤ [NEARBY_MERGE_M]。
+     */
+    private fun partnerStop(stop: StopDef): StopDef? {
+        val want = when (stop.op) {
+            Operator.KMB -> Operator.CTB
+            Operator.CTB -> Operator.KMB
+            else -> return null
+        }
+        val idx = _index.value
+        val key = normStopName(stop.name)
+        if (key.isNotBlank()) {
+            val hit = stopsByName(idx)[key].orEmpty().firstOrNull { it.op == want }
+            if (hit != null) return hit
+        }
+        if (stop.lat == 0.0 && stop.lon == 0.0) return null
+        var best: StopDef? = null
+        var bestD = Double.MAX_VALUE
+        for (s in idx.stops) {
+            if (s.op != want) continue
+            if (s.lat == 0.0 && s.lon == 0.0) continue
+            val d = distanceMeters(stop.lat, stop.lon, s.lat, s.lon)
+            if (d < bestD) {
+                bestD = d
+                best = s
+            }
+        }
+        return if (best != null && bestD <= NEARBY_MERGE_M) best else null
+    }
+
+    /**
+     * 另一間巴士公司喺同一個站牌嘅班次。
+     * 搵唔到站／冇呢條線／網絡失敗 → 空列表，**唔影響主流程**。
+     *
+     * [route] 唔空就淨係查嗰條線（一個請求）；空（睇成個站）就淨係查
+     * 聯營嗰幾條 —— 城巴接口一定要帶路線號，唔設上限會打幾十個請求。
+     *
+     * [limitTo] 係主頁用嘅再慳一層：淨係查「呢個站本身有嘅聯營路線」
+     * （通常得一兩條），唔係全部 [JOINT_MAX_ROUTES] 條。
+     */
+    private suspend fun partnerEtas(
+        stop: StopDef,
+        route: RouteDef?,
+        limitTo: Set<String>? = null
+    ): List<EtaEntry> {
+        val idx = _index.value
+        //
+        // 揀咗路線但**唔係聯營線** → 另一間公司根本冇呢條線，唔使查。
+        // 呢個判斷好緊要：班次表要取樣 12 個站，冇咗佢就會無端端
+        // 多一倍請求（而且絕大部分路線都唔係聯營，全部係浪費）。
+        //
+        if (route != null && route.route !in jointRoutes(idx)) return emptyList()
+
+        val partner = partnerStop(stop) ?: return emptyList()
+        return suspendCatching {
+            when (partner.op) {
+                Operator.KMB -> repo.kmbEta(partner.id).let { all ->
+                    if (route != null) all.filter { it.route == route.route }
+                    else all.filter { it.route in jointRoutes(idx) }
+                }
+                Operator.CTB -> {
+                    if (route != null) {
+                        repo.ctbEta(partner.id, route.route)
+                    } else {
+                        // 城巴接口一定要帶路線號，所以淨係查聯營嗰幾條
+                        val joint = jointRoutes(idx)
+                        val list = routesOfStop(idx, partner)
+                            .filter { it in joint && (limitTo == null || it in limitTo) }
+                            .take(JOINT_MAX_ROUTES)
+                        coroutineScope {
+                            list.map { r ->
+                                async {
+                                    suspendCatching { repo.ctbEta(partner.id, r) }
+                                        .getOrDefault(emptyList())
+                                }
+                            }.awaitAll().flatten()
+                        }
+                    }
+                }
+                else -> emptyList()
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * 把另一間公司嘅班次撈埋入嚟，按分鐘排好（冇分鐘嘅排最後）。
+     *
+     * 淨係九巴／城巴之間會做 —— 其他營辦商（小巴、港鐵）冇聯營呢回事。
+     */
+    private suspend fun mergeJoint(
+        list: List<EtaEntry>,
+        stop: StopDef,
+        route: RouteDef?,
+        limitTo: Set<String>? = null
+    ): List<EtaEntry> {
+        if (stop.op != Operator.KMB && stop.op != Operator.CTB) return list
+        val extra = partnerEtas(stop, route, limitTo)
+        if (extra.isEmpty()) return list
+        return (list + extra).sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
     }
 
     /**
