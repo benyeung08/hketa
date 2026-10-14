@@ -102,6 +102,9 @@
     <string name="nearby_meters">%1$d 米</string>
     <string name="nearby_km">%1$.1f 公里</string>
     <string name="nearby_empty">附近 3 公里內搵唔到已索引車站，可到「設定」執行深度索引</string>
+    <string name="nearby_eta_to">往 %1$s</string>
+    <string name="nearby_eta_min">%1$d 分鐘</string>
+    <string name="nearby_eta_soon">即將</string>
 
     <!-- 設定 -->
     <string name="settings_index">路線索引</string>
@@ -150,6 +153,7 @@
     <string name="update_download">下載更新</string>
     <string name="update_view_release">查看 Release</string>
     <string name="update_notes">更新內容</string>
+    <string name="update_notes_full">睇完整版 →</string>
     <string name="update_size">大小約 %1$.1f MB</string>
 
     <!-- 更新介面（移植自 code-to-app） -->
