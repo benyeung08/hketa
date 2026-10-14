@@ -305,6 +305,30 @@
     <string name="tt_headway">班次间隔：约 %1$d 分钟</string>
     <string name="tt_observed">观察到的营运时段：%1$s – %2$s（%3$d 次记录）</string>
     <string name="tt_observed_none">仲未睇到班次，累积多几次就有营运时段</string>
+
+    <!-- 官方班次間隔（第三方資料） -->
+    <string name="hw_official">官方班次间隔：%1$s 分钟</string>
+    <string name="hw_service">表列营运时段：%1$s – %2$s</string>
+    <string name="hw_holiday">今日系公众假期，班次可能唔同</string>
+    <string name="hw_past">已过表列时段（唔代表冇车）</string>
+    <string name="hw_not_started">未到表列营运时段</string>
+    <string name="hw_bound_all">（来回合并计）</string>
+    <string name="hw_source">官方班次数据来源：%1$s</string>
+    <string name="hw_absent">冇官方班次数据（㩒设定下载）</string>
+    <string name="hw_downloading">下载官方班次数据…</string>
+    <string name="hw_ok">更新咗 %1$d 条路线</string>
+    <string name="hw_fail">下载失败：%1$s</string>
+    <string name="settings_td_hw_title">官方班次资料（运输署 GTFS 原档）</string>
+    <string name="settings_td_hw_download">下载运输署原档</string>
+    <string name="settings_td_hw_hint">多官方时段结束时间同例假日表；档案唔细，净系㩒掣先落</string>
+    <string name="settings_td_hw_loaded">已载入 %1$d 条路线方向（%2$s）</string>
+    <string name="hw_past_td">已过官方表列服务时段（%1$s 之后官方表列冇班次）</string>
+    <string name="hw_closed_today">今日官方表列冇班次（例假日表）</string>
+    <string name="settings_hw_title">官方班次数据</string>
+    <string name="settings_hw_absent">未下载（班次间隔靠 ETA 推算）</string>
+    <string name="settings_hw_loaded">%1$d 条路线 · %2$s</string>
+    <string name="settings_hw_download">下载／更新</string>
+    <string name="settings_hw_clear">清除</string>
     <string name="tt_note">班次表由官方即时到站预报构建（第 N 班 = 各站预报的第 N 项）。官方没有公开时刻表接口，所以「营运时段」是观察累积，不是官方公布的头／尾班车。</string>
     <string name="tt_loading">抓取班次资料…</string>
     <string name="tt_empty">暂时没班次资料（可能已过尾班车）</string>
