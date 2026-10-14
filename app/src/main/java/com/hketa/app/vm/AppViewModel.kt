@@ -123,7 +123,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * 以前咁樣會令城巴、嶼巴路線顯示唔晒。而家全部都抓，靠呢個
          * 併發上限節流，唔會一次打幾十個請求打爆官方接口。
          */
-        private const val NEARBY_ETA_CONCURRENCY = 6
+        private const val NEARBY_ETA_CONCURRENCY = 8
 
         /**
          * 站名正規化用嘅兩個 Regex —— **一定要係常數**。
@@ -2914,12 +2914,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val head = cards
         if (head.isEmpty()) return
 
+        // 逐張卡出畫面（解決「班次分幾批先出齊」）：
+        // 以前要等**全部**卡抓完先一次過寫落 _nearby，繁忙嘅大站
+        // （十幾條城巴線）會拖慢晒成個列表。而家每完成一張即刻 publish，
+        // 最近的站會第一時間見到班次，後面嘅慢慢補上。
+        val done = java.util.concurrent.ConcurrentHashMap<String, NearbyStop>()
+
         val withEtas = coroutineScope {
             head.map { card ->
                 async {
                     val pairs = routeDefsAtStop(idx, card.stop, nameMap, lat, lon, radiusM)
                     val raw = fetchCardEtas(pairs)
-                    card.copy(etas = pickNearestPerDirection(raw, pairs))
+                    val filled = card.copy(etas = pickNearestPerDirection(raw, pairs))
+                    done[nearbyKey(filled.stop)] = filled
+                    publishNearby(cards, done)
+                    filled
                 }
             }.awaitAll()
         }
@@ -2927,12 +2936,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 寫返入 _nearby：保留原本順序，後段冇處理嘅卡照舊
         val merged = ArrayList<NearbyStop>(cards.size)
         val byKey = HashMap<String, NearbyStop>()
-        for (c in withEtas) byKey["${c.stop.op.name}|${c.stop.id}"] = c
+        for (c in withEtas) byKey[nearbyKey(c.stop)] = c
         for (c in cards) {
-            merged.add(byKey["${c.stop.op.name}|${c.stop.id}"] ?: c)
+            merged.add(byKey[nearbyKey(c.stop)] ?: c)
         }
         _nearby.value = merged
         // 加速層嗰份唔寫 ETA —— 班次係即時嘅，寫咗會出舊資料
+    }
+
+    private fun nearbyKey(s: StopDef): String = "${s.op.name}|${s.id}"
+
+    /**
+     * 將「已經抓完嘅卡」併返入 [_nearby]，保留原本（按距離排）嘅順序。
+     * 會喺每張卡抓完嗰陣叫一次，所以班次係**逐個補上**而唔係一次過出。
+     */
+    private fun publishNearby(cards: List<NearbyStop>, done: Map<String, NearbyStop>) {
+        if (cards.isEmpty()) return
+        val merged = ArrayList<NearbyStop>(cards.size)
+        for (c in cards) merged.add(done[nearbyKey(c.stop)] ?: c)
+        _nearby.value = merged
     }
 
     /**
