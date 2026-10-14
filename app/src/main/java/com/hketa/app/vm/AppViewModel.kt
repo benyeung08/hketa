@@ -89,6 +89,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private const val UPDATE_THROTTLE_MS = 30 * 60 * 1000L
         private const val HOME_RADIUS_M = 800.0
         private const val HOME_MAX_STOPS = 12
+
+        /**
+         * 附近車站：兩個站相距幾近先當「同一個站」（米）。
+         *
+         * 九巴同城巴喺同一個巴士總站會各自有一條記錄（stop id 唔同），
+         * 唔合併嘅話「附近」就會出兩張卡、每張淨係得單一營辦商嘅路線，
+         * 亦即係永遠睇唔到「呢個站仲有城巴」。
+         * 60 米係同一個站（對面馬路都未必入到），再多就會開始撈埋隔籬街。
+         */
+        private const val NEARBY_MERGE_M = 60.0
+
+        /** 站名完全相同嘅合併半徑（米）—— 同名先放得寬，因為同名已經係好強嘅證據 */
+        private const val NEARBY_NAME_MERGE_M = 300.0
+
+        /**
+         * 冇座標嘅站（例如城巴未補到經緯度）靠同名併入時放寬幾多。
+         * 呢啲站計唔到距離，淨可靠同名，所以放寬到半徑 ＋ 呢個數。
+         */
+        private const val NEARBY_ALIAS_SLACK_M = 500.0
+
+        /**
+         * 站名正規化用嘅兩個 Regex —— **一定要係常數**。
+         * 寫喺函數入面嘅話，7250 個站逐個建表就會**編譯 7250 次正則**，
+         * 淨係呢度都可以慢到幾百毫秒。
+         */
+        private val RE_TRAILING_PAREN = Regex("[（(][^（(）)]*[）)]\\s*$")
+        private val RE_WHITESPACE = Regex("\\s+")
     }
 
     /** 取本地化字串（語言切換後 Application 資源會跟住變） */
@@ -2392,13 +2419,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val idx = _index.value
             // Rust 常駐索引：喺 native heap 入面篩 + 排，淨係把結果傳過界
             val rustNear = RustKernel.nearbyStops(rustHandle, lat, lon, radiusMeters.toDouble(), 80)
-            val list = if (rustNear.isNotEmpty()) {
-                rustNear.map { row -> NearbyStop(row.stop, row.distM, routesOfStop(idx, row.stop)) }
+            // 候選站：Rust 有就直接用，冇就行 bbox 預篩（O(1) 查表，唔使逐個站掃 63150 條）
+            val cand: List<Pair<StopDef, Int>> = if (rustNear.isNotEmpty()) {
+                rustNear.map { row -> row.stop to row.distM }
             } else {
-                // bbox 預篩 + 車站→路線索引（O(1) 查表，唔使逐個站掃 63150 條）
-                stopsWithin(idx.stops, lat, lon, radiusMeters.toDouble())
-                    .take(80)
-                    .map { (s, d) -> NearbyStop(s, d, routesOfStop(idx, s)) }
+                stopsWithin(idx.stops, lat, lon, radiusMeters.toDouble()).take(80)
+            }
+            // ★ 同一個站唔同營辦商要合埋：唔係「附近」會出兩張卡、各得單一營辦商路線
+            val nameMap = stopsByName(idx)
+            val radiusD = radiusMeters.toDouble()
+            val list = mergeCoLocated(cand) { s ->
+                routesAtStop(idx, s, nameMap, lat, lon, radiusD)
             }
             _nearby.value = list
             // 寫落加速層（空結果唔寫：費事一時冇網就鎖死 45 秒空白）
@@ -2483,6 +2514,155 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 查某個站有邊啲路線 —— 建好索引後係 O(1)。 */
     private fun routesOfStop(idx: IndexData, s: StopDef): List<String> =
         routesByStop(idx)["${s.op.name}|${s.id}"] ?: emptyList()
+
+    // ============ 同一個站、唔同營辦商 ============
+
+    /**
+     * ## 點解要呢段
+     *
+     * 九巴、城巴、嶼巴各自有自己嘅 station id —— 「海麗邨巴士總站」
+     * 喺九巴係 `SS667`，城巴係另一個 id。所以 `routesOfStop()` 淨係會
+     * 返**嗰一個營辦商**嘅路線，畫面睇落就係「呢個站淨係得九巴」。
+     *
+     * 但實際上同一個站牌係有城巴埋站嘅。要顯示城巴路線，就要把
+     * **同一個站嘅唔同營辦商記錄**砌埋一齊。
+     */
+
+    /** 站名正規化：用嚟判斷「係咪同一個站名」。 */
+    private fun normStopName(name: String): String {
+        if (name.isBlank()) return ""
+        var s = name.trim()
+            .replace('\u3000', ' ')
+            .replace('\u00A0', ' ')
+        // 車站名尾嘅括號只係註記（「（巴士總站）」「(Circular)」），唔係站名一部分
+        s = s.replace(RE_TRAILING_PAREN, "")
+        return s.replace(RE_WHITESPACE, "")
+    }
+
+    /** 站名 → 有呢個名嘅全部站（跨營辦商）。同 [routesByStop] 一樣用物件身份做快取 key。 */
+    private var stopsByNameMap: Map<String, List<StopDef>>? = null
+    private var stopsByNameFor: IndexData? = null
+
+    private fun stopsByName(idx: IndexData): Map<String, List<StopDef>> {
+        val cached = stopsByNameMap
+        if (cached != null && stopsByNameFor === idx) return cached
+
+        val tmp = HashMap<String, ArrayList<StopDef>>((idx.stops.size * 2).coerceAtLeast(1024))
+        for (s in idx.stops) {
+            val k = normStopName(s.name)
+            if (k.isBlank()) continue
+            tmp.getOrPut(k) { ArrayList() }.add(s)
+        }
+        val built = HashMap<String, List<StopDef>>(tmp.size)
+        for ((k, v) in tmp) built[k] = v
+        stopsByNameMap = built
+        stopsByNameFor = idx
+        return built
+    }
+
+    /**
+     * 某個站「站牌上」嘅全部路線 —— 跨營辦商。
+     *
+     * 除咗本站自己嘅路線，仲會併入**同名**嘅其他營辦商站：
+     * - 對方有座標 → 要喺半徑附近先併（費事併咗第區嘅同名站）
+     * - 對方冇座標（例如城巴未補到經緯度）→ 淨可靠同名，照併。
+     *   呢啲站唔併就永遠唔會喺「附近」出現，併錯嘅代價遠細過完全唔見。
+     */
+    private fun routesAtStop(
+        idx: IndexData,
+        s: StopDef,
+        nameMap: Map<String, List<StopDef>>,
+        lat: Double,
+        lon: Double,
+        radiusM: Double
+    ): List<String> {
+        val out = LinkedHashSet<String>()
+        out.addAll(routesOfStop(idx, s))
+        val key = normStopName(s.name)
+        if (key.isNotBlank()) {
+            for (a in nameMap[key].orEmpty()) {
+                if (a.op == s.op && a.id == s.id) continue
+                if (a.lat != 0.0 || a.lon != 0.0) {
+                    if (distanceMeters(lat, lon, a.lat, a.lon) > radiusM + NEARBY_ALIAS_SLACK_M) continue
+                }
+                out.addAll(routesOfStop(idx, a))
+            }
+        }
+        return out.sortedWith(compareBy<String> { it.length }.thenBy { it })
+    }
+
+    /**
+     * 把候選站入面「其實係同一個站」嘅記錄合埋做一張卡。
+     *
+     * 合併條件（兩個都係**保守**嘅，寧願唔合都唔好撈亂隔籬街）：
+     * 1. 座標相距 ≤ [NEARBY_MERGE_M]（60 米），或者
+     * 2. 站名完全相同 且 相距 ≤ [NEARBY_NAME_MERGE_M]（300 米）
+     *
+     * 代表站揀**路線最多**嗰個（撳落去可以拉到最多路線嘅預報），
+     * 平手就用最近嗰個；距離用組入面最細嗰個。
+     */
+    private fun mergeCoLocated(
+        cand: List<Pair<StopDef, Int>>,
+        routesOf: (StopDef) -> List<String>
+    ): List<NearbyStop> {
+        if (cand.isEmpty()) return emptyList()
+
+        // 並查集：O(n²) 但 n ≤ 80，點都係幾千次比較，唔使建空間索引
+        val n = cand.size
+        val parent = IntArray(n) { it }
+        fun find(x: Int): Int {
+            var r = x
+            while (parent[r] != r) r = parent[r]
+            var c = x
+            while (parent[c] != r) { val nx = parent[c]; parent[c] = r; c = nx }
+            return r
+        }
+        for (i in 0 until n) {
+            for (j in i + 1 until n) {
+                if (sameStop(cand[i].first, cand[j].first)) {
+                    val a = find(i)
+                    val b = find(j)
+                    if (a != b) parent[b] = a
+                }
+            }
+        }
+
+        val groups = LinkedHashMap<Int, ArrayList<Triple<StopDef, Int, List<String>>>>()
+        for (i in 0 until n) {
+            val g = groups.getOrPut(find(i)) { ArrayList() }
+            g.add(Triple(cand[i].first, cand[i].second, routesOf(cand[i].first)))
+        }
+
+        val out = ArrayList<NearbyStop>(groups.size)
+        for (g in groups.values) {
+            val rep = g.maxWith(
+                compareBy<Triple<StopDef, Int, List<String>>> { it.third.size }
+                    .thenBy { -it.second }
+            )
+            val routes = LinkedHashSet<String>()
+            for (m in g) routes.addAll(m.third)
+            out.add(
+                NearbyStop(
+                    stop = rep.first,
+                    distanceMeters = g.minOf { it.second },
+                    routes = routes.sortedWith(compareBy<String> { it.length }.thenBy { it })
+                )
+            )
+        }
+        return out.sortedBy { it.distanceMeters }
+    }
+
+    /** 兩個站係咪「同一個站」（唔同營辦商嘅同一個站牌都算） */
+    private fun sameStop(a: StopDef, b: StopDef): Boolean {
+        if (a.op == b.op && a.id == b.id) return true
+        val hasA = a.lat != 0.0 || a.lon != 0.0
+        val hasB = b.lat != 0.0 || b.lon != 0.0
+        val d = if (hasA && hasB) distanceMeters(a.lat, a.lon, b.lat, b.lon) else null
+        if (d != null && d <= NEARBY_MERGE_M) return true
+        val na = normStopName(a.name)
+        if (na.isBlank() || na != normStopName(b.name)) return false
+        return d == null || d <= NEARBY_NAME_MERGE_M
+    }
 
     /**
      * 搵半徑內嘅車站，按距離排好。
