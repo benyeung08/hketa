@@ -242,7 +242,8 @@ object SpeedLayer {
                 n.stop.lat.toString(),
                 n.stop.lon.toString(),
                 n.distanceMeters.toString(),
-                n.routes.joinToString(PAIR.toString())
+                n.routes.joinToString(PAIR.toString()),
+                n.ops.joinToString(PAIR.toString()) { it.name }
             ).joinToString(SEP2.toString())
         }
 
@@ -261,7 +262,12 @@ object SpeedLayer {
                     lon = f[5].toDoubleOrNull() ?: 0.0
                 ),
                 distanceMeters = f[6].toIntOrNull() ?: 0,
-                routes = if (f[7].isEmpty()) emptyList() else f[7].split(PAIR)
+                routes = if (f[7].isEmpty()) emptyList() else f[7].split(PAIR),
+                // ops 係顯示用嘅補充；舊 payload 冇呢格就留空（唔會崩）
+                ops = if (f.size < 9 || f[8].isEmpty()) emptyList()
+                      else f[8].split(PAIR).mapNotNull {
+                          runCatching { Operator.valueOf(it) }.getOrNull()
+                      }
             )
         }
     }

@@ -81,8 +81,30 @@ data class EtaEntry(
 /** 路線沿途車站（含順序） */
 data class StopWithSeq(val stop: StopDef, val seq: Int)
 
+/**
+ * 「附近車站」卡片上面嘅一筆「最近一班」。
+ *
+ * 每條路線**每個方向**淨係出一班（[bound] 就用嚟分方向）；
+ * 循環線、特別班次呢類**單向**路線只會有一班。
+ */
+data class NearbyEta(
+    val route: String = "",
+    val dest: String = "",
+    val minutes: Int? = null,
+    val clock: String = "",
+    val op: Operator = Operator.KMB
+)
+
 /** 附近車站（含距離） */
-data class NearbyStop(val stop: StopDef, val distanceMeters: Int, val routes: List<String> = emptyList())
+data class NearbyStop(
+    val stop: StopDef,
+    val distanceMeters: Int,
+    val routes: List<String> = emptyList(),
+    /** 每條路線每方向最近一班；循環線／特別班次淨一班 */
+    val etas: List<NearbyEta> = emptyList(),
+    /** 呢張卡合併咗邊啲營辦商（用嚟顯示「城巴」呢類標籤） */
+    val ops: List<Operator> = emptyList()
+)
 
 /** 一間機構的索引完成度 */
 data class IndexStat(val op: Operator, val routes: Int, val stops: Int)
