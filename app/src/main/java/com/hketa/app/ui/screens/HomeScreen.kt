@@ -60,6 +60,7 @@ import com.hketa.app.data.HK_PRESET_LOCATIONS
 import com.hketa.app.data.LocatePhase
 import com.hketa.app.data.EtaEntry
 import com.hketa.app.data.HomeItem
+import com.hketa.app.data.Operator
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
@@ -192,11 +193,15 @@ fun HomeScreen(
                 onOpenStop = { onOpenStop(item.stop) }
             )
 
+            // 聯營路線：班次會撈埋另一間公司，所以要標明邊班係邊間
+            val showOp = item.etas.any { it.op != item.stop.op }
+
             if (item.etas.isNotEmpty()) {
                 item.etas.forEach { e ->
                     NearbyEtaCard(
                         eta = e,
                         stop = item.stop,
+                        showOp = showOp,
                         onClick = { onOpenRoute(vm.routeOfEta(e)) }
                     )
                 }
@@ -293,6 +298,7 @@ private fun NearbyStopHeader(
 private fun NearbyEtaCard(
     eta: EtaEntry,
     stop: StopDef,
+    showOp: Boolean = false,
     onClick: () -> Unit
 ) {
     val soon = (eta.minutes ?: 99) <= 5
@@ -328,13 +334,20 @@ private fun NearbyEtaCard(
             Spacer(Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.route_bound_to, eta.dest),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 聯營路線：九巴／城巴細標籤，講明呢班係邊間公司派嘅車
+                    if (showOp) {
+                        OpBadge(eta.op)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = stringResource(R.string.route_bound_to, eta.dest),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Muted(
                     text = stop.titleWithCode(),
                     maxLines = 1
@@ -355,6 +368,35 @@ private fun NearbyEtaCard(
                 else MaterialTheme.colorScheme.onSurface
             )
         }
+    }
+}
+
+/**
+ * 營辦商細標籤（九巴／城巴）。
+ *
+ * 淨係喺**聯營路線**嗰陣先會出現 —— 呢啲線兩間公司各自派車，
+ * 唔標明嘅話「下一班 3 分鐘」根本唔知要去邊個月台等。
+ */
+@Composable
+private fun OpBadge(op: Operator) {
+    val bg = when (op) {
+        Operator.KMB -> MaterialTheme.colorScheme.primary
+        Operator.CTB -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.secondary
+    }
+    val fg = when (op) {
+        Operator.KMB -> MaterialTheme.colorScheme.onPrimary
+        Operator.CTB -> MaterialTheme.colorScheme.onTertiary
+        else -> MaterialTheme.colorScheme.onSecondary
+    }
+    Surface(shape = RoundedCornerShape(4.dp), color = bg.copy(alpha = 0.9f)) {
+        Text(
+            text = op.labelText(),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = fg,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
     }
 }
 
