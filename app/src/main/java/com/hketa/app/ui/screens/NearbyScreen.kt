@@ -1,6 +1,7 @@
 package com.hketa.app.ui.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -30,7 +32,6 @@ import com.hketa.app.R
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
-import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,14 +88,24 @@ fun NearbyScreen(
                         .padding(vertical = 3.dp)
                 ) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(
-                            text = item.stop.displayName(),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Muted("${item.stop.op.labelText()}　${distanceText(item.distanceMeters, LocalContext.current)}")
+                        // 淨係顯示站名（＋距離）—— 唔再顯示營辦商：
+                        // 一張卡而家可以橫跨幾個營辦商，顯示「九巴」會令人以為
+                        // 淨係得九巴，亦即係睇唔到同城巴路線。
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = item.stop.displayName(),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Muted(distanceText(item.distanceMeters, context))
+                        }
                         if (item.routes.isNotEmpty()) {
-                            Muted(item.routes.take(12).joinToString("　"))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = item.routes.joinToString("　"),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
                     }
                 }
