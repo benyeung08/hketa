@@ -371,8 +371,8 @@ fun AppRoot(
                 NearbyScreen(
                     vm = vm,
                     onNeedLocation = onNeedLocation,
-                    onOpenStop = { stop ->
-                        vm.openStop(stop)
+                    onOpenStops = { stops ->
+                        vm.openStops(stops)
                         navController.navigate(Dest.ETA)
                     }
                 )
