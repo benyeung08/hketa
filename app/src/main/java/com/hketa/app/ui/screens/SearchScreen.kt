@@ -3,7 +3,6 @@ package com.hketa.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,7 +21,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.PrimaryTabRow
@@ -61,11 +59,13 @@ import com.hketa.app.vm.AppViewModel
 /**
  * 搜尋頁：分成「路線」同「車站」兩個獨立分頁，各自有自己嘅關鍵字同結果。
  *
- * 版面：
- *   ① 頂部主色標題列「搜尋」
+ * 版面（貼近舊版「搜尋」頁，乾淨、唔會被索引狀態霸位）：
+ *   ① 頂部主色標題列「搜尋」，右上角放「鐵路」「附近」入口
  *   ② 白色輸入框「輸入路線號碼」
- *   ③ 結果列表（一條路線一行，左邊路線號、右邊箭頭）
+ *   ③ 結果列表（一條路線一行，左邊路線號、右邊箭頭）直接接住輸入框
  *   ④ 底部自訂數字／字母鍵盤
+ *
+ * 索引狀態同進度條淨係喺載入中先顯示，唔再長期佔一行。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,8 +88,8 @@ fun SearchScreen(
     var showKeyboard by remember { mutableStateOf(true) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ---- ① 頂部主色標題列 ----
-        SearchTopBar()
+        // ---- ① 頂部主色標題列（右上：鐵路／附近入口）----
+        SearchTopBar(onOpenRail = onOpenRail, onOpenNearby = onOpenNearby)
 
         Column(
             modifier = Modifier
@@ -139,26 +139,11 @@ fun SearchScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = onOpenRail,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 3.dp)
-                ) { Text(stringResource(R.string.tab_rail)) }
-                OutlinedButton(
-                    onClick = onOpenNearby,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 3.dp)
-                ) { Text(stringResource(R.string.tab_nearby)) }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Muted(status)
-
+            // 索引狀態／進度條：淨係載入中先顯示，平時唔霸位
             if (busy) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(4.dp))
+                Muted(status)
             }
 
             Spacer(Modifier.height(8.dp))
@@ -171,18 +156,8 @@ fun SearchScreen(
                 // ★ weight(1f)：列表食晒剩餘空間並可捲動，
                 //   鍵盤先至有固定高度留喺底（唔加會被擠出螢幕外）
                 LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    if (results.isNotEmpty()) {
-                        item {
-                            Text(
-                                stringResource(R.string.search_group_routes),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(vertical = 6.dp)
-                            )
-                        }
-                        items(items = results, key = { it.key }) { r ->
-                            RouteRow(r, onOpenRoute)
-                        }
+                    items(items = results, key = { it.key }) { r ->
+                        RouteRow(r, onOpenRoute)
                     }
                 }
             } else {
@@ -190,18 +165,8 @@ fun SearchScreen(
                     Muted(stringResource(R.string.search_stops_empty))
                 }
                 LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    if (stopResults.isNotEmpty()) {
-                        item {
-                            Text(
-                                stringResource(R.string.search_group_stops),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(vertical = 6.dp)
-                            )
-                        }
-                        items(items = stopResults, key = { "${it.stop.op.name}|${it.stop.id}" }) { hit ->
-                            StopHitRow(hit, onOpenStop)
-                        }
+                    items(items = stopResults, key = { "${it.stop.op.name}|${it.stop.id}" }) { hit ->
+                        StopHitRow(hit, onOpenStop)
                     }
                 }
             }
@@ -229,27 +194,42 @@ fun SearchScreen(
     }
 }
 
-/** 頂部主色標題列（「搜尋」） */
+/** 頂部主色標題列（「搜尋」）；右邊放「鐵路」「附近」入口，唔再霸住輸入框下面嗰行 */
 @Composable
-private fun SearchTopBar() {
+private fun SearchTopBar(onOpenRail: () -> Unit, onOpenNearby: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = stringResource(R.string.tab_search),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
-                color = MaterialTheme.colorScheme.onPrimary
+                color = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp)
             )
+            TextButton(onClick = onOpenRail) {
+                Text(
+                    text = stringResource(R.string.tab_rail),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+            TextButton(onClick = onOpenNearby) {
+                Text(
+                    text = stringResource(R.string.tab_nearby),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
         }
     }
 }
