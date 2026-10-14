@@ -63,6 +63,7 @@ import com.hketa.app.data.HomeItem
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.displayName
+import com.hketa.app.ui.plainName
 import com.hketa.app.ui.titleWithCode
 import com.hketa.app.ui.labelText
 import com.hketa.app.vm.AppViewModel
@@ -246,7 +247,10 @@ private fun NearbyStopHeader(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stop.titleWithCode(),
+                // ★ 淨係顯示站名，連括號站號都剝走（例如「海麗邨巴士總站
+                //   (SS667)」嗰個 SS667）。站號喺「車站」頁／ETA 卡先會用，
+                //   附近列表要一眼睇到係邊個站，多咗舊括號只會阻地方。
+                text = stop.plainName(),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )

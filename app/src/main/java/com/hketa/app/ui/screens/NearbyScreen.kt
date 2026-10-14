@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.hketa.app.R
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
-import com.hketa.app.ui.displayName
+import com.hketa.app.ui.plainName
 import com.hketa.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,7 +93,7 @@ fun NearbyScreen(
                         // 淨係得九巴，亦即係睇唔到同城巴路線。
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = item.stop.displayName(),
+                                text = item.stop.plainName(),
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f)
