@@ -70,6 +70,42 @@ fun StopDef.titleWithCode(): String {
     return if (already) name0 else "$name0（$code）"
 }
 
+/**
+ * 顯示用嘅「淨站名」—— 連括號站號都剝走。
+ *
+ * 「附近」嘅卡位得咁上下闊，官方站名有時本身已經包咗站號
+ * （例如「海麗邨巴士總站 (SS667)」嗰個 SS667），多咗舊括號只會阻地方；
+ * 而且同一個站唔同營辦商有唔同站號，顯示邊一個都唔啱。
+ *
+ * 淨係剝「括號入面正好係站號」嗰種；其他括號（例如「（循環線）」）
+ * 一律保留，費事改錯官方站名。
+ *
+ * 必須係 @Composable —— 因為入面叫咗 [StopDef.displayName]。
+ */
+@Composable
+fun StopDef.plainName(): String {
+    val n = displayName().trim()
+    val c = codeLabel()
+    if (c.isBlank()) return n
+    var out = n
+    for (p in listOf("（" to "）", "(" to ")", "［" to "］", "[" to "]")) {
+        out = out.replace("${p.first}$c${p.second}", "")
+    }
+    return out.trim()
+}
+
+/** 非 Composable 場合（Widget、ViewModel）用嘅淨站名版本 */
+fun StopDef.plainName(en: Boolean): String {
+    val n = displayName(en).trim()
+    val c = codeLabel()
+    if (c.isBlank()) return n
+    var out = n
+    for (p in listOf("（" to "）", "(" to ")", "［" to "］", "[" to "]")) {
+        out = out.replace("${p.first}$c${p.second}", "")
+    }
+    return out.trim()
+}
+
 /** 非 Composable 場合（Widget、ViewModel）用嘅版本 */
 fun StopDef.displayName(en: Boolean): String =
     if (en && nameEn.isNotBlank()) nameEn else name
