@@ -102,6 +102,9 @@
     <string name="nearby_meters">%1$d m</string>
     <string name="nearby_km">%1$.1f km</string>
     <string name="nearby_empty">No indexed stops within 3 km. Run a deep index from Settings to add more.</string>
+    <string name="nearby_eta_to">to %1$s</string>
+    <string name="nearby_eta_min">%1$d min</string>
+    <string name="nearby_eta_soon">due</string>
 
     <!-- Settings -->
     <string name="settings_index">Route index</string>
@@ -150,6 +153,7 @@
     <string name="update_download">Download update</string>
     <string name="update_view_release">View release</string>
     <string name="update_notes">What\'s new</string>
+    <string name="update_notes_full">See full notes →</string>
     <string name="update_size">About %1$.1f MB</string>
 
     <!-- Update UI (ported from code-to-app) -->
