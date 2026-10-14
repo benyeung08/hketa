@@ -51,6 +51,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.pow
@@ -105,25 +107,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private const val NEARBY_NAME_MERGE_M = 300.0
 
         /**
-         * 冇座標嘅站（例如城巴未補到經緯度）靠同名併入時放寬幾多。
-         * 呢啲站計唔到距離，淨可靠同名，所以放寬到半徑 ＋ 呢個數。
+         * 同名站併入路線時，**雙方都有座標**要相距幾近（米）。
+         *
+         * 以前淨係 check「對方喺定位中心幾多米內」，隔籬區同名站都照併 ——
+         * 係「撈錯」嘅主因。而家雙方都有座標就一定要真係同一個站牌
+         * （相距 ≤ 呢個數）先併；只有其中一方冇座標（例如城巴未補到
+         * 經緯度）先會淨靠同名併入 —— 唔併呢啲站永遠唔會出現。
          */
         private const val NEARBY_ALIAS_SLACK_M = 500.0
 
         /**
-         * **同名**併入路線時嘅寬容度（米）。
+         * 「附近」抓班次嘅**併發上限**（同時最多幾個請求）。
          *
-         * 城巴、嶼巴、港鐵巴士有唔少站座標缺失或者偏咗，用 500 米會把它們
-         * 篩走晒 —— 結果「附近」永遠淨係見到九巴。同名係好強嘅證據，
-         * 所以放寬到呢個數；併錯隔籬區同名站嘅代價，細過唔見成個營辦商。
+         * 唔再限制「淨係頭 8 張卡」或者「每張卡淨係 6 條非九巴路線」——
+         * 以前咁樣會令城巴、嶼巴路線顯示唔晒。而家全部都抓，靠呢個
+         * 併發上限節流，唔會一次打幾十個請求打爆官方接口。
          */
-        private const val NEARBY_NAME_ALIAS_M = 3000.0
-
-        /** 「附近」卡片最多為幾多張卡抓 ETA（慳請求） */
-        private const val NEARBY_ETA_CARDS = 8
-
-        /** 每張卡最多為幾多條**非九巴**路線抓 ETA（九巴一次過返晒，唔計） */
-        private const val NEARBY_ETA_ROUTES_PER_CARD = 6
+        private const val NEARBY_ETA_CONCURRENCY = 6
 
         /**
          * 站名正規化用嘅兩個 Regex —— **一定要係常數**。
@@ -380,6 +380,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _selectedStop = MutableStateFlow<StopDef?>(null)
     val selectedStop: StateFlow<StopDef?> = _selectedStop.asStateFlow()
+
+    /**
+     * 由「附近」卡片開出嚟嘅**合併組**（同一個站牌、跨營辦商）。
+     * 單站（收藏、搜尋、路線頁開）得一個元素。
+     */
+    private val _selectedStopGroup = MutableStateFlow<List<StopDef>>(emptyList())
+    val selectedStopGroup: StateFlow<List<StopDef>> = _selectedStopGroup.asStateFlow()
+
+    /** 「附近」抓班次嘅併發閘 —— 見 [NEARBY_ETA_CONCURRENCY] */
+    private val etaSemaphore = Semaphore(NEARBY_ETA_CONCURRENCY)
 
     private val _etas = MutableStateFlow<List<EtaEntry>>(emptyList())
     val etas: StateFlow<List<EtaEntry>> = _etas.asStateFlow()
@@ -1690,12 +1700,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun openStop(stop: StopDef, route: RouteDef? = null) {
         val fixed = normalizeStop(stop)
         _selectedStop.value = fixed
+        _selectedStopGroup.value = listOf(fixed)
         _etas.value = emptyList()
         resetEtaDirection()
         loadEta(fixed, route ?: _selectedRoute.value)
     }
 
+    /**
+     * 由「附近」卡片開：一次過開**成個合併組**（同一個站牌、跨營辦商）。
+     *
+     * 以前淨係開路線最多嗰個站，撳落去就睇唔到城巴／嶼巴嗰份 ——
+     * 因為九巴同城巴喺同一個站牌有唔同 station id，用九巴個 id 查城巴
+     * 路線一定查唔到車。
+     *
+     * 而家：主站照行原本嘅快取／離線流程（[loadEta]），其餘站後台撈完
+     * 再併埋落同一個列表 —— 每筆 ETA 都帶埋營辦商，畫面睇得到邊間嘅車。
+     */
+    fun openStops(stops: List<StopDef>, route: RouteDef? = null) {
+        if (stops.isEmpty()) return
+        val fixed = stops.map { normalizeStop(it) }
+            .distinctBy { "${it.op.name}|${it.id}" }
+        _selectedStop.value = fixed.first()
+        _selectedStopGroup.value = fixed
+        _etas.value = emptyList()
+        resetEtaDirection()
+        val r = route ?: _selectedRoute.value
+        loadEta(fixed.first(), r)
+        val others = fixed.drop(1)
+        if (others.isEmpty()) return
+        viewModelScope.launch {
+            val extra = coroutineScope {
+                others.map { st ->
+                    async {
+                        suspendCatching { etasFor(st, r).first }.getOrDefault(emptyList())
+                    }
+                }.awaitAll().flatten()
+            }
+            if (extra.isNotEmpty()) {
+                _etas.value = (_etas.value + extra)
+                    .sortedWith(compareBy(nullsLast()) { e: EtaEntry -> e.minutes })
+            }
+        }
+    }
+
     fun refreshEta() {
+        // 合併組（由「附近」卡片開）：要成組重新撈，唔係淨係 refresh 代表站
+        val group = _selectedStopGroup.value
+        if (group.size > 1) {
+            openStops(group, _selectedRoute.value)
+            return
+        }
         val stop = _selectedStop.value ?: return
         loadEta(stop, _selectedRoute.value)
     }
@@ -2719,11 +2773,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 要記埋站，係因為九巴同城巴喺同一個站牌有**唔同 station id** ——
      * 淨係攞路線號會查錯站（用九巴個 id 去查城巴路線，一定查唔到車）。
      *
-     * 同名併入嘅寬容度用 [NEARBY_NAME_ALIAS_M]（3 公里）而唔係
-     * [NEARBY_ALIAS_SLACK_M]：城巴、嶼巴、港鐵巴士有唔少站**未補到經緯度**，
-     * 或者座標偏咗一截 —— 用 500 米會把它們全部篩走，結果「附近」永遠
-     * 淨係見到九巴。呢啲站靠同名併入，代價係可能併到隔籬區嘅同名站，
-     * 但唔見咗成個營辦商嘅路線代價更大。
+     * **雙方都有座標**時，同名站要相距 ≤ [NEARBY_ALIAS_SLACK_M]（500 米）
+     * 先併 —— 以前淨係 check「對方喺定位中心 3 公里內」，隔籬區同名站都
+     * 照併，係「撈錯」嘅主因。只有**其中一方冇座標**（城巴、嶼巴有唔少站
+     * **未補到經緯度**）先會淨靠同名併入：呢啲站唔併就永遠唔會出現，
+     * 併錯嘅代價遠細過完全唔見。
      */
     private fun routeDefsAtStop(
         idx: IndexData,
@@ -2737,12 +2791,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         for (rd in routeDefsOfStop(idx, s)) out[rd.key] = s to rd
         val key = normStopName(s.name)
         if (key.isNotBlank()) {
-            val limit = radiusM + NEARBY_NAME_ALIAS_M
             for (a in nameMap[key].orEmpty()) {
                 if (a.op == s.op && a.id == s.id) continue
-                if (a.lat != 0.0 || a.lon != 0.0) {
-                    if (distanceMeters(lat, lon, a.lat, a.lon) > limit) continue
+                val aHas = a.lat != 0.0 || a.lon != 0.0
+                val sHas = s.lat != 0.0 || s.lon != 0.0
+                if (aHas && sHas) {
+                    // 雙方都有座標：要真係同一個站牌先併（嚴格相距）。
+                    // 以前淨係 check 對方喺定位中心幾多米內，隔籬區同名站
+                    // 都照併 —— 係「撈錯」嘅主因。
+                    if (distanceMeters(s.lat, s.lon, a.lat, a.lon) > NEARBY_ALIAS_SLACK_M) continue
+                } else if (aHas) {
+                    // 得 a 有座標（s 缺）：靠同名，但 a 要喺附近半徑內
+                    if (distanceMeters(lat, lon, a.lat, a.lon) > radiusM) continue
                 }
+                // 雙方都冇座標：淨靠同名，照併（唔併呢啲站永遠唔會出現）
                 for (rd in routeDefsOfStop(idx, a)) out.putIfAbsent(rd.key, a to rd)
             }
         }
@@ -2808,12 +2870,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ops.add(rd.op)
                 }
             }
+            // 合併組：代表站排第一，其餘照路線數排 —— 撳落去會成組傳出去，
+            // 唔係淨係開代表站（否則城巴嗰份會查唔到車）
+            val groupStops = (listOf(rep.first) + g.map { it.first }.filter { it !== rep.first })
+                .distinctBy { "${it.op.name}|${it.id}" }
+
             out.add(
                 NearbyStop(
                     stop = rep.first,
                     distanceMeters = g.minOf { it.second },
                     routes = routes.sortedWith(compareBy<String> { it.length }.thenBy { it }),
-                    ops = ops.toList()
+                    ops = ops.toList(),
+                    mergedStops = groupStops
                 )
             )
         }
@@ -2842,7 +2910,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         radiusM: Double
     ) {
         val idx = _index.value
-        val head = cards.take(NEARBY_ETA_CARDS)
+        // 全部卡都抓（唔再淨係頭 8 張）：併發靠 [etaSemaphore] 節流
+        val head = cards
         if (head.isEmpty()) return
 
         val withEtas = coroutineScope {
@@ -2871,7 +2940,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *
      * 九巴：一個請求攞晒成個站（接口本身返全部路線），唔使逐條查。
      * 城巴／嶼巴／港鐵巴士／小巴：接口要帶路線號，所以逐條查 ——
-     * 但限制咗 [NEARBY_ETA_ROUTES_PER_CARD] 條，費事一個站打十幾個請求。
+     * 全部都查（以前限制咗每張卡 6 條，城巴、嶼巴路線顯示唔晒）；
+     * 併發靠 [etaSemaphore] 節流，唔會一次打十幾個請求。
      */
     private suspend fun fetchCardEtas(pairs: List<Pair<StopDef, RouteDef>>): List<EtaEntry> {
         if (pairs.isEmpty()) return emptyList()
@@ -2891,9 +2961,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // 一個請求攞晒：九巴、輕鐵、港鐵重鐵
                     Operator.KMB, Operator.LRT, Operator.MTR_HR ->
                         jobs.add(async { etasFor(st, null).first })
-                    // 要逐條查（接口要路線號）
-                    else -> for (rd in rds.take(NEARBY_ETA_ROUTES_PER_CARD)) {
-                        jobs.add(async { etasFor(st, rd).first })
+                    // 要逐條查（接口要路線號）—— 全部都查，併發靠閘節流
+                    else -> for (rd in rds) {
+                        jobs.add(async { etaSemaphore.withPermit { etasFor(st, rd).first } })
                     }
                 }
             }
