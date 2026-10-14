@@ -103,7 +103,14 @@ data class NearbyStop(
     /** 每條路線每方向最近一班；循環線／特別班次淨一班 */
     val etas: List<NearbyEta> = emptyList(),
     /** 呢張卡合併咗邊啲營辦商（用嚟顯示「城巴」呢類標籤） */
-    val ops: List<Operator> = emptyList()
+    val ops: List<Operator> = emptyList(),
+    /**
+     * 呢張卡合併咗邊啲**站**（同一個站牌、跨營辦商），第一個係代表站。
+     *
+     * 撳卡片時會成組傳出去 —— 唔係淨係開路線最多嗰個站，
+     * 否則用九巴個 id 查城巴路線一定查唔到車。
+     */
+    val mergedStops: List<StopDef> = emptyList()
 )
 
 /** 一間機構的索引完成度 */
