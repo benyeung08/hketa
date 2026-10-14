@@ -305,6 +305,30 @@
     <string name="tt_headway">Frequency: about every %1$d min</string>
     <string name="tt_observed">Observed service window: %1$s \u2013 %2$s (%3$d samples)</string>
     <string name="tt_observed_none">No trips seen yet \u2014 the window fills in as you use the app</string>
+
+    <!-- Official frequency (third-party data) -->
+    <string name="hw_official">Official frequency: every %1$s min</string>
+    <string name="hw_service">Listed service window: %1$s \u2013 %2$s</string>
+    <string name="hw_holiday">Today is a public holiday \u2014 frequency may differ</string>
+    <string name="hw_past">Past the listed window (buses may still run)</string>
+    <string name="hw_not_started">Service has not started yet</string>
+    <string name="hw_bound_all">(both directions combined)</string>
+    <string name="hw_source">Official frequency source: %1$s</string>
+    <string name="hw_absent">No official frequency data (download in Settings)</string>
+    <string name="hw_downloading">Downloading official frequency data\u2026</string>
+    <string name="hw_ok">Updated %1$d routes</string>
+    <string name="hw_fail">Download failed: %1$s</string>
+    <string name="settings_td_hw_title">Official frequency (Transport Dept GTFS, raw feed)</string>
+    <string name="settings_td_hw_download">Download TD raw feed</string>
+    <string name="settings_td_hw_hint">Adds official end times and exception dates; the files are not small, so it is fetched on tap only</string>
+    <string name="settings_td_hw_loaded">Loaded %1$d route directions (%2$s)</string>
+    <string name="hw_past_td">Past the official listed service end (no listed departures after %1$s)</string>
+    <string name="hw_closed_today">No listed service today (exception calendar)</string>
+    <string name="settings_hw_title">Official frequency data</string>
+    <string name="settings_hw_absent">Not downloaded (frequency estimated from ETA)</string>
+    <string name="settings_hw_loaded">%1$d routes \u00b7 %2$s</string>
+    <string name="settings_hw_download">Download / update</string>
+    <string name="settings_hw_clear">Clear</string>
     <string name="tt_note">Built from the live official arrivals (trip N = the Nth prediction at each stop). There is no public timetable API, so the service window is accumulated from observations \u2014 not an official first/last bus time.</string>
     <string name="tt_loading">Loading trips\u2026</string>
     <string name="tt_empty">No trips right now (possibly after the last bus)</string>
