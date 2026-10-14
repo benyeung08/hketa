@@ -83,28 +83,36 @@ fun StopDef.titleWithCode(): String {
  * 必須係 @Composable —— 因為入面叫咗 [StopDef.displayName]。
  */
 @Composable
-fun StopDef.plainName(): String {
-    val n = displayName().trim()
-    val c = codeLabel()
-    if (c.isBlank()) return n
-    var out = n
-    for (p in listOf("（" to "）", "(" to ")", "［" to "］", "[" to "]")) {
-        out = out.replace("${p.first}$c${p.second}", "")
+fun StopDef.plainName(): String = stripBrackets(displayName())
+
+/**
+ * 剝走站名入面**全部**括號段（連括號一齊）。
+ *
+ * 「附近」嘅卡位得咁上下闊，站號（如 `海麗邨巴士總站 (SS667)` 嗰個 SS667）
+ * 只會阻地方；而同一個站唔同營辦商有唔同站號，顯示邊一個都唔啱。
+ *
+ * 半角 `()`、全角 `（）`、`[]`、`［］` 四種都處理，可以剝多段。
+ * 車站頁同 ETA 卡仍然顯示完整站名連站號 —— 想對返官方站牌嗰陣有得睇。
+ */
+private fun stripBrackets(name: String): String {
+    if (name.isBlank()) return name
+    val pairs = listOf("（" to "）", "(" to ")", "［" to "］", "[" to "]")
+    var out = name.trim()
+    // 逐段剝：由最細單位做起，重複到冇得剝為止（上限 6 段，避免 pathological 輸入）
+    repeat(6) {
+        val before = out
+        for ((l, r) in pairs) {
+            val i = out.indexOf(l)
+            val j = if (i < 0) -1 else out.indexOf(r, i + l.length)
+            if (i >= 0 && j > i) out = (out.substring(0, i) + out.substring(j + r.length)).trim()
+        }
+        if (out == before) return@repeat
     }
-    return out.trim()
+    return out.trim().ifBlank { name.trim() }
 }
 
 /** 非 Composable 場合（Widget、ViewModel）用嘅淨站名版本 */
-fun StopDef.plainName(en: Boolean): String {
-    val n = displayName(en).trim()
-    val c = codeLabel()
-    if (c.isBlank()) return n
-    var out = n
-    for (p in listOf("（" to "）", "(" to ")", "［" to "］", "[" to "]")) {
-        out = out.replace("${p.first}$c${p.second}", "")
-    }
-    return out.trim()
-}
+fun StopDef.plainName(en: Boolean): String = stripBrackets(displayName(en))
 
 /** 非 Composable 場合（Widget、ViewModel）用嘅版本 */
 fun StopDef.displayName(en: Boolean): String =
