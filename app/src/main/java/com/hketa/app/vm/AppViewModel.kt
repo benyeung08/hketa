@@ -14,6 +14,7 @@ import com.hketa.app.data.EtaRepository
 import com.hketa.app.data.IndexData
 import com.hketa.app.data.IndexStat
 import com.hketa.app.data.IndexStore
+import com.hketa.app.data.NearbyEta
 import com.hketa.app.data.NearbyStop
 import com.hketa.app.data.Operator
 import com.hketa.app.data.RailData
@@ -108,6 +109,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * 呢啲站計唔到距離，淨可靠同名，所以放寬到半徑 ＋ 呢個數。
          */
         private const val NEARBY_ALIAS_SLACK_M = 500.0
+
+        /**
+         * **同名**併入路線時嘅寬容度（米）。
+         *
+         * 城巴、嶼巴、港鐵巴士有唔少站座標缺失或者偏咗，用 500 米會把它們
+         * 篩走晒 —— 結果「附近」永遠淨係見到九巴。同名係好強嘅證據，
+         * 所以放寬到呢個數；併錯隔籬區同名站嘅代價，細過唔見成個營辦商。
+         */
+        private const val NEARBY_NAME_ALIAS_M = 3000.0
+
+        /** 「附近」卡片最多為幾多張卡抓 ETA（慳請求） */
+        private const val NEARBY_ETA_CARDS = 8
+
+        /** 每張卡最多為幾多條**非九巴**路線抓 ETA（九巴一次過返晒，唔計） */
+        private const val NEARBY_ETA_ROUTES_PER_CARD = 6
 
         /**
          * 站名正規化用嘅兩個 Regex —— **一定要係常數**。
@@ -2483,9 +2499,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val nameMap = stopsByName(idx)
             val radiusD = radiusMeters.toDouble()
             val list = mergeCoLocated(cand) { s ->
-                routesAtStop(idx, s, nameMap, lat, lon, radiusD)
+                routeDefsAtStop(idx, s, nameMap, lat, lon, radiusD)
             }
             _nearby.value = list
+            // 再抓每條路線每方向嘅最近一班（後台更新，唔阻塞列表出畫面）
+            if (list.isNotEmpty()) {
+                val lat2 = lat
+                val lon2 = lon
+                val rad2 = radiusD
+                launch { fillNearbyEtas(list, nameMap, lat2, lon2, rad2) }
+            }
             // 寫落加速層（空結果唔寫：費事一時冇網就鎖死 45 秒空白）
             if (list.isNotEmpty()) com.hketa.app.data.SpeedLayer.nearPut(nk, list)
             _busy.value = false
@@ -2569,6 +2592,64 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun routesOfStop(idx: IndexData, s: StopDef): List<String> =
         routesByStop(idx)["${s.op.name}|${s.id}"] ?: emptyList()
 
+    // ---- 路線明細快取：查 ETA 要 routeId（NLB／GMB）、bound（分方向）----
+
+    private var routesByKeyMap: Map<String, RouteDef>? = null
+    private var routesByKeyFor: IndexData? = null
+
+    private fun routesByKey(idx: IndexData): Map<String, RouteDef> {
+        val cached = routesByKeyMap
+        if (cached != null && routesByKeyFor === idx) return cached
+        val built = HashMap<String, RouteDef>((idx.routes.size * 2).coerceAtLeast(256))
+        for (r in idx.routes) built[r.key] = r
+        routesByKeyMap = built
+        routesByKeyFor = idx
+        return built
+    }
+
+    private var routeStopsByStopMap: Map<String, List<RouteStopDef>>? = null
+    private var routeStopsByStopFor: IndexData? = null
+
+    private fun routeStopsByStop(idx: IndexData): Map<String, List<RouteStopDef>> {
+        val cached = routeStopsByStopMap
+        if (cached != null && routeStopsByStopFor === idx) return cached
+        val tmp = HashMap<String, ArrayList<RouteStopDef>>(
+            (idx.stops.size * 2).coerceAtLeast(1024)
+        )
+        for (rs in idx.routeStops) {
+            tmp.getOrPut("${rs.op.name}|${rs.stopId}") { ArrayList() }.add(rs)
+        }
+        val built = HashMap<String, List<RouteStopDef>>(tmp.size)
+        for ((k, v) in tmp) built[k] = v
+        routeStopsByStopMap = built
+        routeStopsByStopFor = idx
+        return built
+    }
+
+    /**
+     * 某個站停靠嘅路線**明細**（連 routeId、bound、serviceType、dest）。
+     *
+     * 淨係攞路線號係查唔到嶼巴／小巴 ETA 嘅（要用 routeId），
+     * 亦分唔到方向（要 bound）。
+     */
+    private fun routeDefsOfStop(idx: IndexData, s: StopDef): List<RouteDef> {
+        val rsList = routeStopsByStop(idx)["${s.op.name}|${s.id}"] ?: return emptyList()
+        val byKey = routesByKey(idx)
+        val out = LinkedHashMap<String, RouteDef>()
+        for (rs in rsList) {
+            val k = "${rs.op.name}|${rs.route}|${rs.bound}|${rs.serviceType}|${rs.routeId}"
+            val rd = byKey[k] ?: RouteDef(
+                op = rs.op,
+                route = rs.route,
+                bound = rs.bound,
+                serviceType = rs.serviceType,
+                routeId = rs.routeId
+            )
+            out[rd.key] = rd
+        }
+        return out.values.sortedWith(compareBy<RouteDef> { it.route.length }.thenBy { it.route })
+    }
+
     // ============ 同一個站、唔同營辦商 ============
 
     /**
@@ -2629,20 +2710,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         lat: Double,
         lon: Double,
         radiusM: Double
-    ): List<String> {
-        val out = LinkedHashSet<String>()
-        out.addAll(routesOfStop(idx, s))
+    ): List<String> =
+        routeDefsAtStop(idx, s, nameMap, lat, lon, radiusM).map { it.second.route }
+
+    /**
+     * 同 [routesAtStop]，但返「**邊個站**嘅**邊條路線**」。
+     *
+     * 要記埋站，係因為九巴同城巴喺同一個站牌有**唔同 station id** ——
+     * 淨係攞路線號會查錯站（用九巴個 id 去查城巴路線，一定查唔到車）。
+     *
+     * 同名併入嘅寬容度用 [NEARBY_NAME_ALIAS_M]（3 公里）而唔係
+     * [NEARBY_ALIAS_SLACK_M]：城巴、嶼巴、港鐵巴士有唔少站**未補到經緯度**，
+     * 或者座標偏咗一截 —— 用 500 米會把它們全部篩走，結果「附近」永遠
+     * 淨係見到九巴。呢啲站靠同名併入，代價係可能併到隔籬區嘅同名站，
+     * 但唔見咗成個營辦商嘅路線代價更大。
+     */
+    private fun routeDefsAtStop(
+        idx: IndexData,
+        s: StopDef,
+        nameMap: Map<String, List<StopDef>>,
+        lat: Double,
+        lon: Double,
+        radiusM: Double
+    ): List<Pair<StopDef, RouteDef>> {
+        val out = LinkedHashMap<String, Pair<StopDef, RouteDef>>()
+        for (rd in routeDefsOfStop(idx, s)) out[rd.key] = s to rd
         val key = normStopName(s.name)
         if (key.isNotBlank()) {
+            val limit = radiusM + NEARBY_NAME_ALIAS_M
             for (a in nameMap[key].orEmpty()) {
                 if (a.op == s.op && a.id == s.id) continue
                 if (a.lat != 0.0 || a.lon != 0.0) {
-                    if (distanceMeters(lat, lon, a.lat, a.lon) > radiusM + NEARBY_ALIAS_SLACK_M) continue
+                    if (distanceMeters(lat, lon, a.lat, a.lon) > limit) continue
                 }
-                out.addAll(routesOfStop(idx, a))
+                for (rd in routeDefsOfStop(idx, a)) out.putIfAbsent(rd.key, a to rd)
             }
         }
-        return out.sortedWith(compareBy<String> { it.length }.thenBy { it })
+        return out.values.sortedWith(
+            compareBy<Pair<StopDef, RouteDef>> { it.second.route.length }
+                .thenBy { it.second.route }
+        )
     }
 
     /**
@@ -2657,7 +2764,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun mergeCoLocated(
         cand: List<Pair<StopDef, Int>>,
-        routesOf: (StopDef) -> List<String>
+        routesOf: (StopDef) -> List<Pair<StopDef, RouteDef>>
     ): List<NearbyStop> {
         if (cand.isEmpty()) return emptyList()
 
@@ -2681,7 +2788,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val groups = LinkedHashMap<Int, ArrayList<Triple<StopDef, Int, List<String>>>>()
+        val groups = LinkedHashMap<Int, ArrayList<Triple<StopDef, Int, List<Pair<StopDef, RouteDef>>>>>()
         for (i in 0 until n) {
             val g = groups.getOrPut(find(i)) { ArrayList() }
             g.add(Triple(cand[i].first, cand[i].second, routesOf(cand[i].first)))
@@ -2690,21 +2797,160 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val out = ArrayList<NearbyStop>(groups.size)
         for (g in groups.values) {
             val rep = g.maxWith(
-                compareBy<Triple<StopDef, Int, List<String>>> { it.third.size }
+                compareBy<Triple<StopDef, Int, List<Pair<StopDef, RouteDef>>>> { it.third.size }
                     .thenBy { -it.second }
             )
             val routes = LinkedHashSet<String>()
-            for (m in g) routes.addAll(m.third)
+            val ops = LinkedHashSet<Operator>()
+            for (m in g) {
+                for ((_, rd) in m.third) {
+                    routes.add(rd.route)
+                    ops.add(rd.op)
+                }
+            }
             out.add(
                 NearbyStop(
                     stop = rep.first,
                     distanceMeters = g.minOf { it.second },
-                    routes = routes.sortedWith(compareBy<String> { it.length }.thenBy { it })
+                    routes = routes.sortedWith(compareBy<String> { it.length }.thenBy { it }),
+                    ops = ops.toList()
                 )
             )
         }
         return out.sortedBy { it.distanceMeters }
     }
+
+    // ============ 「附近」卡片：每條路線每方向嘅最近一班 ============
+
+    /**
+     * ## 點解要分方向
+     *
+     * 一條雙向路線喺同一個站會撈到兩堆班次（去程、回程），全部倒出嚟
+     * 會變成十幾行、根本睇唔到邊班先開。所以**每個方向淨係出最近嗰一班**。
+     *
+     * 而**循環線、特別班次**呢類單向路線（索引入面得一個 bound）
+     * 全部班次都係同一個方向，再分就冇意義 —— **淨係出最近嗰一班**。
+     *
+     * 判斷單向**唔靠硬砌清單**（九巴 1 號同城巴 1 號係兩條唔同嘅線，
+     * 靠名單一定會錯），而係用索引入面呢個站嘅 bound 數量。
+     */
+    private suspend fun fillNearbyEtas(
+        cards: List<NearbyStop>,
+        nameMap: Map<String, List<StopDef>>,
+        lat: Double,
+        lon: Double,
+        radiusM: Double
+    ) {
+        val idx = _index.value
+        val head = cards.take(NEARBY_ETA_CARDS)
+        if (head.isEmpty()) return
+
+        val withEtas = coroutineScope {
+            head.map { card ->
+                async {
+                    val pairs = routeDefsAtStop(idx, card.stop, nameMap, lat, lon, radiusM)
+                    val raw = fetchCardEtas(pairs)
+                    card.copy(etas = pickNearestPerDirection(raw, pairs))
+                }
+            }.awaitAll()
+        }
+
+        // 寫返入 _nearby：保留原本順序，後段冇處理嘅卡照舊
+        val merged = ArrayList<NearbyStop>(cards.size)
+        val byKey = HashMap<String, NearbyStop>()
+        for (c in withEtas) byKey["${c.stop.op.name}|${c.stop.id}"] = c
+        for (c in cards) {
+            merged.add(byKey["${c.stop.op.name}|${c.stop.id}"] ?: c)
+        }
+        _nearby.value = merged
+        // 加速層嗰份唔寫 ETA —— 班次係即時嘅，寫咗會出舊資料
+    }
+
+    /**
+     * 抓一張卡上面全部路線嘅班次。
+     *
+     * 九巴：一個請求攞晒成個站（接口本身返全部路線），唔使逐條查。
+     * 城巴／嶼巴／港鐵巴士／小巴：接口要帶路線號，所以逐條查 ——
+     * 但限制咗 [NEARBY_ETA_ROUTES_PER_CARD] 條，費事一個站打十幾個請求。
+     */
+    private suspend fun fetchCardEtas(pairs: List<Pair<StopDef, RouteDef>>): List<EtaEntry> {
+        if (pairs.isEmpty()) return emptyList()
+
+        // 按站分組：同一個站牌可以跨幾個營辦商（九巴 SS667 ＋ 城巴另一個 id）
+        val byStop = LinkedHashMap<String, Pair<StopDef, ArrayList<RouteDef>>>()
+        for ((st, rd) in pairs) {
+            val k = "${st.op.name}|${st.id}"
+            byStop.getOrPut(k) { st to ArrayList() }.second.add(rd)
+        }
+
+        val out = ArrayList<EtaEntry>()
+        coroutineScope {
+            val jobs = ArrayList<kotlinx.coroutines.Deferred<List<EtaEntry>>>()
+            for ((st, rds) in byStop.values) {
+                when (st.op) {
+                    // 一個請求攞晒：九巴、輕鐵、港鐵重鐵
+                    Operator.KMB, Operator.LRT, Operator.MTR_HR ->
+                        jobs.add(async { etasFor(st, null).first })
+                    // 要逐條查（接口要路線號）
+                    else -> for (rd in rds.take(NEARBY_ETA_ROUTES_PER_CARD)) {
+                        jobs.add(async { etasFor(st, rd).first })
+                    }
+                }
+            }
+            for (j in jobs) out.addAll(j.await())
+        }
+        return out
+    }
+
+    /**
+     * 每條路線**每個方向**淨係留最近一班；
+     * 循環線、特別班次呢類單向路線淨係留一班。
+     */
+    private fun pickNearestPerDirection(
+        etas: List<EtaEntry>,
+        pairs: List<Pair<StopDef, RouteDef>>
+    ): List<NearbyEta> {
+        if (etas.isEmpty()) return emptyList()
+
+        // route → 呢個站有幾個方向（循環線／特別班次通常得 1 個）
+        val boundsByRoute = HashMap<String, MutableSet<String>>()
+        val allowed = HashSet<String>()
+        for ((_, rd) in pairs) {
+            allowed.add(rd.route)
+            boundsByRoute.getOrPut(rd.route) { LinkedHashSet() }.add(rd.bound)
+        }
+
+        // 淨係留索引入面呢個站有嘅路線（九巴一次過返晒，會撈到第啲唔相關嘅）
+        val byRoute = LinkedHashMap<String, ArrayList<EtaEntry>>()
+        for (e in etas) {
+            if (e.route.isBlank() || e.route !in allowed) continue
+            byRoute.getOrPut(e.route) { ArrayList() }.add(e)
+        }
+
+        val out = ArrayList<NearbyEta>()
+        for ((route, list) in byRoute) {
+            val b = boundsByRoute[route]
+            if (b != null && b.size <= 1) {
+                // 單向（循環線／特別班次）：淨出最近一班
+                list.minByOrNull { it.minutes ?: Int.MAX_VALUE }
+                    ?.let { out.add(it.toNearbyEta()) }
+            } else {
+                // 雙向：每個方向淨出最近一班（最多兩個方向）
+                val byDest = LinkedHashMap<String, ArrayList<EtaEntry>>()
+                for (e in list) byDest.getOrPut(e.dest) { ArrayList() }.add(e)
+                byDest.values.take(2).forEach { g ->
+                    g.minByOrNull { it.minutes ?: Int.MAX_VALUE }
+                        ?.let { out.add(it.toNearbyEta()) }
+                }
+            }
+        }
+        return out.sortedWith(
+            compareBy<NearbyEta> { it.route.length }.thenBy { it.route }
+        )
+    }
+
+    private fun EtaEntry.toNearbyEta(): NearbyEta =
+        NearbyEta(route = route, dest = dest, minutes = minutes, clock = clock, op = op)
 
     /** 兩個站係咪「同一個站」（唔同營辦商嘅同一個站牌都算） */
     private fun sameStop(a: StopDef, b: StopDef): Boolean {
