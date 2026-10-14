@@ -123,7 +123,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * 以前咁樣會令城巴、嶼巴路線顯示唔晒。而家全部都抓，靠呢個
          * 併發上限節流，唔會一次打幾十個請求打爆官方接口。
          */
-        private const val NEARBY_ETA_CONCURRENCY = 8
+        private const val NEARBY_ETA_CONCURRENCY = 6
 
         /**
          * 站名正規化用嘅兩個 Regex —— **一定要係常數**。
@@ -1893,6 +1893,146 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val routeNotices: StateFlow<List<com.hketa.app.data.Notice>> =
         _routeNotices.asStateFlow()
 
+    // ---- 官方班次間隔（第三方資料）----
+
+    /**
+     * 官方班次間隔（運輸署 GTFS，經 data.hkbus.app 聚合）。
+     *
+     * `null` = 冇資料／未下載 —— UI 會**行返原本**（ETA 推算 ＋ 觀察累積），
+     * 所以呢個永遠唔會令畫面冇嘢睇。
+     */
+    private val _headway =
+        MutableStateFlow<com.hketa.app.data.HeadwayDb.Official?>(null)
+    val headway: StateFlow<com.hketa.app.data.HeadwayDb.Official?> =
+        _headway.asStateFlow()
+
+    /** 係咪下載緊班次資料 */
+    private val _headwayBusy = MutableStateFlow(false)
+    val headwayBusy: StateFlow<Boolean> = _headwayBusy.asStateFlow()
+
+    /** 下載結果訊息（成功／失敗原因）；null = 冇嘢要講 */
+    private val _headwayMsg = MutableStateFlow<String?>(null)
+    val headwayMsg: StateFlow<String?> = _headwayMsg.asStateFlow()
+
+    /** 手上班次資料嘅路線數（0 = 未下載） */
+    private val _headwayCount = MutableStateFlow(0)
+    val headwayCount: StateFlow<Int> = _headwayCount.asStateFlow()
+
+    /**
+     * 查呢條路線嘅官方班次間隔。
+     *
+     * 冇資料一律設 `null`，**唔會**影響 [routeTimetable] —— 兩條路完全獨立。
+     */
+    fun loadHeadway(rd: RouteDef) {
+        // 運輸署 GTFS 原檔優先 —— 佢有官方 `end_time`，講得出「表列服務到幾點」；
+        // 冇下載／呢條線官方冇就退回 hkbus 聚合版，行為同以前一樣。
+        _headway.value =
+            com.hketa.app.data.TdHeadway.lookup(rd)
+                ?: com.hketa.app.data.HeadwayDb.lookup(rd)
+    }
+
+    /**
+     * 下載／更新官方班次資料。
+     *
+     * 因為檔案唔細，所以**淨係喺用家撳掣**嗰陣先落，唔會開 App 自動打。
+     * 失敗都只係設 [headwayMsg]，原本功能完全唔受影響。
+     */
+    fun refreshHeadway(force: Boolean = false) {
+        viewModelScope.launch {
+            _headwayBusy.value = true
+            _headwayMsg.value = null
+            val r = com.hketa.app.data.HeadwayDb.refresh(getApplication(), force)
+            _headwayCount.value = r.routeCount
+            _headwayMsg.value = if (r.ok) {
+                getApplication<Application>().getString(
+                    com.hketa.app.R.string.hw_ok, r.routeCount
+                )
+            } else {
+                getApplication<Application>().getString(
+                    com.hketa.app.R.string.hw_fail, r.message
+                )
+            }
+            _headwayBusy.value = false
+            // 資料變咗，重整一次手上嗰條路線（冇開路線頁就唔會有事）
+            _headway.value = null
+        }
+    }
+
+    /** 清除手上嘅班次資料 */
+    fun clearHeadway() {
+        com.hketa.app.data.HeadwayDb.clear(getApplication())
+        _headwayCount.value = 0
+        _headway.value = null
+        _headwayMsg.value = null
+    }
+
+    /**
+     * 讀一次本機嘅班次資料（淨係讀本機，**唔落網**）。
+     *
+     * ⚠️ 刻意**唔**喺 `init` 度 call —— 呢啲 state 嘅宣告喺 `init` 之後，
+     * Kotlin 按宣告順序初始化，喺 `init` 掂佢哋會 NPE。
+     * 所以改由設定頁 `LaunchedEffect` 觸發。
+     */
+    fun ensureHeadway() {
+        val db = com.hketa.app.data.HeadwayDb.load(getApplication())
+        _headwayCount.value = db?.routeCount ?: 0
+    }
+
+    // ── 運輸署 GTFS 原檔：補 hkbus 聚合版缺嘅官方 `end_time` 同例假日表 ──
+
+    /** 係咪下載緊運輸署原檔 */
+    private val _tdHeadwayBusy = MutableStateFlow(false)
+    val tdHeadwayBusy: StateFlow<Boolean> = _tdHeadwayBusy.asStateFlow()
+
+    /** 下載結果訊息；null = 冇嘢要講 */
+    private val _tdHeadwayMsg = MutableStateFlow<String?>(null)
+    val tdHeadwayMsg: StateFlow<String?> = _tdHeadwayMsg.asStateFlow()
+
+    /** 手上有幾多條路線方向（0 = 未下載） */
+    private val _tdHeadwayCount = MutableStateFlow(0)
+    val tdHeadwayCount: StateFlow<Int> = _tdHeadwayCount.asStateFlow()
+
+    /**
+     * 下載／更新運輸署 GTFS 原檔。
+     *
+     * 檔案唔細（6 個 CSV），所以**淨係喺用家撳掣**嗰陣先落。
+     * 失敗都只係設 [tdHeadwayMsg]，[HeadwayDb] 同 ETA 推算完全唔受影響。
+     */
+    fun refreshTdHeadway(force: Boolean = true) {
+        viewModelScope.launch {
+            _tdHeadwayBusy.value = true
+            _tdHeadwayMsg.value = null
+            val r = com.hketa.app.data.TdHeadway.refresh(getApplication(), force)
+            _tdHeadwayCount.value = r.routeCount
+            _tdHeadwayMsg.value = if (r.ok) {
+                getApplication<Application>().getString(
+                    com.hketa.app.R.string.hw_ok, r.routeCount
+                )
+            } else {
+                getApplication<Application>().getString(
+                    com.hketa.app.R.string.hw_fail, r.message
+                )
+            }
+            _tdHeadwayBusy.value = false
+            // 資料變咗，重整一次手上嗰條路線
+            _headway.value = null
+        }
+    }
+
+    /** 清除手上嘅運輸署資料 */
+    fun clearTdHeadway() {
+        com.hketa.app.data.TdHeadway.clear(getApplication())
+        _tdHeadwayCount.value = 0
+        _headway.value = null
+        _tdHeadwayMsg.value = null
+    }
+
+    /** 讀一次本機嘅運輸署資料（淨係讀本機，**唔落網**） */
+    fun ensureTdHeadway() {
+        val db = com.hketa.app.data.TdHeadway.load(getApplication())
+        _tdHeadwayCount.value = db?.entries?.size ?: 0
+    }
+
     private val _routeNoticesBusy = MutableStateFlow(false)
     val routeNoticesBusy: StateFlow<Boolean> = _routeNoticesBusy.asStateFlow()
 
@@ -1916,6 +2056,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _routeTimetable.value = null
             _timetableOffline.value = false
             _timetableCacheAt.value = 0L
+            // ★ 官方班次間隔（有就顯示，冇就 null，唔影響上面）
+            loadHeadway(rd)
 
             // ★ 加速層：班次表要打 12 個站，成本最高。
             //   90 秒內睇過就即出，唔使再等 12 個請求。
@@ -2914,21 +3056,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val head = cards
         if (head.isEmpty()) return
 
-        // 逐張卡出畫面（解決「班次分幾批先出齊」）：
-        // 以前要等**全部**卡抓完先一次過寫落 _nearby，繁忙嘅大站
-        // （十幾條城巴線）會拖慢晒成個列表。而家每完成一張即刻 publish，
-        // 最近的站會第一時間見到班次，後面嘅慢慢補上。
-        val done = java.util.concurrent.ConcurrentHashMap<String, NearbyStop>()
-
         val withEtas = coroutineScope {
             head.map { card ->
                 async {
                     val pairs = routeDefsAtStop(idx, card.stop, nameMap, lat, lon, radiusM)
                     val raw = fetchCardEtas(pairs)
-                    val filled = card.copy(etas = pickNearestPerDirection(raw, pairs))
-                    done[nearbyKey(filled.stop)] = filled
-                    publishNearby(cards, done)
-                    filled
+                    card.copy(etas = pickNearestPerDirection(raw, pairs))
                 }
             }.awaitAll()
         }
@@ -2936,25 +3069,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 寫返入 _nearby：保留原本順序，後段冇處理嘅卡照舊
         val merged = ArrayList<NearbyStop>(cards.size)
         val byKey = HashMap<String, NearbyStop>()
-        for (c in withEtas) byKey[nearbyKey(c.stop)] = c
+        for (c in withEtas) byKey["${c.stop.op.name}|${c.stop.id}"] = c
         for (c in cards) {
-            merged.add(byKey[nearbyKey(c.stop)] ?: c)
+            merged.add(byKey["${c.stop.op.name}|${c.stop.id}"] ?: c)
         }
         _nearby.value = merged
         // 加速層嗰份唔寫 ETA —— 班次係即時嘅，寫咗會出舊資料
-    }
-
-    private fun nearbyKey(s: StopDef): String = "${s.op.name}|${s.id}"
-
-    /**
-     * 將「已經抓完嘅卡」併返入 [_nearby]，保留原本（按距離排）嘅順序。
-     * 會喺每張卡抓完嗰陣叫一次，所以班次係**逐個補上**而唔係一次過出。
-     */
-    private fun publishNearby(cards: List<NearbyStop>, done: Map<String, NearbyStop>) {
-        if (cards.isEmpty()) return
-        val merged = ArrayList<NearbyStop>(cards.size)
-        for (c in cards) merged.add(done[nearbyKey(c.stop)] ?: c)
-        _nearby.value = merged
     }
 
     /**
