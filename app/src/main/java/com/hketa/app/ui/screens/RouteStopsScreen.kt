@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hketa.app.R
+import com.hketa.app.data.HeadwayDb
 import com.hketa.app.data.Notice
 import com.hketa.app.data.StopDef
 import com.hketa.app.ui.Muted
@@ -64,6 +65,8 @@ fun RouteStopsScreen(
     val timetable by vm.routeTimetable.collectAsState()
     val notices by vm.routeNotices.collectAsState()
     val noticesBusy by vm.routeNoticesBusy.collectAsState()
+    /** 官方班次間隔（第三方資料）；null = 冇，UI 行返原本 */
+    val headway by vm.headway.collectAsState()
 
     var tab by remember { mutableStateOf(TAB_STOPS) }
     var showMap by remember { mutableStateOf(false) }
@@ -307,6 +310,9 @@ private fun TimetableTab(
                     Spacer(Modifier.height(4.dp))
                 }
 
+                // ★ 官方班次間隔（第三方資料）
+                OfficialHeadwayBlock(headway)
+
                 val f = timetable.firstObserved
                 val l = timetable.lastObserved
                 if (f != null && l != null) {
@@ -457,6 +463,47 @@ private fun NoticesTab(
             }
         }
     }
+}
+
+/**
+ * 官方班次間隔（第三方資料：運輸署 GTFS，經 data.hkbus.app 聚合）。
+ *
+ * 冇資料（未下載／呢條路線官方冇）就淨係顯示一句提示 ——
+ * 上面嘅 ETA 推算班次間隔同觀察累積**照舊**，唔會因為冇第三方資料就冇嘢睇。
+ *
+ * ⚠️ 幾個講法刻意保守：
+ * - `hw_service` 係「表列營運時段」，**唔係**官方頭／尾班車
+ *   （freq 淨係畀時段起點，冇 end_time）
+ * - `hw_past` 講「已過表列時段」，**唔講**「已過尾班車」
+ */
+@Composable
+private fun OfficialHeadwayBlock(hw: HeadwayDb.Official?) {
+    if (hw == null) {
+        Muted(stringResource(R.string.hw_absent))
+        return
+    }
+    hw.rangeText?.let { range ->
+        Text(
+            stringResource(R.string.hw_official, range),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+    val from = hw.from
+    val to = hw.to
+    if (from != null && to != null) {
+        Muted(stringResource(R.string.hw_service, from, to))
+    }
+    when {
+        hw.closedToday -> Muted(stringResource(R.string.hw_closed_today))
+        !hw.running -> Muted(stringResource(R.string.hw_not_started))
+        // 運輸署原檔有官方 end_time，所以可以講得實淨啲
+        hw.pastTable && hw.endKnown -> Muted(stringResource(R.string.hw_past_td, hw.to ?: ""))
+        hw.pastTable -> Muted(stringResource(R.string.hw_past))
+    }
+    if (hw.holiday) Muted(stringResource(R.string.hw_holiday))
+    if (!hw.boundMatched) Muted(stringResource(R.string.hw_bound_all))
+    Muted(stringResource(R.string.hw_source, hw.source))
 }
 
 private fun openUrl(context: android.content.Context, url: String) {

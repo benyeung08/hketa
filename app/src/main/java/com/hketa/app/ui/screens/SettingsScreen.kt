@@ -71,8 +71,22 @@ fun SettingsScreen(
     // ★ 撳版本膠囊 → 彈出「檢查更新」對話框（第二張圖嗰個）
     var showUpdateDialog by remember { mutableStateOf(false) }
 
+    // ---- 官方班次資料（第三方）----
+    val hwCount by vm.headwayCount.collectAsState()
+    val hwBusy by vm.headwayBusy.collectAsState()
+    val hwMsg by vm.headwayMsg.collectAsState()
+
+    // ---- 官方班次資料（運輸署 GTFS 原檔：有官方 end_time ＋ 例假日表）----
+    val tdCount by vm.tdHeadwayCount.collectAsState()
+    val tdBusy by vm.tdHeadwayBusy.collectAsState()
+    val tdMsg by vm.tdHeadwayMsg.collectAsState()
+
     // 一入設定頁就靜默檢查一次（節流；手動撳掣可以即時再查）
     LaunchedEffect(Unit) { vm.checkUpdate() }
+    // 讀一次本機嘅班次資料（唔落網）。刻意唔喺 vm 嘅 init 度做 ——
+    // 嗰啲 state 宣告喺 init 之後，Kotlin 按順序初始化會 NPE。
+    LaunchedEffect(Unit) { vm.ensureHeadway() }
+    LaunchedEffect(Unit) { vm.ensureTdHeadway() }
 
     Column(
         modifier = Modifier
@@ -221,6 +235,88 @@ fun SettingsScreen(
         // 成個 APK 嘅「記憶體與儲存」由邊度擁有 —— 收藏／ETA／班次表／輕鐵特別班次
         // 全部住喺 Rust 嘅 native heap，.so 唔喺度就各 store 行返原本寫法
         Muted(stringResource(R.string.settings_store, vm.storeLabel()))
+
+        // ---- 官方班次資料（第三方：運輸署 GTFS 經 data.hkbus.app 聚合）----
+        // 冇下載都唔影響功能 —— 班次間隔照舊由 ETA 推算、營運時段照舊觀察累積。
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.settings_hw_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        if (hwCount > 0) {
+            Muted(
+                stringResource(
+                    R.string.settings_hw_loaded,
+                    hwCount,
+                    com.hketa.app.data.HeadwayDb.SOURCE_LABEL
+                )
+            )
+        } else {
+            Muted(stringResource(R.string.settings_hw_absent))
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(
+            onClick = { vm.refreshHeadway(force = true) },
+            enabled = !hwBusy && !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (hwBusy) stringResource(R.string.hw_downloading)
+                else stringResource(R.string.settings_hw_download)
+            )
+        }
+        if (hwCount > 0) {
+            OutlinedButton(
+                onClick = { vm.clearHeadway() },
+                enabled = !hwBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(stringResource(R.string.settings_hw_clear)) }
+        }
+        hwMsg?.let { Muted(it) }
+
+        // ---- 官方班次資料（運輸署 GTFS 原檔）----
+        // 多咗兩樣 hkbus 聚合版冇嘅嘢：官方 `end_time`（講得出表列服務到幾點）
+        // 同 `calendar_dates` 例假日表（今日係咪真係有班次）。
+        // 一樣係 opt-in：檔案唔細，淨係撳掣先落。冇下載就照用上面嗰份。
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.settings_td_hw_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        if (tdCount > 0) {
+            Muted(
+                stringResource(
+                    R.string.settings_td_hw_loaded,
+                    tdCount,
+                    com.hketa.app.data.TdHeadway.SOURCE_LABEL
+                )
+            )
+        } else {
+            Muted(stringResource(R.string.settings_td_hw_hint))
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(
+            onClick = { vm.refreshTdHeadway() },
+            enabled = !tdBusy && !hwBusy && !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (tdBusy) stringResource(R.string.hw_downloading)
+                else stringResource(R.string.settings_td_hw_download)
+            )
+        }
+        if (tdCount > 0) {
+            OutlinedButton(
+                onClick = { vm.clearTdHeadway() },
+                enabled = !tdBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(stringResource(R.string.settings_hw_clear)) }
+        }
+        tdMsg?.let { Muted(it) }
 
         // ---- 索引診斷：講清楚邊個營辦商點解係 0 ----
         val diag = vm.indexErrors.collectAsState().value
