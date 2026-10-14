@@ -41,7 +41,7 @@ import com.hketa.app.vm.AppViewModel
 fun NearbyScreen(
     vm: AppViewModel,
     onNeedLocation: (callback: (Boolean) -> Unit) -> Unit,
-    onOpenStop: (StopDef) -> Unit
+    onOpenStops: (List<StopDef>) -> Unit
 ) {
     val context = LocalContext.current
     val nearby by vm.nearby.collectAsState()
@@ -84,7 +84,7 @@ fun NearbyScreen(
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(items = nearby, key = { "${it.stop.op.name}|${it.stop.id}" }) { item ->
                 Card(
-                    onClick = { onOpenStop(item.stop) },
+                    onClick = { onOpenStops(item.mergedStops.ifEmpty { listOf(item.stop) }) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 3.dp)
