@@ -16,16 +16,26 @@ import java.util.concurrent.TimeUnit
  * 所以就算瓦片已經有離線包（[TileCache]），**每次開地圖都仍然要上網攞 JS** ——
  * 一冇網就連 JS 都載唔到，直接退回示意圖。
  *
- * 做法：第一次成功攞到就寫落 `filesDir/hketa_assets/`，之後
- * `shouldInterceptRequest` 攔截 `unpkg.com` 嘅請求、直接用本地副本。
- * 所以**睇過一次地圖之後，連 JS 都唔使再上網** —— 配合瓦片包就係真正離線。
+ * 而家分兩層：
  *
- * 儲存時會校驗內容（CSS 要有 `.leaflet-`、JS 要有 `L.map`），
- * 避免攞到錯誤頁／空檔當正貨。
+ * 1. **APK 內置**：`leaflet.css`／`leaflet.js` 直接打包喺
+ *    `assets/hketa_offline/`，裝完 app 已經喺機入面 ——
+ *    **第一次開地圖都唔使上網**（[seedFromAssets]）。
+ * 2. 網絡快取：網絡版有新嘅先會再攞，攞到一樣校驗過先寫落
+ *    `filesDir/hketa_assets/`。
+ *
+ * `shouldInterceptRequest` 攔截 `unpkg.com` 嘅請求、直接用本地副本。
+ *
+ * **舊版有個 bug**：JS 嘅校驗係 `contains("L.map")`，但官方 minified
+ * `leaflet.js` **根本冇 `L.map` 呢個字串**（得 `map=function`）—
+ * 所以每次下載完都校驗失敗、寫唔落本地，結果「睇過一次就離線」從來冇生效過。
+ * 而家改用 [Spec.check] 入面嗰條真正啱嘅規則。
  */
 class AssetCache(context: Context) {
 
-    private val dir = File(context.filesDir, "hketa_assets").apply { mkdirs() }
+    private val appCtx = context.applicationContext
+
+    private val dir = File(appCtx.filesDir, "hketa_assets").apply { mkdirs() }
 
     /** 防並發：幾個 WebView 同時開都只會下載一次 */
     private val mutex = Mutex()
@@ -51,8 +61,15 @@ class AssetCache(context: Context) {
             url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
             file = "leaflet.js",
             mime = "application/javascript",
-            // Leaflet 一定有 `L.map`；錯誤頁／HTML 唔會有
-            check = { it.contains("L.map") || it.contains("L.Map") }
+            // 官方 minified 版冇 `L.map`（得 `map=function`），
+            // 所以淨係 check `L.map` 會**永遠校驗失敗**（舊版嘅 bug）。
+            // 呢度同時認 `L.map`（非 minified）／`map=function`（minified）／
+            // `L.Map`（類定義），錯誤頁同 HTML 一條都唔會有。
+            check = {
+                it.contains("Leaflet") &&
+                    (it.contains("L.map") || it.contains("L.Map") ||
+                        it.contains("map=function"))
+            }
         )
     )
 
@@ -72,7 +89,31 @@ class AssetCache(context: Context) {
      */
     fun localFor(url: String): File? {
         val f = localOf(url) ?: return null
+        if (f.exists() && f.length() > 1024L) return f
+        // APK 內置嗰份未搬落 filesDir 就即刻搬（唔使上網）
+        seedFromAssets()
         return if (f.exists() && f.length() > 1024L) f else null
+    }
+
+    /**
+     * 由 APK 嘅 `assets/hketa_offline/` 搬份內置副本落 `filesDir`。
+     *
+     * 裝完 app 就有，所以**第一次開地圖都唔使上網**。已經有本地副本（例如
+     * 早前下載過）就唔會覆蓋，費事將新版降級做內置版。
+     */
+    private fun seedFromAssets() {
+        for (spec in assets) {
+            val f = File(dir, spec.file)
+            if (f.exists() && f.length() > 1024L) continue
+            runCatching {
+                appCtx.assets.open("hketa_offline/${spec.file}").use { inp ->
+                    val tmp = File(dir, spec.file + ".tmp")
+                    tmp.outputStream().use { out -> inp.copyTo(out) }
+                    if (tmp.exists() && tmp.length() > 1024L) tmp.renameTo(f)
+                    else tmp.delete()
+                }
+            }
+        }
     }
 
     fun mimeFor(url: String): String =
@@ -91,6 +132,8 @@ class AssetCache(context: Context) {
      */
     suspend fun ensureDownloaded(): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
+            // 先搬 APK 內置嗰份：搬完通常已經齊，淨低嘅先需要上網
+            seedFromAssets()
             var all = true
             for (spec in assets) {
                 val f = File(dir, spec.file)
