@@ -125,7 +125,8 @@ fun RouteStopsScreen(
             TAB_TIMETABLE -> TimetableTab(
                 vm = vm,
                 timetable = timetable,
-                busy = busy
+                busy = busy,
+                headway = headway
             )
             TAB_NOTICES -> NoticesTab(
                 notices = notices,
@@ -208,7 +209,8 @@ private fun StopsTab(
 private fun TimetableTab(
     vm: AppViewModel,
     timetable: com.hketa.app.data.RouteTimetable?,
-    busy: Boolean
+    busy: Boolean,
+    headway: com.hketa.app.data.HeadwayDb.Official? = null
 ) {
     val route by vm.selectedRoute.collectAsState()
     // 離線快取：冇網／抓取失敗嗰陣顯示嘅係上次嗰份

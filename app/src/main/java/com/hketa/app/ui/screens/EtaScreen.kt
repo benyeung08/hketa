@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hketa.app.R
+import com.hketa.app.data.Operator
 import com.hketa.app.ui.Muted
 import com.hketa.app.ui.codeLabel
 import com.hketa.app.ui.displayName
@@ -69,6 +70,9 @@ fun EtaScreen(
     else false
     val dash = stringResource(R.string.eta_dash)
     val soon = stringResource(R.string.eta_soon)
+
+    // 聯營路線：班次嚟自兩間巴士公司，要標明邊班係邊間
+    val multiOp = remember(etas) { etas.map { it.op }.distinct().size > 1 }
 
     /**
      * 淨係顯示一個方向 —— 解決「兩個方向嘅班次撈埋一齊」。
@@ -250,11 +254,40 @@ fun EtaScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "${e.route}　" + stringResource(R.string.route_bound_to, e.dest),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (multiOp) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = when (e.op) {
+                                                Operator.KMB -> MaterialTheme.colorScheme.primary
+                                                Operator.CTB -> MaterialTheme.colorScheme.tertiary
+                                                else -> MaterialTheme.colorScheme.secondary
+                                            }.copy(alpha = 0.9f)
+                                        ) {
+                                            Text(
+                                                text = e.op.labelText(),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = when (e.op) {
+                                                    Operator.KMB -> MaterialTheme.colorScheme.onPrimary
+                                                    Operator.CTB -> MaterialTheme.colorScheme.onTertiary
+                                                    else -> MaterialTheme.colorScheme.onSecondary
+                                                },
+                                                modifier = Modifier.padding(
+                                                    horizontal = 6.dp,
+                                                    vertical = 2.dp
+                                                )
+                                            )
+                                        }
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text(
+                                        text = "${e.route}　" +
+                                            stringResource(R.string.route_bound_to, e.dest),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                                 if (e.remark.isNotBlank()) Muted(e.remark)
                                 if (e.clock.isNotBlank()) Muted(stringResource(R.string.eta_scheduled, e.clock))
                             }
