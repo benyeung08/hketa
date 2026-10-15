@@ -117,4 +117,91 @@ object UpdateChecker {
     /** 附件大小（MB，一位小數；0 表示冇資料） */
     fun sizeMb(asset: ReleaseAsset?): Float =
         if (asset == null || asset.size <= 0L) 0f else asset.size / 1024f / 1024f
+
+    /**
+     * **彈窗用嘅「短版」更新說明** —— 由 GitHub Release body 抽出重點，
+     * 淨係留幾句人睇得明嘅要點，**唔會**塞成段 Markdown 同對照表落去。
+     *
+     * 點解要呢個：完整 Release notes 係開發者寫嘅長文，入面有大量
+     * `| 之前 | 而家 |` 對照表同程式碼塊。放落一個細對話框入面要捲好耐，
+     * 手機上根本睇唔到重點（就係原先嗰個「發現新版本」彈窗嘅情況）。
+     *
+     * 規則（全部刻意寫死，改之前請諗清楚）：
+     *  1. **掉走表格行**（`|` 開頭）—— 對照表喺細螢幕淨係得噪音
+     *  2. **掉走分隔線**（`---`）、**標題**（`#`）、**HTML 註解**、**程式碼塊**
+     *  3. **揀嘅次序**（呢個次序係刻意嘅，唔好掉亂）：
+     *       a. 整行加粗嘅**編號小標題**（`**① 領域核心改用 Rust**`）← 最優先
+     *       b. 其他整行加粗嘅行
+     *       c. `- ` / `* ` / `1. ` bullet 要點
+     *       d. 散文
+     *
+     *     **點解 bullet 唔排第一**：Release notes 嘅「已知限制」嗰段一樣係
+     *     `- **xxx**` bullet，淨揀 bullet 嘅話彈窗會變「限制清單」——
+     *     用家睇完成個 update 淨係見到缺點，會以為今版淨係得衰嘢。
+     */
+    fun briefNotes(body: String, maxLines: Int = 8, maxChars: Int = 64): String? {
+        val raw = body.trim()
+        if (raw.isBlank()) return null
+
+        // 掉走所有「結構性」嘢，淨返有語義嘅行
+        val lines = ArrayList<String>()
+        var inCode = false
+        for (line in raw.lineSequence()) {
+            val t = line.trim()
+            if (t.startsWith("```")) { inCode = !inCode; continue }
+            if (inCode) continue
+            if (t.startsWith("|")) continue
+            if (t.matches(Regex("-{3,}|={3,}|\\*{3,}"))) continue
+            if (t.startsWith("#")) continue
+            if (t.startsWith("<!--")) continue
+            if (t.isBlank()) continue
+            lines.add(t)
+        }
+        if (lines.isEmpty()) return null
+
+        fun strip(t: String): String {
+            val bullet = t.removePrefix("- ").removePrefix("* ").trim()
+            val numbered = bullet.replace(Regex("^\\d+[.)]\\s*"), "")
+            val circled = numbered.replace(Regex("^[①-\u20b4]\\s*"), "")
+            return circled
+                .replace("**", "")
+                .replace("`", "")
+                .trim()
+        }
+
+        // ★ 揀嘅次序好緊要 —— 唔可以淨係「有 bullet 就用 bullet」：
+        //   Release notes 入面「已知限制」嗰段都係 `- **xxx**` bullet，
+        //   冇腦淨揀 bullet 嘅話，彈窗會變成「限制清單」，用家睇完以為淨係得缺點。
+        //   所以「整行加粗嘅編號小標題」（即 `**① 領域核心改用 Rust**`）優先級最高。
+        val numbered = lines.mapNotNull { t ->
+            // 整行加粗（`**…**`）先算小標題 —— `**一定會回退**：xxx` 呢類唔算
+            if (!t.startsWith("**") || !t.endsWith("**") || t.length < 6) null
+            else strip(t).takeIf { it.matches(Regex("^[①-\u20b4].*")) || it.matches(Regex("^\\d+[.)].*")) }
+        }
+        val headings = lines.mapNotNull { t ->
+            if (!t.startsWith("**") || !t.endsWith("**") || t.length < 6) null
+            else strip(t).takeIf { it.isNotBlank() && it.length >= 4 }
+        }
+        val bullets = lines.mapNotNull { t ->
+            val isBullet = t.startsWith("- ") || t.startsWith("* ") ||
+                t.matches(Regex("^\\d+[.)]\\s+.*")) || t.matches(Regex("^[①-\u20b4]\\s*.*"))
+            if (!isBullet) null else strip(t).takeIf { it.isNotBlank() }
+        }
+        val prose = lines.map { strip(it) }.filter { it.isNotBlank() }
+
+        val picked = when {
+            numbered.size >= 2 -> numbered
+            headings.size >= 2 -> headings
+            bullets.size >= 2 -> bullets
+            numbered.isNotEmpty() -> numbered
+            headings.isNotEmpty() -> headings
+            else -> prose
+        }
+        if (picked.isEmpty()) return null
+
+        return picked.take(maxLines).joinToString("\n") { p ->
+            if (p.length > maxChars) p.take(maxChars - 1) + "\u2026" else p
+        }
+    }
+
 }
