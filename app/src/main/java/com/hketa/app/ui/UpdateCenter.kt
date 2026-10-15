@@ -107,6 +107,10 @@ fun UpdateDialog(
     val context = LocalContext.current
     val lang = AppLocale.current()
     val localizedNotes = remember(notes, lang) { UpdateChecker.localizeBody(notes, lang) }
+    // ★ 彈窗淨顯示「短版」要點：掉走 Markdown 表格 / 標題 / 程式碼塊。
+    //   完整 Release notes（第一張圖嗰段長文＋對照表）交畀「版本歷史」睇，
+    //   唔好塞落一個細對話框入面捲好耐。
+    val briefNotes = remember(localizedNotes) { UpdateChecker.briefNotes(localizedNotes) }
 
     // 由 PackageManager 讀版本名 / versionCode，同狀態欄完全一致
     val (versionName, versionCode) = com.hketa.app.ui.versionInfo()
@@ -255,8 +259,8 @@ fun UpdateDialog(
                     else -> Unit
                 }
 
-                // Release notes（有新版本先顯示）
-                if (state == UpdateState.AVAILABLE && localizedNotes.isNotBlank()) {
+                // Release notes（有新版本先顯示）—— **只顯示短版要點**
+                if (state == UpdateState.AVAILABLE && briefNotes != null) {
                     Spacer(Modifier.height(10.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
@@ -267,13 +271,19 @@ fun UpdateDialog(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = localizedNotes,
+                        text = briefNotes,
                         style = MaterialTheme.typography.bodySmall,
-                        lineHeight = 17.sp,
-                        modifier = Modifier.heightIn(max = 180.dp).verticalScroll(
-                            rememberScrollState()
-                        )
+                        lineHeight = 17.sp
                     )
+                    // 想睇完整版（連同對照表）→ 開版本歷史
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = onOpenHistory) {
+                        Text(
+                            stringResource(R.string.update_notes_full),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(14.dp))
