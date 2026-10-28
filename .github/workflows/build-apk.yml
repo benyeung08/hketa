@@ -275,11 +275,18 @@ jobs:
           echo "mode=build" >> "$GITHUB_OUTPUT"
 
           echo "--- 2) 搵／裝 NDK ---"
+          # Android 17（API 37）／16 KB page size 要求 NDK r27 或以上：
+          #   * r27 起 lld 先完整支援 -z max-page-size=16384
+          #   * r26 砌到，但對 16 KB ELF 對齊嘅處理未完整
+          # 所以優先 27.2，裝唔到先退回 26.1（照出，但可能冇 16 KB 對齊）。
+          WANT_NDK="27.2.12479018"
+          FALLBACK_NDK="26.1.10909125"
           if [ ! -d "${ANDROID_HOME}/ndk" ] || [ -z "$(ls -A "${ANDROID_HOME}/ndk" 2>/dev/null)" ]; then
             CM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
             [ -x "$CM" ] || CM=$(command -v sdkmanager || true)
             if [ -n "$CM" ]; then
-              yes | "$CM" --install "ndk;26.1.10909125" || \
+              yes | "$CM" --install "ndk;$WANT_NDK" || \
+                yes | "$CM" --install "ndk;$FALLBACK_NDK" || \
                 yes | "$CM" --install "ndk-bundle" || true
             fi
           fi
@@ -302,6 +309,47 @@ jobs:
           cd ..
           echo "--- 產出 ---"
           ls -la "$SO"/*/libhketa_store.so
+
+      # ── 16 KB page size 對齊檢查 ──────────────────────────────
+      # Android 15+ 支援 16 KB page，Android 17 設備普遍採用；Play 自
+      # 2025-11-01 起要求含 native code 嘅 App 必須支援。
+      # .so 嘅 LOAD 段若仍係 4 KB 對齊，喺 16 KB 裝置上 dlopen 會失敗
+      # → System.loadLibrary 抛 UnsatisfiedLinkError → 內核靜默回退。
+      # 呢類失敗喺 CI 完全睇唔出（編譯成功、打包成功），只會喺用戶機上
+      # 「時靈時唔靈」，所以一定要喺呢度驗。
+      - name: Verify 16KB page alignment
+        id: verify_16kb
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          SO=app/src/main/jniLibs
+          READELF=""
+          for c in llvm-readelf readelf "${ANDROID_HOME}/ndk/"*/toolchains/llvm/prebuilt/*/bin/llvm-readelf; do
+            command -v "$c" >/dev/null 2>&1 && READELF="$c" && break
+            [ -x "$c" ] && READELF="$c" && break
+          done
+          if [ -z "$READELF" ]; then
+            echo "::warning::搵唔到 readelf —— 冇得驗 16 KB 對齊（唔代表有問題）"
+            exit 0
+          fi
+          echo "用 $READELF"
+          bad=0
+          for f in $(find "$SO" -name 'libhketa_store.so' 2>/dev/null | sort); do
+            # 抽出所有 LOAD 段嘅 Align 欄
+            aligns=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{for(i=1;i<=NF;i++) if($i ~ /^0x[0-9a-f]+$/ && $(i-1)=="Align") print $i}' | sort -u | tr '\n' ' ')
+            echo "  $(dirname "$f" | xargs basename): Align = ${aligns:-（讀唔到）}"
+            # 0x1000 = 4096（4 KB，唔合格）；0x4000+ = 16384（16 KB，合格）
+            if echo "$aligns" | grep -q "0x1000"; then
+              echo "    ::warning::呢個 .so 仍然係 4 KB 對齊 —— 16 KB 裝置會載唔入"
+              bad=1
+            fi
+          done
+          if [ "$bad" = "1" ]; then
+            echo "::warning::有 .so 未做 16 KB 對齊。確認 rust/.cargo/config.toml 有冇上傳（NDK 要 r27+）"
+          else
+            echo "16 KB 對齊檢查通過 ✔"
+          fi
 
       - name: Verify .so (never silent)
         id: verify_so
@@ -865,6 +913,53 @@ jobs:
               || { echo "::error::keystore is invalid"; exit 1; }
           fi
 
+      # ─────────────────────────────────────────────────────────────
+      # 單元測試 —— 同 compileReleaseKotlin **平級**，紅咗就唔出包。
+      #
+      # 呢度同其餘 preflight 唔同：上面嗰啲（引號、塊註釋、缺檔）全部係
+      # 文字檢查，有機會誤判，所以降咗做 warning；但單測係**真正嘅
+      # 正確性測試**，唔可以降級 —— 否則呢個 step 就冇意義。
+      #
+      # 測嘅係兩樣嘢：
+      #   * DataGuard      —— 壞資料唔可以覆蓋好資料（防聚合檔倒退）
+      #   * RustKernel     —— Kotlin 回退版嘅 golden values（parity 嘅一半）
+      #
+      # 呢啲測試**唔使 Robolectric**，所以淨係會下載 JUnit，唔會拖慢 CI。
+      - name: Run unit tests
+        id: unittest
+        run: |
+          set -o pipefail
+          # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
+          "$GRADLE_BIN" :app:testReleaseUnitTest --no-daemon 2>&1 | tee /tmp/unit-test.log
+
+      # 把測試結果寫入 job summary —— 唔使下載 artifact 都睇到「跑咗幾個、錯咗邊個」
+      - name: Report unit test results
+        if: always()
+        run: |
+          echo "### 單元測試" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          R="app/build/test-results/testReleaseUnitTest"
+          if [ -d "$R" ]; then
+            TOTAL=0; FAILED=0
+            for f in "$R"/*.xml; do
+              [ -f "$f" ] || continue
+              # <testsuite name="..." tests="12" skipped="0" failures="0" errors="0">
+              T=$(sed -n 's/.*tests="\([0-9]*\)".*/\1/p' "$f" | head -1)
+              F=$(sed -n 's/.*failures="\([0-9]*\)".*/\1/p' "$f" | head -1)
+              E=$(sed -n 's/.*errors="\([0-9]*\)".*/\1/p' "$f" | head -1)
+              TOTAL=$((TOTAL + ${T:-0}))
+              FAILED=$((FAILED + ${F:-0} + ${E:-0}))
+            done
+            echo "- 跑咗 **$TOTAL** 個測試" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$FAILED" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
+              echo "- 全部通過 ✅" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- **$FAILED 個失敗** ❌ —— 睇下面 step log" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- ⚠️ 搵唔到測試報告目錄（係咪根本冇跑到？）" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # 一定要 set -o pipefail：淨係寫 `gradle ... | tee log` 嘅話，
       # 管道退出碼係 tee（永遠 0），gradle 失敗會被吞掉、步驟顯示綠剔。
       - name: Build Release APK
@@ -920,6 +1015,7 @@ jobs:
           echo "|---|---|"
           echo "| Rust 工具鏈 + 源碼 | ${{ steps.rust.outcome }} |"
           echo "| Android SDK 元件 | ${{ steps.sdk.outcome }} |"
+          echo "| 單元測試 | ${{ steps.unittest.outcome }} |"
           echo "| Gradle build | ${{ steps.gradle.outcome }} |"
           echo "| 收集 APK | ${{ steps.collect.outcome }} |"
           echo ""
