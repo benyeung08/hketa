@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Config（Android 7.0 / API 24 起；本 App minSdk 26，必定生效）
+
+  點解要呢份檔：
+    ① 官方已預告 android:usesCleartextTraffic 會被棄用，要求改用 NSC。
+       呢度取代 Manifest 入面嗰行 usesCleartextTraffic="false"。
+    ② Android 17（targetSdk 37）起 Certificate Transparency（CT）**默認啟用**
+       （Android 16 時要 App 自己 opt-in）。CT 要求 TLS 憑證附帶已公開嘅
+       SCT 記錄；冇 SCT 嘅憑證連線會失敗。
+
+  本 App 連出去嘅全部係政府／公共資料 HTTPS 端點：
+    data.etabus.gov.hk        rt.data.gov.hk       data.etagmb.gov.hk
+    static.data.gov.hk        www.kmb.hk           www.citybus.com.hk
+    www.nlb.com.hk            h2-app-rr.hkemobility.gov.hk
+    data.hkbus.app            unpkg.com（Leaflet）
+  呢啲都係公開信任 CA 簽發、正常入 CT log 嘅憑證，CT 默認開啟唔會影響佢哋。
+
+  免得將來有邊個端點唔合規搞到成個 App 攞唔到資料，呢度預留咗註解好嘅
+  豁免位（預設全部關閉 —— **唔會**隨便關掉 CT）。真係撞到先逐個開。
+-->
+<network-security-config>
+
+    <!-- 全 App 預設：唔准明文（同以前 usesCleartextTraffic="false" 一樣），
+         並且納入系統信任嘅 CA。 -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+      ─── Certificate Transparency（CT）豁免，預設**全部註解掉** ───
+      Android 17 起 CT 默認開啟。若將來某個端點因為憑證冇 SCT 而連唔上，
+      先喺度為**嗰一個**域名開豁免，而唔好關晒成個 App 嘅 CT。
+
+      開法（把下面整段 uncomment，並換成出事嗰個域名）：
+
+      <domain-config>
+          <domain includeSubdomains="true">example.gov.hk</domain>
+          <certificate-transparency enabled="false" />
+      </domain-config>
+
+      注意：
+        * `certificate-transparency` 元素要 API 36+ 先認得；舊系統會當睇唔見，
+          即係低版本照行舊行為，唔會報錯。
+        * 開豁免前，**先確認**係咪真係憑證問題（用 SSL Labs / crt.sh 查有冇 SCT），
+          因為更多時候係對方換咗 CA 或者憑證鏈唔完整。
+    -->
+
+</network-security-config>
