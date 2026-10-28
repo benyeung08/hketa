@@ -386,8 +386,20 @@ impl Index {
             Ok(())
         };
 
+        // ★ 防止損壞／惡意嘅索引檔 OOM：
+        //   n_str 係由檔入面讀出嚟嘅 u32，最大可以去到 4,294,967,295。
+        //   直接 `Vec::with_capacity(n_str)` 會即刻嘗試 allocate 幾十 GB
+        //   → allocation failure → **abort**，而 abort 喺 native 層係冇得
+        //   被 Kotlin catch 嘅，App 會直接閃退（唔係 exception）。
+        //   而家按「剩餘位元組 ÷ 每項最少佔幾多個 byte」封頂：
+        //   一個 String 最少都要 2 byte 長度 + 內容，所以 n 唔可能大過 rest.len()。
+        let cap = |n: usize, min_bytes: usize| -> usize {
+            if min_bytes == 0 { n } else { n.min(rest.len() / min_bytes + 1) }
+        };
+
         need(4, &mut o)?;
         let n_str = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        let n_str = cap(n_str, 2);
         let mut strings: Vec<String> = Vec::with_capacity(n_str);
         for _ in 0..n_str {
             need(2, &mut o)?;
@@ -400,6 +412,8 @@ impl Index {
 
         need(4, &mut o)?;
         let n_routes = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        // 每筆 Route 最少 1(op) + 7×varint(各 ≥1) + 1(bound) = 9 byte
+        let n_routes = cap(n_routes, 9);
         let mut routes: Vec<Route> = Vec::with_capacity(n_routes);
         for _ in 0..n_routes {
             need(1, &mut o)?;
@@ -426,6 +440,8 @@ impl Index {
 
         need(4, &mut o)?;
         let n_stops = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        // 每筆 Stop 最少 1(op) + 3×varint + 16(lat/lon) = 20 byte
+        let n_stops = cap(n_stops, 20);
         let mut stops: Vec<Stop> = Vec::with_capacity(n_stops);
         for _ in 0..n_stops {
             need(1, &mut o)?;
@@ -444,6 +460,8 @@ impl Index {
 
         need(4, &mut o)?;
         let n_rs = u32::from_le_bytes(rest[o - 4..o].try_into().unwrap()) as usize;
+        // 每筆 RouteStop 最少 1(op) + 4×varint + 2(seq) + 1(bound) = 7 byte
+        let n_rs = cap(n_rs, 7);
         let mut route_stops: Vec<RouteStop> = Vec::with_capacity(n_rs);
         for _ in 0..n_rs {
             need(1, &mut o)?;
