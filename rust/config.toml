@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────
+# Android 15（API 35）起支援 16 KB page size，Android 17 設備普遍採用。
+# Google Play 自 2025-11-01 起要求「含 native code 嘅 App 必須支援 16 KB」。
+#
+# 問題：ELF 嘅 LOAD 段預設按 4 KB（0x1000）對齊。喺 16 KB page 嘅裝置上，
+#       mmap 要求 p_align ≥ page size，否則 dlopen 會失敗 ——
+#       即 System.loadLibrary("hketa_store") 抛 UnsatisfiedLinkError，
+#       Rust 內核靜默回退純 Kotlin（用戶完全唔會知，只係覺得「慢咗」）。
+#
+#       呢個正係「Rust 內核時靈時唔靈」最常被忽略嘅一個原因：
+#       唔係編譯失敗、唔係 .so 冇打包，而係喺某啲機上**載唔入**。
+#
+# 解法：叫 linker 用 16 KB 對齊 LOAD 段。
+#   max-page-size    —— 段對齊上限，設 16384（0x4000）
+#   common-page-size —— 段內對齊，同樣設 16384 避免混合對齊
+#
+# 驗證（NDK 內有 llvm-readelf）：
+#   llvm-readelf -l libhketa_store.so | grep -A1 LOAD
+#   → 睇 Align 一欄係咪 0x4000（而唔係 0x1000）
+# ─────────────────────────────────────────────────────────────
+
+[target.armv7-linux-androideabi]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
+
+[target.aarch64-linux-android]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
+
+[target.x86_64-linux-android]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
+
+[target.i686-linux-android]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
