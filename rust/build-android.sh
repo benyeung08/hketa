@@ -52,6 +52,21 @@ if [[ -z "${NDK_HOME:-}" || ! -d "${NDK_HOME:-}" ]]; then
 fi
 echo "   NDK     : $NDK_HOME"
 export ANDROID_NDK_HOME="$NDK_HOME"
+# NDK r27+ 先完整支援 16 KB page size 對齊
+NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || true)
+NDK_VER=${NDK_VER:-0}
+if (( NDK_VER < 27 )); then echo "⚠ NDK $NDK_VER < 27，建議升 r27+"; fi
+# 16 KB page size 建議 NDK r27+（r26 砌得到但未完整）
+NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || echo 0)
+if [[ -z "$NDK_VER" ]]; then NDK_VER=0; fi
+if (( NDK_VER < 27 )); then echo "⚠ NDK $NDK_VER < 27，建議升 r27+"; fi
+
+# Android 17（API 37）／16 KB page size：建議 NDK r27 或以上。
+# r26 都砌到，但對 16 KB ELF 對齊嘅處理未完整。
+NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || echo "?")
+if [[ "$NDK_VER" =~ ^[0-9]+$ ]] && (( NDK_VER < 27 )); then
+  echo "⚠ NDK 版本 $NDK_VER < 27 —— 16 KB 對齊可能唔完整，建議升級 NDK r27+"
+fi
 
 # ---- 2. 加 target ----
 echo "== 加 Android target =="
@@ -83,6 +98,16 @@ fi
 echo "$FOUND" | while read -r f; do
   echo "  ✔ ${f#$ROOT/}  ($(stat -c%s "$f") bytes)"
 done
+
+# 16 KB page size 對齊（Android 15+ 支援，Android 17 常用，Play 2025-11-01 起要求）
+READELF=$(find "$NDK_HOME" -name 'llvm-readelf' -type f 2>/dev/null | head -1)
+if [[ -n "$READELF" ]]; then
+  echo "== 16 KB 對齊（要見到 0x4000；0x1000 = 4 KB，16 KB 裝置會載唔入）=="
+  for f in $FOUND; do
+    A=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u | tr '\n' ' ')
+    echo "  $(basename "$(dirname "$f")"): ${A:-讀唔到}"
+  done
+fi
 
 cat <<TIP
 
