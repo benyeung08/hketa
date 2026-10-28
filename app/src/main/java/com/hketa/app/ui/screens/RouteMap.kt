@@ -191,11 +191,18 @@ private fun OsmRouteMap(
 /** 生成 Leaflet HTML；站名做基本跳脫，唔會因為引號穿咗個 JS 陣列 */
 private fun buildOsmHtml(stops: List<StopWithSeq>): String {
     val pts = stops.map { it.stop }.filter { it.lat != 0.0 || it.lon != 0.0 }
+    // ★ 站名係用嚟砌 <script> 入面嘅 JS 字串，所以要兩層轉義：
+    //   ① JS 層：\ " ' 換行（唔轉義會整段 JS 壞掉）
+    //   ② HTML 層：`</script` 一定要拆開 —— 如果站名入面有呢個字眼，
+    //      HTML parser 會當 script 已經結束，後面嘅嘢會被當 HTML 執行。
+    //      官方資料正常唔會有，但站名而家亦會由 hkbus 聚合檔補，
+    //      屬第三方來源，防一手。
     fun esc(s: String) = s
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
         .replace("\n", " ")
         .replace("'", "\\'")
+        .replace("</", "<\\/")
 
     val js = pts.joinToString(",") { s -> "[${s.lat},${s.lon},\"${esc(s.name)}\"]" }
 
