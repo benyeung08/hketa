@@ -37,6 +37,8 @@ import com.hketa.app.data.UpdateState
 // 而且因為返回類型推斷唔到，會連帶爆一堆 `Flow<uninferred ERROR CLASS>`、
 // `Unresolved reference 'stop' / 'distM'` 等假錯誤（其實全部係同一個原因）。
 import com.hketa.app.data.RustKernel
+import com.hketa.app.data.TileCache
+import com.hketa.app.data.TilePack
 import com.hketa.app.R
 import com.hketa.app.location.LocationProvider
 import kotlinx.coroutines.delay
@@ -489,6 +491,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 淨係當「冇索引」，之後 autoRepairIfNeeded() 會自動重建
         indexJob = viewModelScope.launch { runCatching { ensureIndex() } }
         runCatching { refreshFavorites() }
+        // 車站資料補充（城巴／小巴／港鐵巴士）有冇落過 —— 設定頁顯示
+        refreshHkbusStatus()
     }
 
     // ============ 開 App 全自動流程 ============
@@ -727,17 +731,95 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ============ 車站資料補充（hkbus 每日聚合） ============
+
+    private val _hkbusStatus = MutableStateFlow("")
+    val hkbusStatus: StateFlow<String> = _hkbusStatus.asStateFlow()
+
+    private val _hkbusMsg = MutableStateFlow<String?>(null)
+    val hkbusMsg: StateFlow<String?> = _hkbusMsg.asStateFlow()
+
+    /** 重算「車站資料補充」嗰行（落咗幾多個站、幾時落嘅） */
+    fun refreshHkbusStatus() {
+        _hkbusStatus.value = runCatching { hkbusStatusLine() }.getOrDefault("")
+    }
+
+    /** 設定頁顯示：有冇落過、落咗幾耐 */
+    fun hkbusStatusLine(): String {
+        val ctx: Application = getApplication()
+        com.hketa.app.data.HkbusIndex.prime(ctx)
+        val b = com.hketa.app.data.HkbusIndex.cached(ctx) ?: return str(R.string.hkbus_none)
+        val days = com.hketa.app.data.HkbusIndex.ageMs(ctx) / 86_400_000L
+        val counts = com.hketa.app.data.HkbusIndex.countByOp(b)
+        if (counts.isEmpty()) return str(R.string.hkbus_none)
+        val names = com.hketa.app.data.HkbusIndex.nameCount()
+        val detail = buildList<String> {
+            add(counts.entries.joinToString("、") { "${it.key.label} ${it.value} 個站" })
+            if (names > 0) add(str(R.string.hkbus_names, names))
+        }.joinToString("、")
+        return if (days <= 0L) str(R.string.hkbus_status_today, detail)
+        else str(R.string.hkbus_status_days, detail, days)
+    }
+
+    /**
+     * 下載聚合車站資料並併入索引。
+     *
+     * 補嘅係**官方接口攞唔到**嗰啲：城巴車站（官方冇全量接口）、
+     * 專線小巴（官方 `/route/{region}` 成日失敗）、港鐵巴士（官方淨得逐條查）。
+     * 一個請求補晒，唔使逐條路線打幾百次。
+     */
+    fun downloadHkbusStops() {
+        viewModelScope.launch {
+            _busy.value = true
+            _indexStatus.value = str(R.string.hkbus_downloading)
+            suspendCatching {
+                val ctx: Application = getApplication()
+                com.hketa.app.data.HkbusIndex.download(ctx).getOrThrow()
+            }.onSuccess { b ->
+                val merged = com.hketa.app.data.HkbusIndex.merge(_index.value, b)
+                _index.value = merged
+                store.saveSuspend(merged)
+                runCatching { com.hketa.app.data.RustStore.flush() }
+                syncResident()
+                refreshDiagnostics()
+                val counts = com.hketa.app.data.HkbusIndex.countByOp(b)
+                _message.value = if (counts.isEmpty()) {
+                    str(R.string.hkbus_done_empty)
+                } else {
+                    str(
+                        R.string.hkbus_done,
+                        counts.entries.joinToString("、") { "${it.key.label} ${it.value}" }
+                    )
+                }
+                _hkbusMsg.value = _message.value
+                refreshHkbusStatus()
+            }.onFailure { e ->
+                _message.value = str(R.string.hkbus_failed, e.message.orEmpty())
+                _hkbusMsg.value = _message.value
+            }
+            _indexStatus.value = ""
+            _busy.value = false
+        }
+    }
+
     // ============ 逐個營辦商修復 ============
 
     /**
      * 港鐵巴士：官方冇全量路線接口（得 getSchedule 按路線名查），
      * 所以用內置已知路線清單 + 索引入面已經有嘅路線去逐條補車站。
      * 查唔到嘅會自動跳過，唔會當錯誤。
+     *
+     * 呢份清單已經**涵蓋晒港鐵巴士現行全線**（屯門／元朗／天水圍／大埔接駁），
+     * 所以唔會再出現「有啲線查唔到」。將來官方加新線，索引入面搵到嘅
+     * 亦會自動併入嚟（見下面 `Operator.MTR_BUS` 嗰段），唔使改呢份表。
      */
     private val mtrBusKnown = listOf(
+        // 大埔接駁
         "K12", "K14", "K17", "K18",
-        "K51", "K51A", "K52", "K53", "K58",
-        "K65", "K66", "K68", "K73", "K74", "K75", "K76"
+        // 屯門／掃管笏／龍鼓灘
+        "K51", "K51A", "K52", "K53", "K54", "K58",
+        // 元朗／天水圍／洪水橋
+        "K65", "K66", "K68", "K73", "K74", "K75", "K75A", "K76"
     )
 
     /**
@@ -975,23 +1057,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         step(str(R.string.index_step_nlb)) {
             val nlbRoutes = repo.nlbRoutes()
             routes.addAll(nlbRoutes)
-            coroutineScope {
-                nlbRoutes.map { r ->
-                    async {
-                        suspendCatching { repo.nlbStops(r.routeId) }.getOrDefault(emptyList())
-                            .onEachIndexed { i, s ->
-                                routeStops.add(
-                                    RouteStopDef(
-                                        op = Operator.NLB,
-                                        route = r.route,
-                                        routeId = r.routeId,
-                                        seq = i + 1,
-                                        stopId = s.id
-                                    )
+            // ★ 兩點以前錯咗，會搞到嶼巴「新增 0 個車站」／站序錯亂：
+            //   ① `routeStops.add()` 直接喺 async 入面寫同一個 ArrayList ——
+            //      ArrayList 唔係 thread-safe，多條協程並發 add 會** silently 丟元素**，
+            //      甚至整壞內部陣列（size 同實際唔夾）。
+            //   ② 冇 chunked —— 嶼巴 66 條路線一次過開 66 個請求，好易撞
+            //      data.gov.hk 嘅 rate limit（城巴嗰段自己就寫住要避開呢點）。
+            //   而家：分批 + 每條路線自己返一組結果，合併喺 awaitAll 之後單線程做。
+            for (batch in nlbRoutes.chunked(DEEP_INDEX_CONCURRENCY)) {
+                val pairs = coroutineScope {
+                    batch.map { r ->
+                        async {
+                            val ss = suspendCatching { repo.nlbStops(r.routeId) }
+                                .getOrDefault(emptyList())
+                            val rs = ss.mapIndexed { i, s ->
+                                RouteStopDef(
+                                    op = Operator.NLB,
+                                    route = r.route,
+                                    routeId = r.routeId,
+                                    seq = i + 1,
+                                    stopId = s.id
                                 )
                             }
-                    }
-                }.awaitAll().forEach { stops.addAll(it) }
+                            rs to ss
+                        }
+                    }.awaitAll()
+                }
+                for ((rs, ss) in pairs) {
+                    routeStops.addAll(rs)
+                    stops.addAll(ss)
+                }
             }
         }
 
@@ -1016,13 +1111,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val data = IndexData(
+        // 車站資料補充：官方接口攞唔到嘅（城巴車站、專線小巴、港鐵巴士）
+        // 由 hkbus 每日聚合嗰份一次過補。冇落過就乜都唔做（唔會自動下載）。
+        var hkbus: com.hketa.app.data.HkbusIndex.Bundle? = null
+        step(str(R.string.index_step_hkbus)) {
+            val ctx: Application = getApplication()
+            hkbus = com.hketa.app.data.HkbusIndex.cached(ctx)
+            // ★ 把英文名對照讀入記憶體（車站解析逐個站行，唔可以每次讀碟）
+            com.hketa.app.data.HkbusIndex.prime(ctx)
+        }
+
+        val base = IndexData(
             version = INDEX_VERSION,
             builtAt = System.currentTimeMillis(),
             routes = routes.distinctBy { it.key },
             stops = stops.distinctBy { "${it.op.name}|${it.id}" },
             routeStops = routeStops.distinctBy { "${it.op.name}|${it.route}|${it.bound}|${it.routeId}|${it.stopId}" }
         )
+        val data = hkbus?.let { com.hketa.app.data.HkbusIndex.merge(base, it) } ?: base
         _index.value = data
         store.saveSuspend(data)
         // 索引落碟嗰陣順便把 Rust store（ETA 快取等）一齊落碟
@@ -1030,6 +1136,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         syncResident()
         refreshDiagnostics()
         _indexStatus.value = str(R.string.index_done, data.routes.size, data.stops.size)
+        refreshHkbusStatus()
         _busy.value = false
 
         // 索引建好就順手補城巴／小巴車站（增量 + 並發，背景做，唔彈訊息）。
@@ -1769,7 +1876,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 Operator.CTB -> repo.ctbEta(stop.id, route?.route ?: "")
                 Operator.NLB -> repo.nlbEta(route?.routeId.orEmpty(), stop.id)
-                Operator.GMB -> repo.gmbEta(stop.id, route?.routeId.orEmpty())
+                Operator.GMB -> repo.gmbEta(stop.id, route?.routeId.orEmpty(), route?.route.orEmpty())
                 Operator.MTR_BUS -> repo.mtrBus(route?.route ?: "").second
                 Operator.MTR_HR -> {
                     val ctx = getApplication<Application>()
@@ -1815,8 +1922,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _message.value = str(R.string.update_need_install_permission)
                 return@launch
             }
-            val sha = suspendCatching { fetchSha256(asset.browser_download_url) }
-                .getOrNull()
+            // ★ 以前呢度係 fail-open：`fetchSha256` 一旦失敗（網絡抖動／5xx／超時）
+            //   就返 null，而 `expectedSha256 = null` 會令 ApkInstaller **完全唔校驗**
+            //   直接裝 —— 即係一次網絡唔穩就等於裝個未驗過嘅 APK。
+            //   而家分三種：攞到就校驗；CI 根本冇出 .sha256（404）先降級；
+            //   其餘一律 fail closed，唔裝。
+            val lookup = lookupSha256(asset.browser_download_url)
+            val sha = when (lookup) {
+                is ShaLookup.Found -> lookup.sha
+                is ShaLookup.Absent -> null
+                is ShaLookup.Unavailable -> {
+                    _message.value =
+                        str(R.string.update_sha_unavailable, lookup.reason)
+                    return@launch
+                }
+            }
+            if (lookup is ShaLookup.Absent) {
+                _message.value = str(R.string.update_no_sha_file)
+            }
             com.hketa.app.data.ApkInstaller.download(
                 context = getApplication(),
                 url = asset.browser_download_url,
@@ -1826,10 +1949,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 校驗檔：同 APK 同名加 `.sha256`（CI 生成）。搵唔到就唔校驗，唔會失敗。 */
-    private suspend fun fetchSha256(apkUrl: String): String? =
+    /**
+     * 搵 APK 嘅校驗檔（CI 生成嘅 `<asset>.sha256`）。
+     *
+     * ## 點解唔可以淨係返 `String?`
+     *
+     * 「攞唔到 hash」其實有兩種，以前撈埋一齊當 null → 唔校驗 → **fail-open**：
+     * 只要 .sha256 嗰個請求超時／5xx，成個 APK 就會**完全冇校驗直接裝**。
+     *
+     * 而家分清楚：
+     * - [ShaLookup.Found]      —— 攞到，照校驗
+     * - [ShaLookup.Absent]     —— 404，CI 根本冇出呢個檔，先降級唔校驗（並提示）
+     * - [ShaLookup.Unavailable]—— 其餘（網絡錯／5xx／格式唔啱）一律 **fail closed**
+     */
+    private sealed class ShaLookup {
+        data class Found(val sha: String) : ShaLookup()
+        object Absent : ShaLookup()
+        data class Unavailable(val reason: String) : ShaLookup()
+    }
+
+    private suspend fun lookupSha256(apkUrl: String): ShaLookup =
         withContext(Dispatchers.IO) {
-            val txt = runCatching {
+            val txt = try {
                 val client = okhttp3.OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.SECONDS)
@@ -1837,16 +1978,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 client.newCall(
                     okhttp3.Request.Builder().url("$apkUrl.sha256").build()
                 ).execute().use { r ->
-                    if (!r.isSuccessful) return@runCatching null
-                    r.body?.string()
+                    when {
+                        r.isSuccessful -> r.body?.string()
+                        // 404 = CI 冇出校驗檔（例如手動上傳嘅 asset），唔算錯誤
+                        r.code == 404 -> return@withContext ShaLookup.Absent
+                        else -> return@withContext ShaLookup.Unavailable("HTTP ${r.code}")
+                    }
                 }
-            }.getOrNull() ?: return@withContext null
+            } catch (e: Exception) {
+                return@withContext ShaLookup.Unavailable(e.message ?: e.javaClass.simpleName)
+            }
             // 常見格式：「<hash>  <檔名>」或者淨係 hash
-            txt.trim().lineSequence().firstOrNull()
+            val sha = txt?.trim()?.lineSequence()?.firstOrNull()
                 ?.trim()
                 ?.split(Regex("\\s+"))
                 ?.firstOrNull()
                 ?.takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
+            if (sha != null) ShaLookup.Found(sha)
+            else ShaLookup.Unavailable("校驗檔格式唔啱")
         }
 
     fun cancelDownload() {
@@ -1976,6 +2125,90 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun ensureHeadway() {
         val db = com.hketa.app.data.HeadwayDb.load(getApplication())
         _headwayCount.value = db?.routeCount ?: 0
+    }
+
+    // ── 離線瓦片包：解決「地圖瓦片第一次要聯網」 ──
+
+    /** 係咪下載緊瓦片包 */
+    private val _tileBusy = MutableStateFlow(false)
+    val tileBusy: StateFlow<Boolean> = _tileBusy.asStateFlow()
+
+    /** 下載進度（done / total / 實際新落咗幾多枚） */
+    private val _tileProgress = MutableStateFlow<Triple<Int, Int, Int>?>(null)
+    val tileProgress: StateFlow<Triple<Int, Int, Int>?> = _tileProgress.asStateFlow()
+
+    /** 結果訊息；null = 冇嘢要講 */
+    private val _tileMsg = MutableStateFlow<String?>(null)
+    val tileMsg: StateFlow<String?> = _tileMsg.asStateFlow()
+
+    /** 機上已存嘅瓦片枚數 */
+    private val _tileCount = MutableStateFlow(0)
+    val tileCount: StateFlow<Int> = _tileCount.asStateFlow()
+
+    /** 瓦片包大約幾大（bytes） */
+    private val _tileBytes = MutableStateFlow(0L)
+    val tileBytes: StateFlow<Long> = _tileBytes.asStateFlow()
+
+    /** 取消旗標 —— 撳「停止」就設 true，`TilePack` 每批都會問 */
+    private var tileCancel = false
+
+    private fun tilePack(): TilePack =
+        TilePack(TileCache(getApplication()))
+
+    /** 讀一次機上嘅瓦片統計（淨係讀本機，**唔落網**） */
+    fun ensureTiles() {
+        val p = tilePack()
+        _tileCount.value = p.tileCount()
+        _tileBytes.value = p.sizeBytes()
+    }
+
+    /**
+     * 下載離線瓦片包。
+     *
+     * 斷線／取消都**唔會**損失 —— 已落嘅瓦片留低，下次撳係**續傳**
+     * （`TilePack.tilesOf` 會跳過已存在嘅）。
+     */
+    fun downloadTiles(scope: TilePack.Scope) {
+        if (_tileBusy.value) return
+        viewModelScope.launch {
+            _tileBusy.value = true
+            _tileMsg.value = null
+            _tileProgress.value = Triple(0, 0, 0)
+            tileCancel = false
+            val p = tilePack()
+            val app = getApplication<Application>()
+            val added = runCatching {
+                p.download(
+                    scope = scope,
+                    onProgress = { pr -> _tileProgress.value = Triple(pr.done, pr.total, pr.fetched) },
+                    isCancelled = { tileCancel }
+                )
+            }.getOrDefault(0)
+            _tileCount.value = p.tileCount()
+            _tileBytes.value = p.sizeBytes()
+            _tileProgress.value = null
+            _tileMsg.value = if (tileCancel) {
+                app.getString(com.hketa.app.R.string.tile_pack_cancelled, added)
+            } else {
+                app.getString(com.hketa.app.R.string.tile_pack_done, added, p.tileCount())
+            }
+            _tileBusy.value = false
+        }
+    }
+
+    /** 中途停止（已落嘅會留低） */
+    fun cancelTiles() {
+        tileCancel = true
+    }
+
+    /** 清除全部瓦片 —— 之後地圖會回復「要聯網先出到圖」 */
+    fun clearTiles() {
+        tileCancel = true
+        tilePack().clear()
+        _tileCount.value = 0
+        _tileBytes.value = 0L
+        _tileProgress.value = null
+        _tileMsg.value = null
     }
 
     // ── 運輸署 GTFS 原檔：補 hkbus 聚合版缺嘅官方 `end_time` 同例假日表 ──
@@ -2527,7 +2760,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             Operator.CTB -> if (fav.route.isBlank()) emptyList() else repo.ctbEta(fav.id, fav.route)
             Operator.NLB -> if (fav.routeId.isBlank()) emptyList() else repo.nlbEta(fav.routeId, fav.id)
-            Operator.GMB -> if (fav.routeId.isBlank()) emptyList() else repo.gmbEta(fav.id, fav.routeId)
+            Operator.GMB -> if (fav.routeId.isBlank()) emptyList()
+            else repo.gmbEta(fav.id, fav.routeId, fav.route)
             Operator.MTR_BUS -> repo.mtrBus(fav.route).second
         }
         // 聯營路線：加埋同一個站牌另一間巴士公司嘅班次
@@ -2643,7 +2877,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     val rid = idx.routes
                                         .firstOrNull { it.op == Operator.GMB && it.route == routes.firstOrNull() }
                                         ?.routeId
-                                    if (rid.isNullOrBlank()) emptyList() else repo.gmbEta(st.id, rid)
+                                    if (rid.isNullOrBlank()) emptyList()
+                                    else repo.gmbEta(st.id, rid, routes.firstOrNull().orEmpty())
                                 }
                                 Operator.MTR_BUS -> {
                                     val r = routes.firstOrNull()
@@ -2930,9 +3165,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         radiusM: Double
     ): List<Pair<StopDef, RouteDef>> {
         val out = LinkedHashMap<String, Pair<StopDef, RouteDef>>()
-        for (rd in routeDefsOfStop(idx, s)) out[rd.key] = s to rd
+        // ★ 以前 `routeDefsOfStop(idx, s)` 叫咗兩次（下面 selfRoutes 又叫多次）。
+        //   呢個函數最多會被 80 個候選站各叫一次，即係白白多做 80 次查表 + 排序。
+        //   而家算一次，兩邊共用。
+        val selfDefs = routeDefsOfStop(idx, s)
+        for (rd in selfDefs) out[rd.key] = s to rd
         val key = normStopName(s.name)
         if (key.isNotBlank()) {
+            val selfRoutes = selfDefs.mapTo(HashSet()) { it.route }
             for (a in nameMap[key].orEmpty()) {
                 if (a.op == s.op && a.id == s.id) continue
                 val aHas = a.lat != 0.0 || a.lon != 0.0
@@ -2945,8 +3185,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (aHas) {
                     // 得 a 有座標（s 缺）：靠同名，但 a 要喺附近半徑內
                     if (distanceMeters(lat, lon, a.lat, a.lon) > radiusM) continue
+                } else if (selfRoutes.isNotEmpty()) {
+                    // 至少一方冇座標，淨靠同名 —— 呢個就係「第區同名站會撈錯」
+                    // 剩下嘅唯一一個窿。加多一道**共享路線號**驗證：
+                    // 同一條路線唔會喺兩個唔同區各有一個同名站，所以有共同路線號
+                    // 基本可以肯定係同一個站牌；完全冇共同路線就唔併。
+                    // （selfRoutes 係空＝呢個站本身冇路線資料，就唔攔，照舊併）
+                    val aRoutes = routeDefsOfStop(idx, a).mapTo(HashSet()) { it.route }
+                    if (aRoutes.isNotEmpty() && selfRoutes.none { it in aRoutes }) continue
                 }
-                // 雙方都冇座標：淨靠同名，照併（唔併呢啲站永遠唔會出現）
+                // 以上都冇攔到：照併（唔併呢啲站永遠唔會出現）
                 for (rd in routeDefsOfStop(idx, a)) out.putIfAbsent(rd.key, a to rd)
             }
         }
@@ -3412,6 +3660,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             m
         )
     }
+
+    /**
+     * 圖形後端嗰行（設定頁顯示）。
+     *
+     * Android 17 起 OpenGL ES 已棄用，HWUI 喺有 Vulkan 嘅機上會自動改行
+     * `skiavk`。但**邊個後端由系統決定，App 改唔到**（`ro.hwui.use_vulkan`
+     * 係唯讀），所以呢行淨係**報告**而唔係開關 —— 唔會假裝可以控制。
+     *
+     * 用 `lazy` 係特登嘅：`probe()` 入面有反射讀系統屬性，Compose 每次
+     * 重組都跑一次會白白拖慢設定頁。
+     */
+    private val gpuLine by lazy { com.hketa.app.util.GpuInfo.label(getApplication<Application>()) }
+    fun gpuLabel(): String = gpuLine
 
     fun consumeMessage() {
         _message.value = null
