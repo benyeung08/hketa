@@ -1,6 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- ───────────────────── 圖形後端 ─────────────────────
+         Android 17 起 OpenGL ES 已被官方標記為棄用，HWUI（Compose 同 WebView
+         都行呢條管線）喺支援 Vulkan 嘅機上會自動改用 skiavk。
+
+         呢度**刻意唔寫** <uses-feature android:glEsVersion="0x00020000">：
+         App 本身冇任何一行直接或間接用 OpenGL ES（冇 GLSurfaceView、冇
+         GLES20.*、冇 NDK egl/gles 連結），全部交畀系統 HWUI。聲明咗
+         glEsVersion 反而會令 Play 用 OpenGL ES 版本去篩機 —— 即係把一個
+         App 自己根本唔需要嘅硬性依賴加返上去。
+
+         改為聲明 Vulkan（**非必需**）：
+           * level  = 1  —— 要有幾何／曲面細分著色器、ASTC 等可選特性
+           * required=false —— 冇 Vulkan 嘅機照裝照用，HWUI 會落返 skiagl
+         呢個聲明淨係畀 Play 同系統知道「有 Vulkan 會更好」，唔會篩走任何機。
+         實際用緊邊個後端，設定頁「圖形：」嗰行會顯示（睇 GpuInfo.kt）。 -->
+    <uses-feature
+        android:name="android.hardware.vulkan.level"
+        android:version="1"
+        android:required="false" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -15,8 +35,31 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:extractNativeLibs="false"
         android:theme="@style/Theme.HKATE">
+        <!-- ───────────── 兩個 Android 17（targetSdk 37）相關設定 ─────────────
+
+             ① android:networkSecurityConfig 取代咗 android:usesCleartextTraffic
+                —— 官方已預告 usesCleartextTraffic 會被棄用，要求改用
+                Network Security Config。minSdk 26（Android 8.0）遠高於 NSC
+                需要嘅 API 24，所以呢度直接用 NSC，唔再寫 usesCleartextTraffic。
+                NSC 檔案喺 res/xml/network_security_config.xml：
+                  * cleartextTrafficPermitted="false"（同以前一樣唔准明文）
+                  * 為 Android 17 默認啟用嘅 Certificate Transparency 提供
+                    可以按域開關／豁免嘅入口（見該檔註解）
+
+             ② android:extractNativeLibs="false" —— **Android 17 嘅硬要求**
+                Android 17 把 Android 14 針對 DEX／JAR 嘅「更安全的動態程式碼
+                載入」（DCL）保護擴展到 native library：經 System.load() 載入嘅
+                .so 檔案**必須係唯讀**，否則抛 UnsatisfiedLinkError。
+                  * extractNativeLibs=true → .so 解壓到 /data/app/.../lib/，
+                    權限係 755（可執行、**非唯讀**）→ Android 17 載唔入
+                  * extractNativeLibs=false → 直接由 APK mmap，APK 本身唯讀 ✔
+                代價：APK 內嘅 .so 必須 page-aligned + 未壓縮（AGP 9 會自動
+                處理，並按 zipalign -P 16 對齊），配合 rust/.cargo/config.toml
+                令 ELF LOAD 段亦係 16 KB 對齊 —— 兩層都做咗，載入先穩。 -->
+
 
         <activity
             android:name=".MainActivity"
