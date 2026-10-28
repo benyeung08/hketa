@@ -41,8 +41,8 @@ android {
         minSdk = 26
         // 面向 Android 17：Google Play 由 2027 年 8 月起要求 target API 37
         targetSdk = 37
-        versionCode = 15
-        versionName = "1.2.1"
+        versionCode = 17
+        versionName = "1.2.21"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -142,4 +142,16 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // ────────────────────────── 單元測試 ──────────────────────────
+    //
+    // 淨係加 JUnit 4 —— 唔使 Robolectric。原因係 `app/src/test` 入面嘅
+    // 測試**刻意只掂零 Android 依賴嘅純邏輯**：
+    //
+    //   * `DataGuard`      —— 淨係食 Int 吐 String
+    //   * `RustKernel`     —— 冇 import 任何 android.*，`.so` 唔喺度會行回退版
+    //
+    // 一旦要測 Context / R 嗰啲，就要開 Robolectric（會令 CI 慢好幾分鐘），
+    // 所以寧願把要測嘅邏輯抽成純函數。
+    testImplementation("junit:junit:4.13.2")
 }
