@@ -139,11 +139,15 @@ jobs:
       # 尾嗰句 `find` 返 0 就**蓋咗個失敗** —— 所以你只會見到一句 warning，
       # 永遠唔知點解失敗。呢個正係「Rust 索引層係可選」呢條限制一直
       # 解決唔到嘅真正原因：失敗從來冇被報出嚟。
+      # ⚠ key 一定要包埋 rust/.cargo/config.toml —— 入面係 16 KB 對齊嘅
+      #   rustflags。如果唔包，你改咗對齊設定但 key 冇變 → cache 還原
+      #   舊（4 KB 對齊）.so → Android 17 裝置 dlopen 失敗 → 靜默回退。
+      #   同樣要包 Cargo.lock（有嘅話），依賴版本變咗都應該重新砌。
       - name: Restore cached .so
         uses: actions/cache@v4
         with:
           path: app/src/main/jniLibs
-          key: hketa-so-${{ hashFiles('rust/src/*.rs', 'rust/Cargo.toml') }}
+          key: hketa-so-${{ hashFiles('rust/src/*.rs', 'rust/Cargo.toml', 'rust/.cargo/config.toml', 'rust/Cargo.lock') }}
           restore-keys: |
             hketa-so-
 
@@ -265,12 +269,26 @@ jobs:
           SO=app/src/main/jniLibs
           mkdir -p "$SO"
 
-          echo "--- 1) repo 有冇預編譯 .so？---"
+          echo "--- 1) repo 有冇「已 commit」嘅預編譯 .so？---"
+          # ⚠⚠ 呢度係成個 workflow 最易中伏嘅地方，唔可以用 `ls` 判斷：
+          #   上面「Restore cached .so」會把上次嘅 .so 還原落同一個目錄。
+          #   如果呢度淨係 `ls` 到就當「預編譯」→ exit 0 跳過現場編譯，
+          #   咁你之後改任何 Rust 源碼（with_capacity 封頂、16 KB 對齊、
+          #   新增 store.rs…）**永遠都唔會生效** —— cache 次次還原舊 .so，
+          #   cargo 從來冇跑過。表現就係「明明 upload 咗修復，但冇效果」。
+          #
+          #   所以要分清楚「repo 入面 commit 咗」vs「CI cache 還原返嚟」：
+          #   cache 還原嘅檔案係**未被 git track** 嘅，用 git ls-files 分得出。
           if ls "$SO"/*/libhketa_store.so >/dev/null 2>&1; then
-            echo "✔ repo 已有預編譯 .so —— 直接用，唔使 Rust toolchain"
+            if git ls-files --error-unmatch "$SO"/*/libhketa_store.so >/dev/null 2>&1; then
+              echo "✔ repo 已 commit 預編譯 .so —— 直接用，唔使 Rust toolchain"
+              ls -la "$SO"/*/libhketa_store.so
+              echo "mode=prebuilt" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "⚠ 目錄入面有 .so，但係 **CI cache 還原返嚟**（未被 git track）。"
+            echo "  唔可以當預編譯用 —— 會照樣現場編譯並覆蓋，確保你嘅源碼改動生效。"
             ls -la "$SO"/*/libhketa_store.so
-            echo "mode=prebuilt" >> "$GITHUB_OUTPUT"
-            exit 0
           fi
           echo "mode=build" >> "$GITHUB_OUTPUT"
 
