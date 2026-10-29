@@ -34,6 +34,16 @@ object Urls {
         "$NLB/stop.php?action=estimatedArrivals&routeId=${enc(routeId)}&stopId=${enc(stopId)}"
 
     fun gmbRoutes(region: String) = "$GMB/route/${enc(region)}"
+    /**
+     * 路線詳情（**攞 route_id 嘅唯一途徑**）。
+     *
+     * Route Listing API `GET /route/{region}` 按官方規格淨係返
+     * `data.routes: string[]`（一串路線代碼），**冇 route_id**；
+     * 而要查站序（`/route-stop/{route_id}/{seq}`）同到站預報就一定要 route_id。
+     * data.gov.hk 官方資源頁寫明呢個就係「專線小巴路線資料」嘅端點。
+     */
+    fun gmbRouteDetail(region: String, routeCode: String) =
+        "$GMB/route/${enc(region)}/${enc(routeCode)}"
     fun gmbRouteStops(routeId: String, seq: String) = "$GMB/route-stop/${enc(routeId)}/${enc(seq)}"
     fun gmbStop(stopId: String) = "$GMB/stop/${enc(stopId)}"
     fun gmbEta(stopId: String, routeId: String) =
@@ -45,12 +55,14 @@ object Urls {
     fun mtrHeavyRail(line: String, sta: String) =
         "https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${enc(line)}&sta=${enc(sta)}&lang=TC"
 
-    /** 輕鐵：station_id 為數字（官方同時提供 v1 / v2 路徑，失敗時自動互換） */
+    /**
+     * 輕鐵：station_id 為數字。
+     *
+     * 官方**淨得 v1 路徑**，v2 並唔存在 —— 以前會兩個都試，
+     * 深夜冇車嗰陣最多白打 3 個請求。而家只行 v1。
+     */
     fun lightRailV1(stationId: String) =
         "https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${enc(stationId)}&with_special=1"
-
-    fun lightRailV2(stationId: String) =
-        "https://rt.data.gov.hk/v2/transport/mtr/lrt/getSchedule?station_id=${enc(stationId)}&with_special=1"
 
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 }
@@ -62,6 +74,21 @@ class EtaRepository {
         isLenient = true
         coerceInputValues = true
         explicitNulls = false
+    }
+
+    /**
+     * 英文名：官方 → 內置對照（嶼巴）→ **GitHub 聚合檔**。
+     *
+     * 九巴／城巴／小巴官方接口本身有 `name_en`，直接用；
+     * 嶼巴官方**冇**英文欄位 → 先用內置嘅 154 條對照，
+     * 對唔到再落 [HkbusIndex]（hkbus 聚合檔每個站都有 `name.en`）。
+     *
+     * 三層都冇就返 `""` —— 顯示嗰層會維持中文，**唔會**亂砌英文名。
+     */
+    private fun enOf(id: String, zh: String, official: String, op: Operator): String {
+        if (official.isNotBlank()) return official
+        if (op == Operator.NLB) NlbStopNames.englishOf(zh)?.let { return it }
+        return HkbusIndex.enOf(zh, id)
     }
 
     // ================= 九巴 KMB =================
@@ -96,7 +123,7 @@ class EtaRepository {
                 op = Operator.KMB,
                 id = it.stop,
                 name = it.name_tc,
-                nameEn = it.name_en,
+                nameEn = enOf(it.stop, it.name_tc, it.name_en, Operator.KMB),
                 lat = it.lat.toDoubleOrNull() ?: 0.0,
                 lon = it.long.toDoubleOrNull() ?: 0.0
             )
@@ -144,7 +171,7 @@ class EtaRepository {
                 op = Operator.CTB,
                 id = it.stop,
                 name = it.name_tc,
-                nameEn = it.name_en,
+                nameEn = enOf(it.stop, it.name_tc, it.name_en, Operator.CTB),
                 lat = it.lat.toDoubleOrNull() ?: 0.0,
                 lon = it.long.toDoubleOrNull() ?: 0.0
             )
@@ -196,7 +223,7 @@ class EtaRepository {
                 name = zhName,
                 // 官方 NLB 接口冇 name_en，所以喺內置對照表度查。
                 // 查唔到會返 null → 維持中文原名（唔會亂砌英文名）。
-                nameEn = NlbStopNames.englishOf(zhName).orEmpty(),
+                nameEn = enOf(id, zhName, "", Operator.NLB),
                 lat = num(pick(o, "latitude", "lat")),
                 lon = num(pick(o, "longitude", "long", "lon", "lng"))
             )
@@ -223,23 +250,108 @@ class EtaRepository {
 
     // ================= 專線小巴 GMB（寬鬆手動解析） =================
 
+    /**
+     * 專線小巴路線列表。
+     *
+     * ★ 以前呢度**永遠返 0 條**（所以設定頁「專線小巴」一路顯示 0 條路線／0 個車站）。
+     *   原因：官方規格寫明 `GET /route/{region}` 嘅 `data.routes` 係
+     *   **`string[]`（一串路線代碼）**，例如 `["1", "10", "101M", …]`；
+     *   而舊寫法淨係認 `JsonObject`（`e as? JsonObject ?: return null`），
+     *   字串全部被丟棄 → 結果一條都冇。
+     *
+     *   而家兩樣都食：物件陣列（拎埋 route_id）同字串陣列（淨係有路線代碼，
+     *   route_id 之後由 [gmbRouteDetail] 補）。
+     */
     suspend fun gmbRoutes(region: String): List<RouteDef> {
         val root = rootObj(Http.get(Urls.gmbRoutes(region)))
         val data = root["data"] as? JsonObject ?: root
-        val arr = firstArray(data, "routes", "route_list", "data")
-        return arr.mapNotNull { e ->
-            val o = e as? JsonObject ?: return@mapNotNull null
-            val id = pick(o, "route_id", "routeId", "id")
-            val code = pick(o, "route_code", "routeCode", "route_no", "routeNo")
-            if (id.isBlank() || code.isBlank()) return@mapNotNull null
-            RouteDef(
-                op = Operator.GMB,
-                route = code,
-                orig = pick(o, "description_tc", "description", "orig_tc"),
-                dest = pick(o, "destination_tc", "dest_tc", "destination"),
-                routeId = id
-            )
+        return gmbRouteListOf(data, region)
+    }
+
+    /** 由 `data` 入面搵路線列表，兼容 `string[]` 同物件陣列兩種寫法 */
+    private fun gmbRouteListOf(data: JsonObject, region: String): List<RouteDef> {
+        // 同一條路線代碼可能出現幾次 → 用 code 做 key 去重，後者覆蓋前者
+        val out = LinkedHashMap<String, RouteDef>()
+
+        fun take(arr: List<JsonElement>) {
+            arr.forEach { e ->
+                val o = e as? JsonObject
+                if (o != null) {
+                    val id = pick(o, "route_id", "routeId", "id")
+                    val code = pick(o, "route_code", "routeCode", "route_no", "routeNo")
+                    if (code.isBlank()) return@forEach
+                    out[code] = RouteDef(
+                        op = Operator.GMB,
+                        route = code,
+                        orig = pick(o, "description_tc", "description", "orig_tc"),
+                        dest = pick(o, "destination_tc", "dest_tc", "destination"),
+                        routeId = id
+                    )
+                } else {
+                    // 官方規格嘅寫法：淨係一個路線代碼字串
+                    val code = txt(e).trim()
+                    if (code.isBlank() || code == "null") return@forEach
+                    // routeId 留空 —— 之後由 gmbRouteDetail 逐條補
+                    out.getOrPut(code) { RouteDef(op = Operator.GMB, route = code) }
+                }
+            }
         }
+
+        when (val routes = data["routes"]) {
+            is kotlinx.serialization.json.JsonArray -> take(routes.jsonArray)
+            is JsonObject -> {
+                // 唔帶 region 嗰陣會係 { HKI: [...], KLN: [...], NT: [...] }
+                if (region.isNotBlank()) {
+                    (routes.jsonObject[region] as? kotlinx.serialization.json.JsonArray)
+                        ?.let { take(it.jsonArray) }
+                }
+                if (out.isEmpty()) {
+                    routes.jsonObject.values.forEach { v ->
+                        (v as? kotlinx.serialization.json.JsonArray)?.let { take(it.jsonArray) }
+                    }
+                }
+            }
+            else -> Unit
+        }
+        // 兜底：data 本身可能就係陣列，或者塞喺 data.data
+        if (out.isEmpty()) {
+            (data["data"] as? kotlinx.serialization.json.JsonArray)?.let { take(it.jsonArray) }
+        }
+        if (out.isEmpty()) {
+            (data["route_list"] as? kotlinx.serialization.json.JsonArray)?.let { take(it.jsonArray) }
+        }
+        return out.values.toList()
+    }
+
+    /**
+     * 補一條小巴路線嘅 route_id（同描述）。
+     *
+     * 官方 `GET /route/{region}/{route_code}` 返嘅 `data` 係**陣列**
+     * （同一條路線代碼可以有幾個 service type／特別班次），
+     * 第一個就係正常班次；搵唔到就返 null（唔會當錯誤）。
+     */
+    suspend fun gmbRouteDetail(region: String, routeCode: String): RouteDef? {
+        if (region.isBlank() || routeCode.isBlank()) return null
+        val root = rootObj(Http.get(Urls.gmbRouteDetail(region, routeCode)))
+        val data = root["data"]
+        val arr = when (data) {
+            is kotlinx.serialization.json.JsonArray -> data.jsonArray
+            is JsonObject -> (data.jsonObject["routes"] as? kotlinx.serialization.json.JsonArray)
+                ?.jsonArray
+                ?: firstArray(data.jsonObject, "routes", "route_list", "data")
+            else -> emptyList()
+        }
+        val o = arr.firstOrNull() as? JsonObject ?: (data as? JsonObject) ?: return null
+        val id = pick(o, "route_id", "routeId", "id")
+        val code = pick(o, "route_code", "routeCode", "route_no", "routeNo").ifBlank { routeCode }
+        if (id.isBlank() || code.isBlank()) return null
+        return RouteDef(
+            op = Operator.GMB,
+            route = code,
+            orig = pick(o, "description_tc", "description", "orig_tc"),
+            dest = pick(o, "destination_tc", "dest_tc", "destination"),
+            routeId = id
+        )
     }
 
     suspend fun gmbRouteStops(routeId: String, seq: String): List<StopDef> {
@@ -254,7 +366,12 @@ class EtaRepository {
                 op = Operator.GMB,
                 id = id,
                 name = pick(o, "name_tc", "stopName", "name", "description_tc"),
-                nameEn = pick(o, "name_en", "stopNameEn", "description_en"),
+                nameEn = enOf(
+                    id,
+                    pick(o, "name_tc", "stopName", "name", "description_tc"),
+                    pick(o, "name_en", "stopNameEn", "description_en"),
+                    Operator.GMB
+                ),
                 lat = num(pick(o, "latitude", "lat")),
                 lon = num(pick(o, "longitude", "long", "lon", "lng"))
             )
@@ -270,13 +387,31 @@ class EtaRepository {
             op = Operator.GMB,
             id = stopId,
             name = pick(o, "name_tc", "stopName", "name", "description_tc"),
-            nameEn = pick(o, "name_en", "stopNameEn", "description_en"),
+            nameEn = enOf(
+                stopId,
+                pick(o, "name_tc", "stopName", "name", "description_tc"),
+                pick(o, "name_en", "stopNameEn", "description_en"),
+                Operator.GMB
+            ),
             lat = num(pick(o, "latitude", "lat")),
             lon = num(pick(o, "longitude", "long", "lon", "lng"))
         )
     }
 
-    suspend fun gmbEta(stopId: String, routeId: String): List<EtaEntry> {
+    suspend fun gmbEta(stopId: String, routeId: String, routeNo: String = ""): List<EtaEntry> {
+        val primary = gmbEtaOnce(stopId, routeId)
+        if (primary.isNotEmpty() || routeId.isBlank()) return primary
+
+        // ★ GitHub 聚合檔嘅 route_id 同源唔同官方（官方要 etagmb 自己嘅 id），
+        //   所以帶住 route_id 查會查唔到。呢度**唔帶** route_id 再撈一次，
+        //   撈返晒呢個站所有線，再本地按路線號篩 —— 唔使知官方 id 係乜。
+        val all = gmbEtaOnce(stopId, "")
+        if (all.isEmpty() || routeNo.isBlank()) return emptyList()
+        val hit = all.filter { it.route.equals(routeNo, ignoreCase = true) }
+        return hit.ifEmpty { emptyList() }
+    }
+
+    private suspend fun gmbEtaOnce(stopId: String, routeId: String): List<EtaEntry> {
         val root = rootObj(Http.get(Urls.gmbEta(stopId, routeId)))
         val data = root["data"] as? JsonObject ?: root
         val arr = firstArray(data, "stop_etas", "stopEta", "etas", "eta", "data")
@@ -300,44 +435,114 @@ class EtaRepository {
     suspend fun mtrBusStops(routeName: String): List<StopDef> =
         mtrBus(routeName).first
 
+    /**
+     * 港鐵巴士（K51／K54 呢啲）班次。
+     *
+     * 官方接口有四個地方同我哋原先寫嘅**完全唔夾**，所以以前永遠係 0 個站 0 班車：
+     *
+     * 1. **method 係 POST，body 係 JSON**（`Content-Type: application/json`），
+     *    唔係 form-urlencoded —— 官方規格嘅 example request 係
+     *    `{"language":"zh","routeName":"K12"}`
+     * 2. **`language` 淨係接受 `en` / `zh`** —— 官方寫明「Valid result will be
+     *    returned only if both parameter 1(language) and parameter 2(routeName) is
+     *    correct」，寫 `zh-Hant` 係無效值
+     * 3. 頂層字段叫 **`busStop`**（單數），**冇 `data` 包住** ——
+     *    而唔係 `busStops` / `stops`
+     * 4. 站 ID 叫 **`busStopId`**；到站時間喺 **每班車 `bus[]` 入面**
+     *    （`departureTimeInSecond` / `departureTimeText`），**唔喺站嗰層**
+     *
+     * 另一個官方限制：**響應入面冇車站名**（試過官方 data dictionary，
+     * `busStop` 物件得 `busStopId` / `busStopRemark` / `isSuspended`）。
+     * 所以站名要由 [HkbusIndex] 補；補唔到就用返 `busStopId` 頂住 ——
+     * **唔可以**因為冇名就成個站掉咗（以前嗰句 `if (name.isNotBlank())` 就係咁樣
+     * 令到全部站消失）。
+     */
     suspend fun mtrBus(routeName: String): Pair<List<StopDef>, List<EtaEntry>> {
-        val text = Http.postForm(
+        val text = Http.postJson(
             Urls.mtrBusSchedule(),
-            listOf("language" to "zh-Hant", "routeName" to routeName)
+            listOf("language" to "zh", "routeName" to routeName)
         )
         val root = rootObj(text)
-        val data = root["data"] as? JsonObject ?: root
-        val arr = firstArray(data, "busStops", "bus_stops", "stops", "stopList", "routes")
+        val arr = firstArray(root, "busStop", "busStops", "bus_stop", "bus_stops", "stops")
         val stops = mutableListOf<StopDef>()
         val etas = mutableListOf<EtaEntry>()
         arr.forEach { e ->
             val o = e as? JsonObject ?: return@forEach
-            val id = pick(o, "stopId", "stop_id", "id", "code")
+            val id = pick(o, "busStopId", "stopId", "stop_id", "id", "code")
+            if (id.isBlank()) return@forEach
+            // 官方冇站名 → 試吓聚合檔；再冇就用站 ID 頂住
             val name = pick(o, "stopNameTc", "stopName", "nameTc", "name_tc", "name")
-            val stop = StopDef(
-                op = Operator.MTR_BUS,
-                id = id.ifBlank { name },
-                name = name,
-                lat = num(pick(o, "latitude", "lat")),
-                lon = num(pick(o, "longitude", "long", "lon", "lng"))
+                .ifBlank { HkbusIndex.zhOf(id) }
+                .ifBlank { id }
+            stops.add(
+                StopDef(
+                    op = Operator.MTR_BUS,
+                    id = id,
+                    name = name,
+                    lat = num(pick(o, "latitude", "lat")),
+                    lon = num(pick(o, "longitude", "long", "lon", "lng"))
+                )
             )
-            if (stop.name.isNotBlank()) stops.add(stop)
-            val raw = pick(o, "eta", "etaTime", "time", "estimatedArrival")
-            if (raw.isNotBlank()) {
+            // 到站時間喺 bus[] 入面，一站可以有多班車
+            val buses = firstArray(o, "bus", "buses", "busList")
+            buses.forEach { b ->
+                val bo = b as? JsonObject ?: return@forEach
+                val (minutes, clock) = mtrBusEta(
+                    pick(bo, "departureTimeInSecond", "arrivalTimeInSecond"),
+                    pick(bo, "departureTimeText", "arrivalTimeText")
+                )
+                if (minutes == null) return@forEach
                 etas.add(
                     EtaEntry(
                         op = Operator.MTR_BUS,
                         route = routeName,
                         dest = pick(o, "destTc", "destinationTc", "destination_tc", "dest_tc"),
-                        minutes = TimeUtil.etaMinutes(raw),
-                        clock = TimeUtil.etaClock(raw),
-                        remark = pick(o, "remark", "remarkTc")
+                        minutes = minutes,
+                        clock = clock,
+                        remark = pick(bo, "busRemark", "remark", "remarkTc")
+                            .ifBlank { pick(o, "busStopRemark", "remarkTc") }
                     )
                 )
             }
         }
         return stops to etas
     }
+
+    /**
+     * 港鐵巴士嘅「秒數 + 文字」→ 分鐘。
+     *
+     * 兩個坑：
+     *
+     * - `arrivalTimeInSecond` 喺官方 sample 係 `"108000"`（30 個鐘）——
+     *   呢個係「冇預報」嘅哨兵值，直接當分鐘數會出一個荒謬嘅數字。
+     *   所以**淨睇 `departureTimeInSecond`**，而且要喺合理範圍內。
+     * - 文字 `"Departing / Departed"` / `"即將開出"` 代表**就快開出**，
+     *   唔係「仲有 N 分鐘」，要當 0 分鐘而唔係當解析失敗掉咗佢。
+     */
+    private fun mtrBusEta(secRaw: String, textRaw: String): Pair<Int?, String> {
+        val sec = secRaw.trim().toLongOrNull()
+        if (sec != null && sec in 0..MAX_MTR_BUS_SEC) {
+            val minutes = (sec / 60L).toInt()
+            val clock = runCatching {
+                java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Hong_Kong"))
+                    .plusSeconds(sec)
+                    .toLocalTime()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+            }.getOrDefault("")
+            return minutes to clock
+        }
+        val t = textRaw.trim()
+        if (t.isBlank()) return null to ""
+        // 「即將開出 / 已離開」→ 0 分鐘
+        if (t.contains("Depart", true) || t.contains("Arriving", true) ||
+            t.contains("即將", true) || t.contains("已離開", true)
+        ) return 0 to ""
+        val m = Regex("(\\d+)").find(t)?.value?.toIntOrNull() ?: return null to ""
+        return m to ""
+    }
+
+    /** 港鐵巴士預報秒數嘅合理上限；超過就當係「冇預報」嘅哨兵值 */
+    private val MAX_MTR_BUS_SEC = 3 * 60 * 60L
 
     // ================= 港鐵重鐵 MTR Heavy Rail =================
 
@@ -403,8 +608,9 @@ class EtaRepository {
 
     suspend fun lightRailEta(stationId: String, t: EtaText = EtaText()): List<EtaEntry> {
         val padded = stationId.padStart(3, '0')
-        val candidates = listOf(stationId, padded).distinct()
-            .flatMap { listOf(Urls.lightRailV1(it), Urls.lightRailV2(it)) }
+        // 官方規格（Light Rail Next Train API v1.1）淨得 v1 路徑，
+        // v2 係唔存在嘅 —— 以前試埋 v2 會令每個站白打一倍請求
+        val candidates = listOf(stationId, padded).distinct().map { Urls.lightRailV1(it) }
 
         for (url in candidates) {
             val text = suspendCatching { Http.get(url) }.getOrNull() ?: continue

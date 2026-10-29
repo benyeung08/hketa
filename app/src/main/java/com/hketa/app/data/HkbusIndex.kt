@@ -175,6 +175,14 @@ object HkbusIndex {
 
     @Volatile private var byId: Map<String, String> = emptyMap()
     @Volatile private var byZh: Map<String, String> = emptyMap()
+
+    /**
+     * 站 ID → **中文**站名。
+     *
+     * 港鐵巴士官方接口嘅響應**冇站名**（得 `busStopId`），
+     * 所以要靠聚合檔 `Bundle.stops` 補返個名出嚟。
+     */
+    @Volatile private var byIdZh: Map<String, String> = emptyMap()
     @Volatile private var totalNames: Int = 0
 
     /**
@@ -193,6 +201,21 @@ object HkbusIndex {
         byZh = HashMap<String, String>(ns.size).apply {
             for (n in ns) if (n.zh.isNotBlank() && n.en.isNotBlank()) putIfAbsent(n.zh, n.en)
         }
+        val ss = b?.stops ?: emptyList()
+        byIdZh = HashMap<String, String>(ss.size).apply {
+            for (s in ss) if (s.id.isNotBlank() && s.name.isNotBlank()) putIfAbsent(s.id, s.name)
+        }
+    }
+
+    /**
+     * 由站 ID 補**中文**站名（畀官方接口冇站名嘅營辦商，例如港鐵巴士）。
+     *
+     * 搵唔到返 `""` —— 呼叫方要自己決定用乜頂住（例如用返個 ID），
+     * **唔好**因為冇名就成個站掉咗。
+     */
+    fun zhOf(id: String): String {
+        if (id.isBlank()) return ""
+        return byIdZh[id].orEmpty()
     }
 
     /**
