@@ -989,7 +989,30 @@ jobs:
         run: |
           set -o pipefail
           # 用絕對路徑：唔經 PATH，避免用到 runner 預裝嘅舊 Gradle（8.9）
-          "$GRADLE_BIN" :app:testReleaseUnitTest --no-daemon 2>&1 | tee /tmp/unit-test.log
+          #
+          # ⚠️ 唔好寫死 :app:testReleaseUnitTest —— AGP 9 起
+          # android.onlyEnableUnitTestForTheTestedBuildType 由 false 改咗做 true，
+          # 即係 AGP **淨係為「被測試嗰個 build type」建立 unit test component**
+          # （預設係 debug）。所以 release 嗰個 task 根本唔存在，直接叫會報
+          #   Cannot locate tasks that match ':app:testReleaseUnitTest'
+          # 呢個係 AGP 9 嘅既定行為，唔係 cache 問題 —— clean／刪 cache 都救唔到。
+          #
+          # 所以：先問 Gradle 實際建立咗邊個 unit test task，再動態去跑。
+          # sort -ur：reverse 排序 —— 兩個都有就優先揀 release，得一個就自然係嗰個
+          UNIT_TASK="$("$GRADLE_BIN" :app:tasks --all --no-daemon 2>/dev/null \
+            | grep -oE 'test[A-Za-z0-9]*UnitTest' | sort -ur | head -1)"
+          if [ -z "$UNIT_TASK" ]; then
+            echo "::error::AGP 冇建立任何 unit test task —— app/src/test 係咪冇 upload？"
+            echo "（要上傳 app/src/test/java/com/hketa/app/data/DataGuardTest.kt 同 KernelParityTest.kt）"
+            exit 1
+          fi
+          echo "搵到 unit test task：:app:$UNIT_TASK"
+          echo "UNIT_TASK=$UNIT_TASK" >> "$GITHUB_ENV"
+          echo "unit_task=$UNIT_TASK" >> "$GITHUB_OUTPUT"
+          if [ "$UNIT_TASK" != "testReleaseUnitTest" ]; then
+            echo "::warning::用緊 :app:$UNIT_TASK 而唔係 testReleaseUnitTest —— AGP 9 淨係為被測試嘅 build type 建立 unit test component。本專案 isMinifyEnabled=false，debug／release 嘅 bytecode 一致，測試結果唔受影響。"
+          fi
+          "$GRADLE_BIN" ":app:$UNIT_TASK" --no-daemon 2>&1 | tee /tmp/unit-test.log
 
       # 把測試結果寫入 job summary —— 唔使下載 artifact 都睇到「跑咗幾個、錯咗邊個」
       - name: Report unit test results
@@ -997,8 +1020,9 @@ jobs:
         run: |
           echo "### 單元測試" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          R="app/build/test-results/testReleaseUnitTest"
-          if [ -d "$R" ]; then
+          # 目錄名跟返實際跑到嗰個 task（testDebugUnitTest / testReleaseUnitTest 都有可能）
+          R="$(ls -d app/build/test-results/test*UnitTest 2>/dev/null | head -1)"
+          if [ -n "$R" ] && [ -d "$R" ]; then
             TOTAL=0; FAILED=0
             for f in "$R"/*.xml; do
               [ -f "$f" ] || continue
@@ -1010,13 +1034,20 @@ jobs:
               FAILED=$((FAILED + ${F:-0} + ${E:-0}))
             done
             echo "- 跑咗 **$TOTAL** 個測試" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$FAILED" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
+            if [ "$TOTAL" -eq 0 ]; then
+              # Gradle 9 對「有 test source 但冇搵到任何測試」會直接失敗
+              # （failOnNoDiscoveredTests），所以呢度正常唔會發生 —— 發生即係有嘢甩漏。
+              echo "::error::一個測試都冇跑到 —— 檢查 app/src/test 有冇 upload、測試類係咪寫啱"
+              exit 1
+            fi
+            if [ "$FAILED" -eq 0 ]; then
               echo "- 全部通過 ✅" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "- **$FAILED 個失敗** ❌ —— 睇下面 step log" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "- ⚠️ 搵唔到測試報告目錄（係咪根本冇跑到？）" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::搵唔到測試報告目錄 —— 測試根本冇跑到"
+            exit 1
           fi
 
       # 一定要 set -o pipefail：淨係寫 `gradle ... | tee log` 嘅話，
