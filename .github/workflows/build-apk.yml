@@ -292,6 +292,33 @@ jobs:
           fi
           ls -1 "${ANDROID_HOME}/ndk" 2>/dev/null || echo "（搵唔到 NDK）"
 
+          # ── NDK 版本：r27 先完整支援 -z max-page-size=16384 ──
+          # 退回 r26 時砌得到，但 16 KB ELF 對齊可能唔完整 ——
+          # 結果係：APK 出到、.so 包到，但 Android 17（16 KB page）裝置
+          # dlopen 失敗 → 內核靜默回退。呢類失敗喺 CI 完全睇唔出，
+          # 所以一定要喺日誌度講明，唔好等用戶「時靈時唔靈」先發現。
+          NDK_DIR=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
+          NDK_MAJ=0
+          if [[ -n "$NDK_DIR" ]]; then
+            NDK_MAJ=$(basename "$NDK_DIR" | grep -oE '^[0-9]+' || echo 0)
+            NDK_MAJ=${NDK_MAJ:-0}
+            echo "NDK = $(basename "$NDK_DIR")（major ${NDK_MAJ}）"
+          fi
+          if (( NDK_MAJ < 27 )); then
+            echo "::warning::NDK major ${NDK_MAJ} < 27 —— 16 KB 對齊可能唔完整。"\
+                 "Android 17（16 KB page）裝置上 Rust 內核會 dlopen 失敗並靜默回退純 Kotlin。"\
+                 "請確認下面 Verify 16KB 見到 0x4000 而唔係 0x1000。"
+          fi
+
+          # ── Cargo.lock：冇嘅話版本會漂移，CI 隨時突然紅 ──
+          # 日誌見到「Locking 37 packages to highest compatible versions」就係冇鎖。
+          if [[ ! -f rust/Cargo.lock ]]; then
+            echo "::warning::rust/Cargo.lock 未 commit —— 每次 CI 重新解析依賴版本。"\
+                 "上游一發新版就隨時突然紅，且無法重現。本地跑 rust/build-android.sh 會生成，記得 commit。"
+          else
+            echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
+          fi
+
           echo "--- 3) cargo-ndk 喺唔喺度？---"
           if ! command -v cargo-ndk >/dev/null 2>&1; then
             echo "冇預編譯版，由 source 砌（慢，最後手段）"
@@ -309,6 +336,20 @@ jobs:
           cd ..
           echo "--- 產出 ---"
           ls -la "$SO"/*/libhketa_store.so
+
+      # ── 匯出 Cargo.lock ────────────────────────────────────────
+      # 日誌見到「Locking 37 packages to highest compatible versions」
+      # 就代表冇鎖：cargo 每次重新解析到「最高兼容版本」。今日編到，
+      # 聽日 jni / serde 上游一發新版就隨時突然紅，而且無法重現。
+      # 本地跑唔到 cargo 的話，就喺呢度攞 CI 生成嗰份去 commit。
+      - name: Export Cargo.lock
+        id: export_lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: rust/Cargo.lock
+          if-no-files-found: ignore
 
       # ── 16 KB page size 對齊檢查 ──────────────────────────────
       # Android 15+ 支援 16 KB page，Android 17 設備普遍採用；Play 自
