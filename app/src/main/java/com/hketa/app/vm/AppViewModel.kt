@@ -1605,12 +1605,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
-        // 路線號 → 車站 ID 嘅反向表，用嚟計每站停靠嘅路線
-        val routesByStop = idx.routeStops
-            .groupBy { "${it.op.name}|${it.stopId}" }
-            .mapValues { e -> e.value.map { it.route }.distinct() }
-
-        val hits = idx.stops
+        // 先揀出要顯示嘅站，再為呢啲站查路線。
+        //
+        // 以前係一開波就用 groupBy 為**全部** route-stop（四萬幾條）砌一張
+        // 反向表 —— 每撳一下鍵就做一次，但結果淨係取 80 個站，
+        // 即係九成九嘅工都白做。而家淨係為最後嗰 80 個站砌。
+        val picked = idx.stops
             .asSequence()
             .filter {
                 it.name.contains(key, true) ||
@@ -1632,15 +1632,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .thenBy { it.second.name.length }
                 .thenBy { it.second.name })
             .take(80)
-            .map { (_, st) ->
-                StopHit(
-                    stop = st,
-                    routes = routesByStop["${st.op.name}|${st.id}"]
-                        .orEmpty()
-                        .sortedWith(compareBy<String> { it.length }.thenBy { it })
-                )
-            }
             .toList()
+
+        val wanted = HashSet<String>(picked.size * 2).apply {
+            for ((_, st) in picked) add("${st.op.name}|${st.id}")
+        }
+        val routesByStop = idx.routeStops
+            .groupBy({ "${it.op.name}|${it.stopId}" }, { it.route })
+            .filterKeys { it in wanted }
+            .mapValues { e -> e.value.distinct() }
+
+        val hits = picked.map { (_, st) ->
+            StopHit(
+                stop = st,
+                routes = routesByStop["${st.op.name}|${st.id}"]
+                    .orEmpty()
+                    .sortedWith(compareBy<String> { it.length }.thenBy { it })
+            )
+        }
 
         _stopResults.value = hits
     }
