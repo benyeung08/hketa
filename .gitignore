@@ -1,0 +1,23 @@
+# ── 簽名檔 / 本機設定（🔴 切勿 commit）──
+*.jks
+*.keystore
+*.jks.b64
+keystore/
+local.properties
+
+# ── Gradle / IDE / 建置產物 ──
+.gradle/
+build/
+app/build/
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ── Rust ──
+rust/target/
+
+# 注意：唔好忽略 *.apk —— CI 會把 builds/latest.apk push 去 apk 分支。
+# rust/Cargo.lock 要 commit，唔好忽略。
