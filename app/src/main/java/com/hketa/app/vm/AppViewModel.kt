@@ -1983,6 +1983,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val client = okhttp3.OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.SECONDS)
+                    .addNetworkInterceptor { chain ->
+                        val h = chain.request().url.host
+                        if (h !in setOf(
+                                "github.com", "objects.githubusercontent.com",
+                                "release-assets.githubusercontent.com", "raw.githubusercontent.com"
+                            )
+                        ) throw java.io.IOException("Untrusted checksum host: $h")
+                        chain.proceed(chain.request())
+                    }
                     .build()
                 client.newCall(
                     okhttp3.Request.Builder().url("$apkUrl.sha256").build()
