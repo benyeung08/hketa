@@ -32,6 +32,14 @@ import java.util.concurrent.TimeUnit
  */
 object ApkInstaller {
 
+    /** 更新檔只可以由呢幾個 host 下載（包括重定向後嘅每一跳） */
+    private val ALLOWED_HOSTS = setOf(
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "raw.githubusercontent.com"
+    )
+
     /** 下載狀態 */
     sealed class State {
         object Idle : State()
@@ -43,6 +51,27 @@ object ApkInstaller {
 
     private const val CONNECT_SEC = 20L
     private const val READ_SEC = 60L
+
+    /** 每一跳（含 302 重定向）都驗 host；OkHttp 預設 followRedirects=true 會跳過初始檢查 */
+    private fun assertTrusted(url: String) {
+        val u = runCatching { Uri.parse(url) }.getOrNull()
+        val host = u?.host
+        if (u == null || u.scheme?.equals("https", ignoreCase = true) != true ||
+            host == null || host !in ALLOWED_HOSTS
+        ) {
+            throw java.io.IOException("Untrusted download host: $host")
+        }
+    }
+
+    /** 畀下載用嘅 client：network interceptor 攔到重定向後嘅實際請求 */
+    private fun downloadClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(CONNECT_SEC, TimeUnit.SECONDS)
+        .readTimeout(READ_SEC, TimeUnit.SECONDS)
+        .addNetworkInterceptor { chain ->
+            assertTrusted(chain.request().url.toString())
+            chain.proceed(chain.request())
+        }
+        .build()
 
     /** 目前進行緊嘅下載（cancel 會關掉佢） */
     @Volatile
@@ -67,25 +96,12 @@ object ApkInstaller {
         // 開波前清走上次嘅殘留
         runCatching { dir(context).listFiles()?.forEach { it.delete() } }
 
-        val client = OkHttpClient.Builder()
-            .connectTimeout(CONNECT_SEC, TimeUnit.SECONDS)
-            .readTimeout(READ_SEC, TimeUnit.SECONDS)
-            .build()
+        val client = downloadClient()
 
         val out = File(dir(context), fileName)
 
-        // 只接受固定、可信嘅下載來源；Release JSON 被改都唔會指向任意 URL
-        val uri = runCatching { Uri.parse(url) }.getOrNull()
-        val allowedHosts = setOf(
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-            "raw.githubusercontent.com"
-        )
-        val host = uri?.host
-        if (uri == null || uri.scheme?.equals("https", ignoreCase = true) != true ||
-            host == null || host !in allowedHosts
-        ) {
+        // 初始 URL 先驗一次；重定向嘅每一跳由 network interceptor 再驗
+        if (runCatching { assertTrusted(url) }.isFailure) {
             return@withContext State.Failed("Untrusted download host")
         }
 

@@ -1,6 +1,7 @@
 package com.hketa.app.data
 
 import android.content.Context
+import com.hketa.app.BuildConfig
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -31,10 +32,11 @@ enum class UpdateState { IDLE, CHECKING, UP_TO_DATE, AVAILABLE, NO_RELEASE, ERRO
  */
 object UpdateChecker {
 
-    private const val OWNER = "benyeung08"
-    private const val REPO = "hketa"
-    private const val LATEST = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
-    private const val ALL = "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=30"
+    // 由 BuildConfig 讀；fork 咗 repo 只改 app/build.gradle.kts 兩行，唔使改呢度
+    private val OWNER: String = BuildConfig.UPDATE_OWNER
+    private val REPO: String = BuildConfig.UPDATE_REPO
+    private val LATEST = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+    private val ALL = "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=30"
 
     private val json = Json {
         ignoreUnknownKeys = true

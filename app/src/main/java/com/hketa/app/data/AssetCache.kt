@@ -5,53 +5,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
- * 靜態資源離線包 —— 專登為 Leaflet 而設。
+ * 靜態資源離線包 —— Leaflet JS／CSS。
  *
- * **解決嘅限制**：真實地圖以前要靠 `unpkg.com` 攞 Leaflet 嘅 JS／CSS，
- * 所以就算瓦片已經有離線包（[TileCache]），**每次開地圖都仍然要上網攞 JS** ——
- * 一冇網就連 JS 都載唔到，直接退回示意圖。
+ * 改動（安全）：Leaflet 已經打包喺 `assets/hketa_offline/`，
+ * 所以 **永遠唔再向 unpkg.com 發請求** —— 之前會下載 JS 再存落 filesDir，
+ * 但只靠「內容有冇 `L.map`」做校驗，無 hash／簽名，而 WebView 又開咗 JS，
+ * 屬可避免嘅供應鏈風險。
  *
- * 做法：第一次成功攞到就寫落 `filesDir/hketa_assets/`，之後
- * `shouldInterceptRequest` 攔截 `unpkg.com` 嘅請求、直接用本地副本。
- * 所以**睇過一次地圖之後，連 JS 都唔使再上網** —— 配合瓦片包就係真正離線。
- *
- * 儲存時會校驗內容（CSS 要有 `.leaflet-`、JS 要有 `L.map`），
- * 避免攞到錯誤頁／空檔當正貨。
+ * 而家 `ensureDownloaded()` 只係把 APK 內置資產複製去 filesDir，
+ * `shouldInterceptRequest` 照樣攔 `unpkg.com` 嘅 URL 再用本地檔回應。
+ * 結果：第一次開地圖已經完全離線，亦唔會再連 CDN。
  */
 class AssetCache(context: Context) {
 
-    private val dir = File(context.filesDir, "hketa_assets").apply { mkdirs() }
+    private val appContext = context.applicationContext
+    private val dir = File(appContext.filesDir, "hketa_assets").apply { mkdirs() }
 
-    /** 防並發：幾個 WebView 同時開都只會下載一次 */
+    /** 防並發：幾個 WebView 同時開都只會複製一次 */
     private val mutex = Mutex()
 
-    private val client by lazy {
-        okhttp3.OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
-    }
-
-    /**
-     * 要快取嘅資源：url → (檔名, mime, 內容校驗)
-     */
     private val assets = listOf(
         Spec(
             url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
             file = "leaflet.css",
+            assetPath = "hketa_offline/leaflet.css",
             mime = "text/css",
             check = { it.contains(".leaflet-") }
         ),
         Spec(
             url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
             file = "leaflet.js",
+            assetPath = "hketa_offline/leaflet.js",
             mime = "application/javascript",
-            // Leaflet 一定有 `L.map`；錯誤頁／HTML 唔會有
             check = { it.contains("L.map") || it.contains("L.Map") }
         )
     )
@@ -59,35 +47,33 @@ class AssetCache(context: Context) {
     private data class Spec(
         val url: String,
         val file: String,
+        val assetPath: String,
         val mime: String,
         val check: (String) -> Boolean
     )
 
-    private fun localOf(url: String): File? =
-        assets.firstOrNull { url.contains(it.file) }?.let { File(dir, it.file) }
+    private fun specOf(url: String): Spec? = assets.firstOrNull { url.contains(it.file) }
 
-    /**
-     * 本地有就回傳檔案（離線唔使上網），冇就 null。
-     * 由 WebView 嘅 `shouldInterceptRequest` 呼叫。
-     */
+    private fun localOf(url: String): File? = specOf(url)?.let { File(dir, it.file) }
+
+    /** 本地有就回傳檔案（離線唔使上網），冇就 null */
     fun localFor(url: String): File? {
         val f = localOf(url) ?: return null
         return if (f.exists() && f.length() > 1024L) f else null
     }
 
     fun mimeFor(url: String): String =
-        assets.firstOrNull { url.contains(it.file) }?.mime
-            ?: "application/octet-stream"
+        specOf(url)?.mime ?: "application/octet-stream"
 
     /** 係唔係我哋識得快取嘅資源（攔截器用） */
-    fun handles(url: String): Boolean = localOf(url) != null
+    fun handles(url: String): Boolean = specOf(url) != null
 
-    /** 全部都已經有本地副本？（決定使唔使發請求） */
+    /** 全部都已經有本地副本？ */
     fun isComplete(): Boolean = assets.all { File(dir, it.file).exists() }
 
     /**
-     * 背景下載缺咗嘅資源。已經有就唔發請求；失敗靜默（下次開地圖會再試）。
-     * 一定要喺 IO 線程叫。
+     * 由 APK 內置 assets 複製去 filesDir。**唔發任何網絡請求**。
+     * 一定要喺 IO 線程叫；失敗靜默，下次開地圖會再試。
      */
     suspend fun ensureDownloaded(): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -96,23 +82,12 @@ class AssetCache(context: Context) {
                 val f = File(dir, spec.file)
                 if (f.exists() && f.length() > 1024L) continue
                 val ok = runCatching {
-                    val body = client.newCall(
-                        Request.Builder().url(spec.url).build()
-                    ).execute().use { r ->
-                        if (!r.isSuccessful) return@runCatching false
-                        r.body?.string() ?: return@runCatching false
-                    }
-                    // 校驗：唔可以係錯誤頁／空內容
+                    val body = appContext.assets.open(spec.assetPath)
+                        .bufferedReader(Charsets.UTF_8).use { it.readText() }
                     if (!spec.check(body)) return@runCatching false
-                    // 原子寫：寫到一半崩潰都唔會留低壞檔
                     val tmp = File(dir, spec.file + ".tmp")
                     tmp.writeText(body)
-                    if (tmp.exists() && tmp.length() > 1024L) {
-                        tmp.renameTo(f)
-                        true
-                    } else {
-                        false
-                    }
+                    tmp.exists() && tmp.length() > 1024L && tmp.renameTo(f)
                 }.getOrDefault(false)
                 if (!ok) all = false
             }
