@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.GradleException
 
 plugins {
     id("com.android.application")
@@ -40,6 +41,10 @@ android {
         versionCode = 17
         versionName = "1.2.21"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 更新檢查嘅 repo 座標：fork 之後改呢兩行就得，唔使改 Kotlin
+        buildConfigField("String", "UPDATE_OWNER", "\"benyeung08\"")
+        buildConfigField("String", "UPDATE_REPO", "\"hketa\"")
     }
 
     signingConfigs {
@@ -65,11 +70,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 冇外部 key 時仍要畀個 configuration 值（否則 sync / assembleDebug 會紅）；
+            // 真正嘅 fail-fast 放喺下面 task 層，只有出 release 包先攔。
             signingConfig = if (hasCustomSigning) {
                 signingConfigs.getByName("releaseKey")
             } else {
-                // 無外部 key 時用 debug key；CI 會因為缺 Secrets 而先行 fail，
-                // 唔會靜靜出一個簽名每次都唔同嘅包。
                 signingConfigs.getByName("debug")
             }
         }
@@ -77,6 +82,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -114,4 +120,23 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// ── Release 簽名 fail-fast ───────────────────────────────
+// 唔可以喺 release{} 入面直接 throw：Gradle configuration 階段會執行到，
+// 連 assembleDebug / testDebugUnitTest / IDE Sync 都被拖紅。
+// 放喺 task 嘅 doFirst，只有真正出 release 包先檢查。
+tasks.matching {
+    it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease")
+}.configureEach {
+    doFirst {
+        if (!hasCustomSigning) {
+            throw GradleException(
+                "Release 簽名未設定：請喺 local.properties 提供 signing.storeFile / " +
+                    "signing.storePassword / signing.keyAlias / signing.keyPassword，" +
+                    "或設 HKETA_KEYSTORE / HKETA_STORE_PASSWORD / HKETA_KEY_ALIAS / " +
+                    "HKETA_KEY_PASSWORD 環境變數。拒絕用 debug key 出 release 包。"
+            )
+        }
+    }
 }
