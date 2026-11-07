@@ -98,8 +98,7 @@ private fun OsmRouteMap(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val tileCache = remember(stops) { TileCache(context) }
-    // 靜態資源離線包：第一次攞到 Leaflet 嘅 JS／CSS 就存落機，
-    // 之後連 JS 都唔使再上網 —— 睇過一次就真正離線出到真實地圖
+    // 靜態資源離線包：Leaflet 已打包喺 APK assets，第一次開地圖已經唔使上網
     val assetCache = remember { AssetCache(context) }
     LaunchedEffect(stops) {
         scope.launch {
@@ -120,12 +119,18 @@ private fun OsmRouteMap(
             WebView(ctx).apply {
                 settings.apply {
                     javaScriptEnabled = true
-                    domStorageEnabled = true
+                    // Leaflet 唔用 localStorage／IndexedDB，閂掉可縮細攻擊面
+                    domStorageEnabled = false
+                    // 本地資源由 shouldInterceptRequest 自己開 stream 回應，
+                    // 唔需要 file:// / content:// 存取權
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    // NSC 已禁明文；呢度再明確禁止任何 mixed content
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     loadWithOverviewMode = true
                     useWideViewPort = true
                     builtInZoomControls = false
-                    // 優先讀快取：睇過嘅路線（Leaflet + 瓦片）離線都出到圖，
-                    // 未睇過嘅先上網攞。所以「要返睇第二次」嘅路線唔使再靠網絡。
+                    // 優先讀快取：睇過嘅路線（Leaflet + 瓦片）離線都出到圖
                     cacheMode = android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
                 }
                 setBackgroundColor(AndroidColor.parseColor("#121212"))
