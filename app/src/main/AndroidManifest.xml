@@ -28,6 +28,10 @@
     <!-- App 內下載並安裝更新 APK（Android 8+ 需要用戶授權「允許安裝未知來源」） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- 私隱：收藏／索引／離線瓦片／crash_log.txt 全部唔備份。
+         allowBackup=false 本身就已經生效；下面兩份 rules 係雙重保險
+         （萬一將來改返 true，亦唔會自動包走私有資料）。
+         註解必須放喺 <application> 標籤**外面**：XML 唔容許 comment 夾喺 attribute 中間。 -->
     <application
         android:name=".HketaApp"
         android:allowBackup="false"
