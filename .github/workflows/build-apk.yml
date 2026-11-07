@@ -205,7 +205,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.toml', 'rust/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-
 
@@ -219,7 +219,6 @@ jobs:
       # 應該有邊啲 .rs，逐個驗，缺邊個就**指名道姓**話你知。
       - name: Verify Rust kernel sources
         id: verify_rust
-        continue-on-error: true
         run: |
           set -uo pipefail
           fail=0
@@ -269,7 +268,6 @@ jobs:
 
       - name: Build Rust kernel
         id: rust
-        continue-on-error: true
         run: |
           set -euo pipefail
           SO=app/src/main/jniLibs
@@ -303,15 +301,14 @@ jobs:
           #   * r27 起 lld 先完整支援 -z max-page-size=16384
           #   * r26 砌到，但對 16 KB ELF 對齊嘅處理未完整
           # 所以優先 27.2，裝唔到先退回 26.1（照出，但可能冇 16 KB 對齊）。
+          # 🔴 唔好再 fallback 去 r26 / ndk-bundle：r26 對 16 KB ELF 對齊未完整，
+          #    配埋舊版 Verify 16KB 嘅假陽性 → APK 出到、CI 全綠、用戶機 dlopen 失敗。
           WANT_NDK="27.2.12479018"
-          FALLBACK_NDK="26.1.10909125"
           if [ ! -d "${ANDROID_HOME}/ndk" ] || [ -z "$(ls -A "${ANDROID_HOME}/ndk" 2>/dev/null)" ]; then
             CM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
             [ -x "$CM" ] || CM=$(command -v sdkmanager || true)
             if [ -n "$CM" ]; then
-              yes | "$CM" --install "ndk;$WANT_NDK" || \
-                yes | "$CM" --install "ndk;$FALLBACK_NDK" || \
-                yes | "$CM" --install "ndk-bundle" || true
+              yes | "$CM" --install "ndk;$WANT_NDK" || true
             fi
           fi
           ls -1 "${ANDROID_HOME}/ndk" 2>/dev/null || echo "（搵唔到 NDK）"
@@ -329,19 +326,20 @@ jobs:
             echo "NDK = $(basename "$NDK_DIR")（major ${NDK_MAJ}）"
           fi
           if (( NDK_MAJ < 27 )); then
-            echo "::warning::NDK major ${NDK_MAJ} < 27 —— 16 KB 對齊可能唔完整。"\
-                 "Android 17（16 KB page）裝置上 Rust 內核會 dlopen 失敗並靜默回退純 Kotlin。"\
-                 "請確認下面 Verify 16KB 見到 0x4000 而唔係 0x1000。"
+            echo "::error::NDK major ${NDK_MAJ} < 27 —— 16 KB 對齊未完整，唔可以出包。"\
+                 "請裝 ndk;27.2.12479018 或更新；或者把預編譯 .so commit 入 repo 跳過現場編譯。"
+            exit 1
           fi
 
           # ── Cargo.lock：冇嘅話版本會漂移，CI 隨時突然紅 ──
           # 日誌見到「Locking 37 packages to highest compatible versions」就係冇鎖。
           if [[ ! -f rust/Cargo.lock ]]; then
-            echo "::warning::rust/Cargo.lock 未 commit —— 每次 CI 重新解析依賴版本。"\
-                 "上游一發新版就隨時突然紅，且無法重現。本地跑 rust/build-android.sh 會生成，記得 commit。"
-          else
-            echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
+            echo "::error::rust/Cargo.lock 未 commit —— 拒絕用 --locked 出包。"\
+                 "請喺本機執行 (cd rust && cargo generate-lockfile)，"\
+                 "或由 CI 嘅 cargo-lock artifact 下載，然後 commit rust/Cargo.lock。"
+            exit 1
           fi
+          echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
 
           echo "--- 3) cargo-ndk 喺唔喺度？---"
           if ! command -v cargo-ndk >/dev/null 2>&1; then
@@ -354,9 +352,10 @@ jobs:
           cargo ndk \
             -t armeabi-v7a \
             -t arm64-v8a \
+            -t x86 \
             -t x86_64 \
             -o ../app/src/main/jniLibs \
-            build --release --features android 2>&1 | tee /tmp/cargo-build.log
+            build --release --features android --locked 2>&1 | tee /tmp/cargo-build.log
           cd ..
           echo "--- 產出 ---"
           ls -la "$SO"/*/libhketa_store.so
@@ -366,14 +365,39 @@ jobs:
       # 就代表冇鎖：cargo 每次重新解析到「最高兼容版本」。今日編到，
       # 聽日 jni / serde 上游一發新版就隨時突然紅，而且無法重現。
       # 本地跑唔到 cargo 的話，就喺呢度攞 CI 生成嗰份去 commit。
-      - name: Export Cargo.lock
+      # --locked 之下 Cargo.lock 唔應該被改；改咗即係有人改咗 Cargo.toml 冇 update lock。
+      - name: Verify Cargo.lock unchanged
         id: export_lock
         if: always()
+        run: |
+          if ! git diff --quiet -- rust/Cargo.lock; then
+            echo "::error::cargo build 改咗 rust/Cargo.lock —— 請本機跑 cargo generate-lockfile 並 commit"
+            git diff -- rust/Cargo.lock | head -40
+            exit 1
+          fi
+          echo "✔ Cargo.lock 冇漂移"
+
+      - name: Export Cargo.lock (on failure only)
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: cargo-lock
           path: rust/Cargo.lock
           if-no-files-found: ignore
+
+      - name: Audit Rust dependencies
+        id: cargo_audit
+        if: success()
+        continue-on-error: true
+        run: |
+          cd rust
+          if ! command -v cargo-audit >/dev/null 2>&1; then
+            cargo install cargo-audit --locked --quiet || {
+              echo "::warning::cargo-audit 裝唔到，跳過 RustSec 審計"; exit 0;
+            }
+          fi
+          cargo audit --deny warnings || \
+            echo "::warning::RustSec advisory 命中 —— 請跑 cargo audit 睇詳情並 upgrade"
 
       # ── 16 KB page size 對齊檢查 ──────────────────────────────
       # Android 15+ 支援 16 KB page，Android 17 設備普遍採用；Play 自
@@ -385,7 +409,6 @@ jobs:
       - name: Verify 16KB page alignment
         id: verify_16kb
         if: always()
-        continue-on-error: true
         run: |
           set -uo pipefail
           SO=app/src/main/jniLibs
@@ -399,27 +422,38 @@ jobs:
             exit 0
           fi
           echo "用 $READELF"
+          # 🔴 舊寫法 awk '/LOAD/{ ... $(i-1)=="Align" ... }' 係錯：
+          #    llvm-readelf -l 嘅「Align」只出現喺**表頭**，資料行冇呢個字，
+          #    所以 aligns 永遠係空 → grep 0x1000 永遠 false → 永遠印「通過 ✔」。
+          #    正確做法同 rust/build-android.sh 一致：LOAD 行最後一欄就係 Align。
           bad=0
+          found_any=0
           for f in $(find "$SO" -name 'libhketa_store.so' 2>/dev/null | sort); do
-            # 抽出所有 LOAD 段嘅 Align 欄
-            aligns=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{for(i=1;i<=NF;i++) if($i ~ /^0x[0-9a-f]+$/ && $(i-1)=="Align") print $i}' | sort -u | tr '\n' ' ')
+            found_any=1
+            aligns=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u | tr '\n' ' ')
             echo "  $(dirname "$f" | xargs basename): Align = ${aligns:-（讀唔到）}"
-            # 0x1000 = 4096（4 KB，唔合格）；0x4000+ = 16384（16 KB，合格）
-            if echo "$aligns" | grep -q "0x1000"; then
-              echo "    ::warning::呢個 .so 仍然係 4 KB 對齊 —— 16 KB 裝置會載唔入"
+            if [ -z "${aligns// /}" ]; then
+              echo "    ::error::讀唔到 LOAD 段 Align —— 唔可以當通過"
+              bad=1
+            elif echo "$aligns" | grep -q "0x1000"; then
+              # 0x1000 = 4 KB（唔合格）；0x4000 = 16 KB（合格）
+              echo "    ::error::呢個 .so 仍然係 4 KB 對齊 —— 16 KB 裝置會 dlopen 失敗"
               bad=1
             fi
           done
-          if [ "$bad" = "1" ]; then
-            echo "::warning::有 .so 未做 16 KB 對齊。確認 rust/.cargo/config.toml 有冇上傳（NDK 要 r27+）"
-          else
-            echo "16 KB 對齊檢查通過 ✔"
+          if [ "$found_any" = "0" ]; then
+            echo "::error::搵唔到任何 libhketa_store.so —— 16 KB 檢查無對象"
+            exit 1
           fi
+          if [ "$bad" = "1" ]; then
+            echo "::error::有 .so 未做 16 KB 對齊。確認 rust/.cargo/config.toml 有冇上傳（NDK 要 r27+）"
+            exit 1
+          fi
+          echo "16 KB 對齊檢查通過 ✔"
 
       - name: Verify .so (never silent)
         id: verify_so
         if: always()
-        continue-on-error: true
         run: |
           set -uo pipefail
           SO=app/src/main/jniLibs
@@ -428,13 +462,14 @@ jobs:
             echo "Rust 內核：已打包 ✔"
             echo "$found" | while read -r f; do echo "  $f ($(stat -c%s "$f") bytes)"; done
           else
-            echo "::warning::Rust 內核冇打包到 —— App 會行純 Kotlin 回退（功能一樣，但冇慳到位）"
+            echo "::error::Rust 內核冇打包到 —— 拒絕出一個靜默行純 Kotlin 回退嘅 release 包"
             echo "cargo 有冇跑到？mode=${{ steps.rust.outputs.mode }}"
             if [ -f /tmp/cargo-build.log ]; then
               echo "===== cargo build log（尾 80 行）====="
               tail -80 /tmp/cargo-build.log
             fi
-            echo "===== 想一勞永逸：本地跑 rust/build-android.sh，把 .so commit 入 repo ====="
+            echo "===== 一勞永逸：本地跑 rust/build-android.sh，把 .so commit 入 repo ====="
+            exit 1
           fi
 
       # Android 17 (API 37) 需要 platforms;android-37 + build-tools;36.0.0。
