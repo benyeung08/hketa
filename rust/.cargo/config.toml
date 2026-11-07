@@ -7,16 +7,18 @@
 #       即 System.loadLibrary("hketa_store") 抛 UnsatisfiedLinkError，
 #       Rust 內核靜默回退純 Kotlin（用戶完全唔會知，只係覺得「慢咗」）。
 #
-#       呢個正係「Rust 內核時靈時唔靈」最常被忽略嘅一個原因：
-#       唔係編譯失敗、唔係 .so 冇打包，而係喺某啲機上**載唔入**。
-#
 # 解法：叫 linker 用 16 KB 對齊 LOAD 段。
 #   max-page-size    —— 段對齊上限，設 16384（0x4000）
 #   common-page-size —— 段內對齊，同樣設 16384 避免混合對齊
 #
 # 驗證（NDK 內有 llvm-readelf）：
-#   llvm-readelf -l libhketa_store.so | grep -A1 LOAD
-#   → 睇 Align 一欄係咪 0x4000（而唔係 0x1000）
+#   llvm-readelf -l libhketa_store.so | awk '/LOAD/{print $NF}'
+#   → 要見到 0x4000，唔係 0x1000
+#
+# ⚠ 下面四個 [target.*] 要同 rust/build-android.sh / CI 嘅 -t 清單**完全一致**。
+#   之前 i686 呢段係死配置（兩邊都只編 3 個 ABI），而家補返 x86。
+# ⚠ 呢份檔有改動時，CI 嘅「Restore cached .so」cache key 已經包埋佢，
+#   會自動作廢舊 .so，唔會還原返 4 KB 對齊嘅版本。
 # ─────────────────────────────────────────────────────────────
 
 [target.armv7-linux-androideabi]
@@ -31,13 +33,13 @@ rustflags = [
   "-C", "link-arg=-Wl,-z,common-page-size=16384",
 ]
 
-[target.x86_64-linux-android]
+[target.i686-linux-android]
 rustflags = [
   "-C", "link-arg=-Wl,-z,max-page-size=16384",
   "-C", "link-arg=-Wl,-z,common-page-size=16384",
 ]
 
-[target.i686-linux-android]
+[target.x86_64-linux-android]
 rustflags = [
   "-C", "link-arg=-Wl,-z,max-page-size=16384",
   "-C", "link-arg=-Wl,-z,common-page-size=16384",
