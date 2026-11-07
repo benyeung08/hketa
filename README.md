@@ -3,7 +3,8 @@
 **繁體中文** | [English](README_EN.md)
 
 把原本 `benyeung08/etaapp`（WebToApp fork，本質係「把網頁包入 WebView」嘅殼）完全換成真正嘅原生 App：
-Kotlin + Jetpack Compose，直接對接香港各營辦商嘅公開 ETA 接口，**無 WebView、無網頁外殼**。
+Kotlin + Jetpack Compose，直接對接香港各營辦商嘅公開 ETA 接口，**主介面無網頁外殼**；
+只有「沿途車站 ▸ 顯示地圖」用 WebView 載 Leaflet 底圖（失敗會退回 Canvas 示意圖）。
 
 > 本倉庫已完成原生重寫：`app/src/main/java` 全部換成 `com.hketa.app`，
 > 原本 WebToApp 嘅 `assets/`、`cpp/`、`proto/`、`schemas/` 同 WebView Activity 已全數移除。
@@ -49,15 +50,16 @@ App 介面支援 **繁體中文**、**简体中文** 同 **English**，喺「設
 - **Android 13（API 33）以上**：寫入系統嘅「應用程式語言」設定，喺系統設定入面都改到
 - **Android 12 及以下**：由 AppCompat 自己保存（Manifest 已註冊 `AppLocalesMetadataHolderService` + `autoStoreLocales=true`），重啟後依然生效
 
-所有介面文字都放喺三份資源檔：
+所有介面文字都放喺四份資源檔：
 
 | 檔案 | 語言 |
 |---|---|
 | `res/values/strings.xml` | 繁體中文（同時係冇對應語言時嘅預設） |
 | `res/values-zh-rCN/strings.xml` | 简体中文 |
 | `res/values-en/strings.xml` | English |
+| `res/values-b+zh+Hans/strings.xml` | 简体中文（BCP 47 書寫體，覆蓋 zh-SG 等） |
 
-三份 key 完全對齊（各 **208** 條）。切換語言時會觸發 configuration change，
+四份 key 完全對齊（各 **338** 條）。切換語言時會觸發 configuration change，
 Compose 自動 recompose，唔使重啟 Activity。
 
 到站預報嘅備註（月台、服務延誤、經馬場、幾多卡）係資料層即場拼出嚟嘅，
@@ -90,7 +92,9 @@ GET https://api.github.com/repos/benyeung08/hketa/releases/latest
 ```
 
 - 對比最新 Release 嘅 `tag_name` 同 App 裝咗嘅版本（由 PackageManager 讀，自動跟 `versionName`）
-- 有新版本就顯示版本號、更新內容，並提供「下載更新」（直連 APK）同「查看 Release」
+- 有新版本就顯示版本號、更新內容，並提供「下載更新」（直連 APK）同「查看 Release」。
+  下載後依次校驗 **SHA-256**（對比 Release 入面嘅 `<apk>.sha256`）同 **簽名證書**（比對已安裝 App），
+  任何一關唔過都唔會安裝；校驗檔攞唔到（非 404）會直接中止，唔會 fail-open 降級。
 - 進入設定頁會靜默檢查一次（30 分鐘節流），撳掣可以即時再查
 - 仲未發布過 Release 會顯示「尚未發布正式版本」，唔會當錯誤
 
@@ -103,23 +107,36 @@ CI 會自動建 APK 並掛上 Release —— 用戶開 App 就查到。
 
 1. 將呢個專案 push 上你嘅 GitHub repo（main 分支）
 2. 去 repo 嘅 **Actions** 頁，揀 **Build HKATE APK**，撳 **Run workflow**
-3. 跑完之後喺該次執行嘅 **Artifacts** 下載 `hketa-apk`（內有 debug 與 release APK）
+3. 跑完之後喺該次執行嘅 **Artifacts** 下載 **`hkate-release-apk`**（只有 release APK，連 `.sha256` 校驗檔）
 4. 傳到手機安裝即可（首次安裝允許「未知來源」）
 
 push `v*` 標籤嘅話，APK 會自動掛到 Release 上。
 
 ## 本機建置
 
-需求：JDK 17、Android SDK（platform 35 + build-tools 35.0.0）、Gradle 8.9。
+需求：**JDK 17**、Android SDK（**platform 37** + **build-tools 36.0.0**）、**Gradle 9.3.1**（wrapper 已指向呢個版本）。AGP 9.1.1 官方相容表要求呢組版本，少一樣都認唔到 compileSdk 37。
 
 ```bash
-gradle :app:assembleDebug    # 産出 app/build/outputs/apk/debug/app-debug.apk
-gradle :app:assembleRelease  # 産出 app/build/outputs/apk/release/app-release.apk
+# 首次先產生 wrapper 腳本（倉庫唔 commit gradlew，避免二進位檔走樣）
+gradle wrapper --gradle-version 9.3.1
+
+# 本機簽名：寫入 local.properties（已被 .gitignore 忽略）
+#   signing.storeFile=/絕對路徑/outside-repo/hketa-release.jks
+#   signing.storePassword=***
+#   signing.keyAlias=hketa
+#   signing.keyPassword=***
+# CI 對應 Secrets：HKETA_KEYSTORE_B64 / HKETA_STORE_PASSWORD /
+#                  HKETA_KEY_ALIAS / HKETA_KEY_PASSWORD
+# 冇外部 key 會拒絕出 release 包（唔會靜靜用 debug key 簽）。
+
+./gradlew :app:testDebugUnitTest   # 先跑單測
+./gradlew :app:assembleDebug       # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease     # → app/build/outputs/apk/release/app-release.apk
 ```
 
 用 Android Studio 開（Ladybug 以上）：File ▸ Open ▸ 選擇本資料夾 → Gradle Sync → Run ▶。
-如果 Studio 報 Gradle wrapper 相關錯誤，刪咗 `gradle/wrapper` 再 Sync 讓 Studio 重新生成，
-或者喺 Settings ▸ Build Tools ▸ Gradle 指定本機 Gradle 8.9。
+如果 Studio 報 Gradle wrapper 相關錯誤，喺 repo 根目錄執行 `gradle wrapper --gradle-version 9.3.1`
+重新生成，或者喺 Settings ▸ Build Tools ▸ Gradle 指定本機 **Gradle 9.3.1**、Gradle JDK **17**。
 
 首次啟動會自動建立路線索引（約 10–30 秒，視網絡而定）。
 
@@ -164,6 +181,7 @@ res/
 ├─ values/strings.xml          繁體中文介面文字（預設）
 ├─ values-zh-rCN/strings.xml   简体中文介面文字
 ├─ values-en/strings.xml       英文介面文字
+├─ values-b+zh+Hans/strings.xml  簡體（BCP 47 書寫體）
 └─ drawable-*/mipmap-*/        自適應圖示（前景 + 背景）
 ```
 
@@ -171,7 +189,7 @@ res/
 Navigation Compose、OkHttp 4.12 + kotlinx.serialization、
 Coroutines/Flow + AndroidViewModel、Play Services Location。
 
-**支援範圍（v1.0.3 起）：Android 8 – 17**
+**支援範圍（v1.2.21）：Android 8 – 17**
 
 | 項目 | 值 | 對應系統 |
 |---|---|---|
@@ -235,5 +253,12 @@ App 必須自適應任何視窗尺寸。Manifest 保留 `portrait`：
 
 ## 隱私
 
-只向上述官方接口發出 HTTPS 請求，唔收集、唔上傳任何個人資料；
+ETA 資料全部經 HTTPS 向上述政府／公共接口取得，唔收集、唔上傳任何個人資料；
 定位只用於當下排序附近車站，唔會儲存或傳送。
+
+實際會連到嘅域名（如實列出）：
+`data.etabus.gov.hk`、`rt.data.gov.hk`、`data.etagmb.gov.hk`、`static.data.gov.hk`、
+`data.hkbus.app`、`h2-app-rr.hkemobility.gov.hk`、`api.github.com`（檢查更新）、
+`a.basemaps.cartocdn.com`（地圖瓦片）。
+Leaflet JS／CSS 已打包入 APK `assets/hketa_offline/`，**唔再連 `unpkg.com`**。
+`allowBackup="false"`，崩潰記錄只寫私有目錄並保留最近 5 次。
