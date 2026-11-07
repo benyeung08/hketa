@@ -12,11 +12,10 @@ import java.util.Locale
  *
  * 安裝一個 `Thread.setDefaultUncaughtExceptionHandler`：
  *
- *   ① 把堆疊寫落 `filesDir/crash_log.txt`
- *   ② 同時寫一份去 `getExternalFilesDir(null)/crash_log.txt`
- *      —— 呢個目錄用檔案管理器／USB 可以直接睇到，
- *      就算 App 一開就閃退、入唔到設定頁都拎到記錄
- *   ③ 交返畀原本嘅 handler（等 Android 照常彈「程式已停止」）
+ *   ① 把堆疊寫落 **私有** `filesDir/crash_log.txt`
+ *      （唔再寫 `getExternalFilesDir`——外部目錄任何 App 都讀到，
+ *       而且舊版 trim() 只清私有檔，外部份會無上限增長）
+ *   ② 交返畀原本嘅 handler（等 Android 照常彈「程式已停止」）
  *
  * 保留最近 5 次，每次前面有時間、版本、裝置、Android 版本。
  */
@@ -31,14 +30,10 @@ object CrashLog {
     @Volatile
     private var dir: File? = null
 
-    @Volatile
-    private var externalDir: File? = null
-
     fun install(context: Context) {
         if (installed) return
         installed = true
         dir = context.filesDir
-        externalDir = runCatching { context.getExternalFilesDir(null) }.getOrNull()
 
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -84,7 +79,6 @@ object CrashLog {
 
         val text = sb.toString()
         runCatching { File(dir, NAME).appendText(text) }
-        runCatching { externalDir?.let { File(it, NAME).appendText(text) } }
         trim()
     }
 
@@ -110,6 +104,5 @@ object CrashLog {
 
     fun clear(context: Context) {
         runCatching { File(context.filesDir, NAME).delete() }
-        runCatching { context.getExternalFilesDir(null)?.let { File(it, NAME).delete() } }
     }
 }
