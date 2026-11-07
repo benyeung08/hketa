@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- allowBackup=false 之下仍保留明確排除規則，雙重保險：
+     filesDir 內嘅收藏／索引／離線瓦片／crash_log.txt 一律唔好備份。 -->
+<full-backup-content>
+    <exclude domain="root" path="." />
+</full-backup-content>
