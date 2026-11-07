@@ -890,12 +890,16 @@ jobs:
           echo "BUILD_TOOLS=$BT" >> "$GITHUB_ENV"
           echo "使用 build-tools: $BT"
 
-      # 如果裝唔到 android-37，就自動把 compileSdk / targetSdk 降到最高可用嗰個，
-      # 等 APK 照出得到（降級會寫明喺摘要度）。
+      # 如果裝唔到 android-37 就直接失敗 —— 唔好靜默降級 compileSdk/targetSdk，
+      # 否則出到嘅 APK 同「Android 17 / targetSdk 37」宣稱唔符。
       - name: Align SDK versions with what is installed
         run: |
           set -e
           PLAT="${PLATFORM:-37}"
+          if [ "$PLAT" != "37" ]; then
+            echo "::error::runner 沒有 platforms;android-37（只有 android-$PLAT）；拒絕靜默降級 compileSdk/targetSdk"
+            exit 1
+          fi
           cur_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
           cur_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
           echo "build.gradle.kts: compileSdk=$cur_compile targetSdk=$cur_target ; runner platform=$PLAT"
@@ -954,23 +958,29 @@ jobs:
 
       # 固定簽名：GitHub runner 每次都係全新機器，若然用系統自動產生嘅 debug key，
       # 每次簽名都唔同，用戶裝新版會彈「套件與現有的套件發生衝突」。
-      # 呢度確保 keystore/hketa.jks 存在（冇就由 base64 文字檔還原）。
+      # 由 GitHub Secrets 還原固定簽名檔；repo 入面唔再存任何 keystore／密碼。
       - name: Ensure signing keystore
+        env:
+          HKETA_KEYSTORE_B64: ${{ secrets.HKETA_KEYSTORE_B64 }}
+          HKETA_STORE_PASSWORD: ${{ secrets.HKETA_STORE_PASSWORD }}
+          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+          HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
         run: |
+          set -e
+          if [ -z "$HKETA_KEYSTORE_B64" ] || [ -z "$HKETA_STORE_PASSWORD" ] \
+            || [ -z "$HKETA_KEY_ALIAS" ] || [ -z "$HKETA_KEY_PASSWORD" ]; then
+            echo "::error::未設定簽名 Secrets（HKETA_KEYSTORE_B64 / HKETA_STORE_PASSWORD / HKETA_KEY_ALIAS / HKETA_KEY_PASSWORD）"
+            exit 1
+          fi
           mkdir -p keystore
-          if [ -s keystore/hketa.jks ]; then
-            echo "keystore/hketa.jks already present"
-          elif [ -s keystore/hketa.jks.b64 ]; then
-            base64 -d keystore/hketa.jks.b64 > keystore/hketa.jks
-            echo "restored from hketa.jks.b64"
-          else
-            echo "::warning::no fixed keystore found - APK signature will differ between builds"
-          fi
-          if [ -s keystore/hketa.jks ]; then
-            keytool -list -keystore keystore/hketa.jks -storepass hketa2026 -alias hketa > /dev/null 2>&1 \
-              && echo "keystore verified" \
-              || { echo "::error::keystore is invalid"; exit 1; }
-          fi
+          printf '%s' "$HKETA_KEYSTORE_B64" | base64 -d > keystore/hketa.jks
+          {
+            echo "HKETA_KEYSTORE=$PWD/keystore/hketa.jks"
+            echo "HKETA_STORE_PASSWORD=$HKETA_STORE_PASSWORD"
+            echo "HKETA_KEY_ALIAS=$HKETA_KEY_ALIAS"
+            echo "HKETA_KEY_PASSWORD=$HKETA_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "✔ 簽名檔已由 Secrets 還原（唔入 repo）"
 
       # ─────────────────────────────────────────────────────────────
       # 單元測試 —— 同 compileReleaseKotlin **平級**，紅咗就唔出包。
@@ -1245,7 +1255,8 @@ jobs:
           git init -q
           git config user.name "ci-bot"
           git config user.email "ci-bot@users.noreply.github.com"
-          git remote add origin "https://x-access-token:${TOKEN}@github.com/${{ steps.cfg.outputs.repo }}.git"
+          git remote add origin "https://github.com/${{ steps.cfg.outputs.repo }}.git"
+          git config "http.https://github.com/.extraheader" "AUTHORIZATION: bearer ${TOKEN}"
 
           # 睇下目標分支存唔存在（pipefail 必要：唔係 ls-remote 失敗會被 grep 吞掉）
           set -o pipefail
@@ -1340,5 +1351,5 @@ jobs:
             echo
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          tail -20 /tmp/push.err 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+                    { sed -E "s#(x-access-token:)[^@]*@#\1***@#g; s#(AUTHORIZATION: bearer )[^ ]*#\1***#g" /tmp/push.err 2>/dev/null || true; } | tail -20 >> "$GITHUB_STEP_SUMMARY"
           echo '\`' >> "$GITHUB_STEP_SUMMARY"
