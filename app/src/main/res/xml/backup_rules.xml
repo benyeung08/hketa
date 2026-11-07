@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- allowBackup=false 之下仍保留明確排除規則，雙重保險：
-     filesDir 內嘅收藏／索引／離線瓦片／crash_log.txt 一律唔好備份。 -->
+<!-- allowBackup=false 之下系統唔會讀呢份；保留作萬一改返 true 嘅雙重保險。
+     明確列舉私有目錄入面嘅敏感檔，唔好用模糊嘅 path="."。 -->
 <full-backup-content>
     <exclude domain="root" path="." />
+    <exclude domain="file" path="hketa_index.json" />
+    <exclude domain="file" path="hketa_lr_special.json" />
+    <exclude domain="file" path="crash_log.txt" />
+    <exclude domain="file" path="update" />
+    <exclude domain="file" path="hketa_tiles" />
+    <exclude domain="file" path="hketa_assets" />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="database" path="." />
 </full-backup-content>
