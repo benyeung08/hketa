@@ -28,8 +28,9 @@ on:
         type: boolean
         default: true
 
+# 最小權限：lint 只需要 read；只有「掛起 Release」同「推送 apk 分支」先要 write。
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # ---- 先驗 workflow 本身 ----
@@ -44,6 +45,8 @@ jobs:
   # 唔係就指名道姓報出嚟。
   workflow-lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: "Validate uses: refs"
@@ -95,6 +98,9 @@ jobs:
   # build job 自己都會喺開始前失敗並報清楚係邊個 action。
   build:
     runs-on: ubuntu-latest
+    # softprops/action-gh-release 喺呢個 job 入面 create/update Release，需要 write
+    permissions:
+      contents: write
 
     # job outputs 只係「名稱: 值」嘅純對應，唔支援 description / value 巢狀寫法
     # （寫咗會報 "A mapping was not expected"）
@@ -1093,13 +1099,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hkate-release-apk
-          path: apk-out/*.apk
+          path: |
+            apk-out/*.apk
+            apk-out/*.apk.sha256
 
       - name: Attach APK to release (tag only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: apk-out/*.apk
+          # ⚠️ 一定要連 .sha256 一齊掛：AppViewModel.lookupSha256() 會攞
+          #    <apk-url>.sha256；冇咗會 404 → ShaLookup.Absent → 唔校驗直接裝。
+          files: |
+            apk-out/*.apk
+            apk-out/*.apk.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1185,6 +1197,8 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     # 關鍵：發布失敗唔應該拖垮成個 workflow —— APK 已經喺 build job 嘅
     # artifact 度，呢度只係額外抄一份去 apk 分支。開咗 continue-on-error 之後，
     # 就算 git push 失敗（shallow 被拒 / 分支保護 / token 權限），Actions 只會
@@ -1248,6 +1262,7 @@ jobs:
           set -e
           # 同 repo 用內置 GITHUB_TOKEN 就夠；只有跨 repo 先需要 PAT（PUBLISH_TOKEN）
           TOKEN="${{ secrets.PUBLISH_TOKEN || github.token }}"
+          echo "::add-mask::$TOKEN"
           export TOKEN
           BR="${{ steps.cfg.outputs.branch }}"
 
