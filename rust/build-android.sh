@@ -3,11 +3,7 @@
 # 本地預編譯 Rust 內核 → 產出 .so 落 app/src/main/jniLibs/
 #
 # 用一次之後把 .so **commit 入 repo**，CI 就會偵測到「已有預編譯 .so」
-# 而直接跳過現場編譯 —— 咁就 100% 保證每個 APK 都包咗 Rust 內核，
-# 唔使再靠 CI 臨場裝 Rust toolchain / NDK（嗰條路最容易失敗）。
-#
-# 咁就解決咗「Rust 索引層係可選」呢條限制：
-#   .so 喺 repo 入面 → CI 一定包到 → App 一定行 Rust 內核
+# 而直接跳過現場編譯 —— 咁就 100% 保證每個 APK 都包咗 Rust 內核。
 #
 # 用法：
 #   ./rust/build-android.sh            # 編 release，四個 ABI
@@ -15,8 +11,9 @@
 #
 # 前置：
 #   1. rustup  https://rustup.rs
-#   2. Android NDK（Android Studio → SDK Manager → SDK Tools → NDK）
-#      或者設 ANDROID_NDK_HOME 指向 NDK 目錄
+#   2. Android NDK r27+（16 KB page 對齊硬要求）
+#      設 ANDROID_NDK_HOME 或 ANDROID_HOME/ndk/<ver>
+#   3. rust/Cargo.lock 必須存在並 commit（第一次跑會自動生成）
 #
 set -euo pipefail
 
@@ -24,103 +21,140 @@ cd "$(dirname "$0")"
 HERE=$(pwd)
 ROOT="$(cd .. && pwd)"
 OUT="$ROOT/app/src/main/jniLibs"
+LOCK="$HERE/Cargo.lock"
 
 PROFILE=release
-CARGO_FLAGS=(--release --features android)
+CARGO_FLAGS=(--release --features android --locked)
 if [[ "${1:-}" == "--debug" ]]; then
   PROFILE=debug
-  CARGO_FLAGS=(--features android)
+  CARGO_FLAGS=(--features android --locked)
 fi
+
+# 四個 ABI，同 .cargo/config.toml 嘅 [target.*] 一一對應。
+# 唔好淨編 3 個：universal APK 冇 abiFilters，少咗 x86 嗰個 ABI 嘅裝置
+# 會 loadLibrary 失敗 → 靜默行純 Kotlin（唔崩，但用戶唔知慢咗）。
+ABIS=(armeabi-v7a arm64-v8a x86 x86_64)
+EXPECTED=${#ABIS[@]}
 
 echo "== HKETA Rust 內核預編譯 =="
 echo "   profile : $PROFILE"
+echo "   ABI     : ${ABIS[*]}（$EXPECTED 個）"
 echo "   輸出    : $OUT"
 
-# ---- 1. 搵 NDK ----
+# ---- 1. 搵 NDK（r27+ 硬要求，唔再「警告但照出」）----
 NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk}"
 if [[ -z "${NDK_HOME}" || ! -d "${NDK_HOME}" ]]; then
-  # 未設環境變數 → 搵最新嗰個
   if [[ -d "${ANDROID_HOME:-}/ndk" ]]; then
     NDK_HOME=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
   fi
 fi
 if [[ -z "${NDK_HOME:-}" || ! -d "${NDK_HOME:-}" ]]; then
-  echo "✗ 搵唔到 Android NDK。"
-  echo "  Android Studio → SDK Manager → SDK Tools → 勾 NDK (Side by side)"
-  echo "  或者：export ANDROID_NDK_HOME=/path/to/ndk/26.1.10909125"
+  echo "✗ 搵唔到 Android NDK。Android Studio → SDK Manager → SDK Tools → NDK (Side by side)"
+  echo "  或者：export ANDROID_NDK_HOME=/path/to/ndk/27.2.12479018"
   exit 1
 fi
-echo "   NDK     : $NDK_HOME"
-export ANDROID_NDK_HOME="$NDK_HOME"
-# NDK r27+ 先完整支援 16 KB page size 對齊
-NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || true)
-NDK_VER=${NDK_VER:-0}
-if (( NDK_VER < 27 )); then echo "⚠ NDK $NDK_VER < 27，建議升 r27+"; fi
-# 16 KB page size 建議 NDK r27+（r26 砌得到但未完整）
 NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || echo 0)
-if [[ -z "$NDK_VER" ]]; then NDK_VER=0; fi
-if (( NDK_VER < 27 )); then echo "⚠ NDK $NDK_VER < 27，建議升 r27+"; fi
-
-# Android 17（API 37）／16 KB page size：建議 NDK r27 或以上。
-# r26 都砌到，但對 16 KB ELF 對齊嘅處理未完整。
-NDK_VER=$(basename "$NDK_HOME" | grep -oE '^[0-9]+' || echo "?")
-if [[ "$NDK_VER" =~ ^[0-9]+$ ]] && (( NDK_VER < 27 )); then
-  echo "⚠ NDK 版本 $NDK_VER < 27 —— 16 KB 對齊可能唔完整，建議升級 NDK r27+"
+NDK_VER=${NDK_VER:-0}
+if (( NDK_VER < 27 )); then
+  echo "✗ NDK major $NDK_VER < 27 —— 16 KB ELF 對齊未完整，砌出嚟嘅 .so 喺 Android 17 會 dlopen 失敗。"
+  echo "  請裝 ndk;27.2.12479018 或更新。拒絕出一個「編譯成功但載唔入」嘅檔。"
+  exit 1
 fi
+echo "   NDK     : $NDK_HOME（major $NDK_VER ✔）"
+export ANDROID_NDK_HOME="$NDK_HOME"
 
-# ---- 2. 加 target ----
+# ---- 2. Cargo.lock（🔴 供應鏈：冇 lock = 每次解析到最高兼容版本）----
+if [[ ! -f "$LOCK" ]]; then
+  echo "== rust/Cargo.lock 唔存在，首次生成 =="
+  cargo generate-lockfile
+  echo "⚠ 已生成 Cargo.lock。請一定要 commit 佢："
+  echo "    git add rust/Cargo.lock && git commit -m 'lock rust deps'"
+  echo "  CI 用 --locked，冇呢個檔會直接紅，唔會再靜靜重新解析依賴。"
+fi
+echo "   lock    : $(grep -c '^\[\[package\]\]' "$LOCK") 個套件"
+
+# ---- 3. 加 target ----
 echo "== 加 Android target =="
-rustup target add armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
+rustup target add \
+  armv7-linux-androideabi aarch64-linux-android \
+  i686-linux-android x86_64-linux-android
 
-# ---- 3. cargo-ndk ----
+# ---- 4. cargo-ndk ----
 if ! command -v cargo-ndk >/dev/null 2>&1; then
   echo "== 裝 cargo-ndk（第一次會由 source 砌，要幾分鐘）=="
-  cargo install cargo-ndk --locked || cargo install cargo-ndk
+  cargo install cargo-ndk --locked
 fi
 
-# ---- 4. 編譯 ----
-echo "== cargo ndk build =="
-mkdir -p "$OUT"
-cargo ndk \
-  -t armeabi-v7a \
-  -t arm64-v8a \
-  -t x86_64 \
-  -o "$OUT" \
-  build "${CARGO_FLAGS[@]}"
+# ---- 5. 可選：RustSec 審計 ----
+if command -v cargo-audit >/dev/null 2>&1; then
+  echo "== cargo audit =="
+  cargo audit || echo "⚠ RustSec advisory 命中（唔阻塞本地 build，發布前要處理）"
+else
+  echo "   （冇裝 cargo-audit；CI 會跑。想本機驗：cargo install cargo-audit --locked）"
+fi
 
-# ---- 5. 驗證 ----
-echo "== 驗證 =="
+# ---- 6. 編譯 ----
+echo "== cargo ndk build（--locked）=="
+mkdir -p "$OUT"
+ARGS=()
+for a in "${ABIS[@]}"; do ARGS+=(-t "$a"); done
+cargo ndk "${ARGS[@]}" -o "$OUT" build "${CARGO_FLAGS[@]}"
+
+# ---- 7. 驗證：四個 ABI 一個都唔可以少 ----
+echo "== 驗證 .so =="
 FOUND=$(find "$OUT" -name 'libhketa_store.so' | sort)
-if [[ -z "$FOUND" ]]; then
-  echo "✗ 搵唔到 libhketa_store.so"
+COUNT=$(echo "$FOUND" | grep -c . || true)
+if [[ "$COUNT" -lt "$EXPECTED" ]]; then
+  echo "✗ 預期 $EXPECTED 個 ABI，實際得 $COUNT 個。唔可以當成功。"
+  echo "$FOUND"
   exit 1
 fi
 echo "$FOUND" | while read -r f; do
   echo "  ✔ ${f#$ROOT/}  ($(stat -c%s "$f") bytes)"
 done
 
-# 16 KB page size 對齊（Android 15+ 支援，Android 17 常用，Play 2025-11-01 起要求）
+# ---- 8. 16 KB page 對齊：唔合格就 exit 1，唔好只印警告 ----
 READELF=$(find "$NDK_HOME" -name 'llvm-readelf' -type f 2>/dev/null | head -1)
-if [[ -n "$READELF" ]]; then
-  echo "== 16 KB 對齊（要見到 0x4000；0x1000 = 4 KB，16 KB 裝置會載唔入）=="
-  for f in $FOUND; do
-    A=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u | tr '\n' ' ')
-    echo "  $(basename "$(dirname "$f")"): ${A:-讀唔到}"
-  done
+if [[ -z "$READELF" ]]; then
+  echo "✗ 搵唔到 llvm-readelf，冇得驗 16 KB 對齊 —— 拒絕當通過"
+  exit 1
 fi
+echo "== 16 KB 對齊（要見到 0x4000；0x1000 = 4 KB 會載唔入）=="
+BAD=0
+for f in $FOUND; do
+  # llvm-readelf -l 嘅 LOAD 行，最後一欄就係 Align。
+  # 唔好用 $(i-1)=="Align" ——「Align」只喺表頭出現，資料行冇，會恆空 → 假陽性。
+  A=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u | tr '\n' ' ')
+  echo "  $(basename "$(dirname "$f")"): ${A:-（讀唔到）}"
+  if [[ -z "${A// /}" ]] || echo "$A" | grep -q '0x1000'; then
+    echo "    ✗ 呢個 .so 未做 16 KB 對齊"
+    BAD=1
+  fi
+done
+if (( BAD )); then
+  echo "✗ 有 .so 未做 16 KB 對齊。確認 rust/.cargo/config.toml 有冇上傳、NDK 係咪 r27+"
+  exit 1
+fi
+echo "   16 KB 對齊檢查通過 ✔"
 
 cat <<TIP
 
 == 搞掂 ==
 
-而家把 .so commit 入 repo，CI 以後就唔使現場編譯：
+而家把 lock + .so commit 入 repo，CI 以後就唔使現場編譯：
 
+    git add rust/Cargo.lock
     git add -f app/src/main/jniLibs
-    git commit -m "prebuilt Rust kernel (.so)"
+    git commit -m "lock deps + prebuilt Rust kernel (.so)"
     git push
 
-留意 .gitignore 唔好 ignore 咗 .so —— 本 repo 已經加咗例外：
+.gitignore 已加顯式例外，唔會漏咗 .so：
 
     !app/src/main/jniLibs/**/*.so
+
+⚠ 升級依賴嘅正確姿勢（唔好手改 Cargo.lock）：
+    cd rust && cargo update && cargo audit
+    ./rust/build-android.sh          # 重新出四個 .so
+    git add rust/Cargo.lock rust/Cargo.toml app/src/main/jniLibs
 
 TIP

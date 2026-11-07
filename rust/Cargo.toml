@@ -9,6 +9,12 @@ name = "hketa_store"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# ⚠ 呢三行係 caret 範圍（"1" = >=1.0.0 <2.0.0），**本身唔鎖版本**。
+#    真正嘅鎖係 rust/Cargo.lock（37 個套件 + checksum），CI / 本地都用
+#    `cargo ... --locked`。唔好手改 Cargo.lock；升級要走：
+#        cd rust && cargo update && cargo audit && ./build-android.sh
+#    然後一齊 commit Cargo.lock + Cargo.toml + 四個 ABI 嘅 .so。
+#    jni 保持 0.21.x：0.22 改咗 JNIEnv / GlobalRef API，升級要改 jni.rs。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 jni = { version = "0.21", default-features = false, optional = true }
