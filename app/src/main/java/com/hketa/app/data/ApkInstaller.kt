@@ -23,7 +23,8 @@ import java.util.concurrent.TimeUnit
  * 流程：
  *   ① 下載去 app 私有目錄（filesDir/update/）
  *   ② 校驗 SHA-256（對比 CI 生成嘅 `<asset>.sha256`）
- *   ③ 經 FileProvider 開系統安裝器
+ *   ③ 校驗簽名證書（同目前已安裝 App 比對，見 ApkSignatureVerifier）
+ *   ④ 經 FileProvider 開系統安裝器
  *
  * 點解要 FileProvider：Android 7.0（API 24）起，
  * 直接畀 `file://` Uri 出去會抛 `FileUriExposedException`，
@@ -72,6 +73,22 @@ object ApkInstaller {
             .build()
 
         val out = File(dir(context), fileName)
+
+        // 只接受固定、可信嘅下載來源；Release JSON 被改都唔會指向任意 URL
+        val uri = runCatching { Uri.parse(url) }.getOrNull()
+        val allowedHosts = setOf(
+            "github.com",
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com",
+            "raw.githubusercontent.com"
+        )
+        val host = uri?.host
+        if (uri == null || uri.scheme?.equals("https", ignoreCase = true) != true ||
+            host == null || host !in allowedHosts
+        ) {
+            return@withContext State.Failed("Untrusted download host")
+        }
+
         var state: State = State.Idle
 
         try {
@@ -117,6 +134,15 @@ object ApkInstaller {
                 }
             }
 
+            // ---- 簽名證書校驗（同目前已安裝 App 比對）----
+            // SHA-256 同 APK 放同一個 Release，唔足以證明來源；呢度係最後一道防線。
+            if (!ApkSignatureVerifier.matchesInstalled(context, out)) {
+                runCatching { out.delete() }
+                val f = State.Failed("Signing certificate mismatch")
+                withContext(Dispatchers.Main) { onProgress(f) }
+                return@withContext f
+            }
+
             val done = State.Done(out)
             state = done
             withContext(Dispatchers.Main) { onProgress(done) }
@@ -138,6 +164,12 @@ object ApkInstaller {
     /** 開系統安裝器 */
     fun install(context: Context, file: File) {
         if (!file.exists()) return
+        // 開系統安裝器前再驗一次，避免 Done 狀態同實際檔案之間有任何時間差
+        if (!ApkSignatureVerifier.matchesInstalled(context, file)) {
+            runCatching { file.delete() }
+            Toast.makeText(context, "更新檔簽名不符，已取消安裝", Toast.LENGTH_LONG).show()
+            return
+        }
         val uri = runCatching {
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }.getOrNull() ?: return
