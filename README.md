@@ -262,3 +262,12 @@ ETA 資料全部經 HTTPS 向上述政府／公共接口取得，唔收集、唔
 `a.basemaps.cartocdn.com`（地圖瓦片）。
 Leaflet JS／CSS 已打包入 APK `assets/hketa_offline/`，**唔再連 `unpkg.com`**。
 `allowBackup="false"`，崩潰記錄只寫私有目錄並保留最近 5 次。
+
+### Rust 索引內核（可選加速層）
+
+`rust/` 編譯出 `libhketa_store.so` 落 `app/src/main/jniLibs/{abi}/`，四個 ABI
+（armeabi-v7a／arm64-v8a／x86／x86_64）都要齊。依賴由 **`rust/Cargo.lock`**
+鎖定，CI 同本地一律用 `--locked`，並跑 `cargo audit`；NDK 必須 **r27+** 以
+確保 16 KB page 對齊。呢幾關任何一關唔過，release build 會直接失敗，唔會
+再出一個「編譯成功但喺 Android 17 載唔入、靜默退化純 Kotlin」嘅 APK。
+第一次設好：`./rust/build-android.sh` → commit `Cargo.lock` + 四個 `.so`。

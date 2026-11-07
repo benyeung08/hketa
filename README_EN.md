@@ -5,7 +5,8 @@
 A complete native rewrite of `benyeung08/etaapp` — a WebToApp fork whose core was nothing
 but a WebView wrapper around a web page. HKATE is a real native app: **Kotlin + Jetpack
 Compose**, calling the official ETA endpoints of Hong Kong transport operators directly.
-**No WebView, no web shell.**
+The main UI is native Compose with **no web shell**. The only WebView is the optional
+route map (Leaflet + CARTO tiles), which falls back to a Canvas schematic on failure.
 
 > The native rewrite is complete: everything under `app/src/main/java` now lives in
 > `com.hketa.app`. The original WebToApp `assets/`, `cpp/`, `proto/`, `schemas/` and the
@@ -70,11 +71,12 @@ All UI text lives in three resource files:
 | `res/values/strings.xml` | Traditional Chinese (also the fallback when nothing matches) |
 | `res/values-zh-rCN/strings.xml` | Simplified Chinese |
 | `res/values-en/strings.xml` | English |
+| `res/values-b+zh+Hans/strings.xml` | Simplified Chinese (BCP 47 script, covers zh-SG etc.) |
 
 A fourth folder, `res/values-b+zh+Hans/`, uses **BCP 47 script matching** so any Simplified
 locale — including `zh-SG` — resolves to Simplified rather than falling through to Traditional.
 
-All three share exactly the same **208 keys**. Switching languages triggers a configuration change, so
+All four share exactly the same **338 keys**. Switching languages triggers a configuration change, so
 Compose recomposes automatically with no manual Activity restart.
 
 Arrival remarks (platform, service delayed, via Racecourse, number of cars) are assembled on the fly
@@ -140,7 +142,17 @@ GitHub's fresh runner would generate a new debug key every build and users would
 Requirements: **JDK 17**, Android SDK (**platform 37** + **build-tools 36.0.0**), **Gradle 9.3.1**.
 
 ```bash
-gradle :app:assembleDebug    # -> app/build/outputs/apk/debug/app-debug.apk
+gradle wrapper --gradle-version 9.3.1   # first run only (wrapper scripts are not committed)
+
+# Local signing goes into local.properties (gitignored):
+#   signing.storeFile=/abs/path/outside-repo/hketa-release.jks
+#   signing.storePassword=*** / signing.keyAlias=hketa / signing.keyPassword=***
+# CI uses Secrets: HKETA_KEYSTORE_B64, HKETA_STORE_PASSWORD,
+#                  HKETA_KEY_ALIAS, HKETA_KEY_PASSWORD
+# A release build without an external key is rejected (no silent debug-key fallback).
+
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug    # -> app/build/outputs/apk/debug/app-debug.apk
 gradle :app:assembleRelease  # -> app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -271,3 +283,14 @@ OkHttp 4.12 + kotlinx.serialization, Coroutines/Flow + AndroidViewModel, Play Se
 The app only issues HTTPS requests to the official endpoints above and collects or uploads
 no personal data. Location is used solely to sort nearby stops at that moment — it is never
 stored or transmitted.
+
+Actual HTTPS endpoints (listed honestly): `data.etabus.gov.hk`, `rt.data.gov.hk`,
+`data.etagmb.gov.hk`, `static.data.gov.hk`, `data.hkbus.app`,
+`h2-app-rr.hkemobility.gov.hk`, `api.github.com` (update check),
+`a.basemaps.cartocdn.com` (map tiles). Leaflet JS/CSS is bundled in the APK under
+`assets/hketa_offline/` — the app no longer contacts `unpkg.com`.
+`allowBackup="false"`; crash logs stay in private storage and keep only the last 5 entries.
+
+In-app updates verify **SHA-256** against the Release `<apk>.sha256` asset and then
+**compare the signing certificate** with the installed app. Any failure aborts the install;
+a missing checksum (other than 404) is fail-closed, never silently downgraded.
