@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+.idea/
+local.properties
+android/build/
+android/app/build/
+android/app/src/main/assets/web/*
+!android/app/src/main/assets/web/.gitkeep
+android/gradlew
+android/gradlew.bat
+android/gradle/wrapper/
+node_modules/
+.DS_Store
+*.apk
+*.aab
+keystore/*.jks
+!keystore/.gitkeep
