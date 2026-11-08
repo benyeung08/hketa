@@ -409,8 +409,14 @@ jobs:
       - name: Verify 16KB page alignment
         id: verify_16kb
         if: always()
+        env:
+          RUST_OUTCOME: ${{ steps.rust.outcome }}
         run: |
           set -uo pipefail
+          if [ "$RUST_OUTCOME" != "success" ]; then
+            echo "::notice::Rust build outcome=$RUST_OUTCOME，未有 .so 可驗 —— 呢個係上游結果，唔係對齊問題"
+            exit 0
+          fi
           SO=app/src/main/jniLibs
           READELF=""
           for c in llvm-readelf readelf "${ANDROID_HOME}/ndk/"*/toolchains/llvm/prebuilt/*/bin/llvm-readelf; do
@@ -454,8 +460,14 @@ jobs:
       - name: Verify .so (never silent)
         id: verify_so
         if: always()
+        env:
+          RUST_OUTCOME: ${{ steps.rust.outcome }}
         run: |
           set -uo pipefail
+          if [ "$RUST_OUTCOME" != "success" ]; then
+            echo "::notice::Rust build outcome=$RUST_OUTCOME，跳過 .so 驗證（上游已報錯，Build Release APK 亦會被 skipped）"
+            exit 0
+          fi
           SO=app/src/main/jniLibs
           found=$(find "$SO" -name 'libhketa_store.so' 2>/dev/null | sort)
           if [ -n "$found" ]; then
@@ -646,6 +658,39 @@ jobs:
           need app/src/main/AndroidManifest.xml
           need app/src/main/java/com/hketa/app/data/Changelog.kt
           need app/src/main/java/com/hketa/app/ui/screens/AboutScreen.kt
+
+          echo "--- hkbus.app 功能對齊（v5）---"
+          need app/src/main/java/com/hketa/app/data/UserPrefs.kt
+          need app/src/main/java/com/hketa/app/data/FareRepository.kt
+          need app/src/main/java/com/hketa/app/data/RouteChangeRepository.kt
+          need app/src/main/java/com/hketa/app/data/JourneyPlanner.kt
+          need app/src/main/java/com/hketa/app/ui/screens/HubScreen.kt
+          need app/src/main/java/com/hketa/app/ui/theme/Theme.kt
+          need app/src/test/java/com/hketa/app/data/JourneyPlannerTest.kt
+
+      # 獨立 step + set -e：上面個 preflight 用 continue-on-error，
+      # 放喺入面會被吞。i18n 唔對齊會令某語言 ResourceNotFoundException，一定要硬閘。
+      - name: Preflight - verify i18n keys (v5)
+        run: |
+          set -euo pipefail
+          python3 - <<'PYX'
+          import xml.etree.ElementTree as ET, sys
+          dirs = ['values','values-en','values-zh-rCN','values-b+zh+Hans']
+          sets = {}
+          for d in dirs:
+              p = 'app/src/main/res/%s/strings.xml' % d
+              names = [e.get('name') for e in ET.parse(p).getroot() if e.get('name')]
+              if len(names) != len(set(names)):
+                  print("::error::%s 有重複 key" % p); sys.exit(1)
+              sets[d] = set(names)
+          base = sets['values']
+          for d, s in sets.items():
+              if s != base:
+                  print("::error::%s key 唔對齊：缺 %s 多 %s" %
+                        (d, sorted(base-s)[:5], sorted(s-base)[:5]))
+                  sys.exit(1)
+          print("四份 strings.xml 對齊 ✔（各 %d 個 key）" % len(base))
+          PYX
 
           echo "--- widget 資源（AndroidManifest 會引用）---"
           need app/src/main/res/xml/hketa_widget_info.xml
@@ -1068,11 +1113,34 @@ jobs:
       # 把測試結果寫入 job summary —— 唔使下載 artifact 都睇到「跑咗幾個、錯咗邊個」
       - name: Report unit test results
         if: always()
+        env:
+          UNIT_OUTCOME: ${{ steps.unittest.outcome }}
         run: |
           echo "### 單元測試" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          # 目錄名跟返實際跑到嗰個 task（testDebugUnitTest / testReleaseUnitTest 都有可能）
-          R="$(ls -d app/build/test-results/test*UnitTest 2>/dev/null | head -1)"
+
+          # 🔴 之前呢個 step 用 if: always()，但冇讀上游 outcome：
+          #    任何一個更前嘅 step 紅咗 → `Run unit tests` 被 skipped →
+          #    呢度照跑，然後報「搵唔到測試報告目錄 — 測試根本冇跑到」。
+          #    結果一個根因炸出 8 條 annotation，仲會誤導人去查 app/src/test。
+          #    而家：上游未成功就講清楚係「上游未跑」，唔再偽裝成測試問題。
+          #    job 已經紅、Build Release APK 亦被 skipped，唔存在 fail-open。
+          if [ "$UNIT_OUTCOME" != "success" ]; then
+            echo "- ⚠️ \`Run unit tests\` outcome = **$UNIT_OUTCOME** ——" \
+                 "單元測試根本未執行（上游有 step 失敗），**唔係測試報告嘅問題**。" \
+                 "請先睇返最前面嗰條 \`::error::\`。" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::單元測試未執行（outcome=$UNIT_OUTCOME），跳過報告解析；根因請睇上游 error"
+            exit 0
+          fi
+
+          # 目錄名跟返實際跑到嗰個 task（testDebugUnitTest / testReleaseUnitTest 都有可能）。
+          # 唔好用 head -1 盲揀第一個：兩個目錄同時存在時，可能揀咗冇 XML 嗰個。
+          R=""
+          for d in app/build/test-results/test*UnitTest; do
+            [ -d "$d" ] || continue
+            if ls "$d"/*.xml >/dev/null 2>&1; then R="$d"; break; fi
+            [ -z "$R" ] && R="$d"
+          done
           if [ -n "$R" ] && [ -d "$R" ]; then
             TOTAL=0; FAILED=0
             for f in "$R"/*.xml; do
