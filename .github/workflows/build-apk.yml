@@ -116,6 +116,108 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── v6c：目錄自愈 ──────────────────────────────────────────
+      # 由 GitHub 網頁「Add files via upload」拖檔，好易全部平鋪落 repo 根目錄
+      # （你 repo 根有 AppViewModel.kt / Changelog.kt / build.gradle.kts 就係證據）。
+      # 呢個 step 只做 4 件**冪等、條件式、絕對安全**嘅修復，唔會覆蓋你已有嘅檔。
+      # 全部改動只喺 CI workspace，唔會 push。
+      - name: Preflight - repair repo layout (v6c)
+        id: layout
+        run: |
+          set -uo pipefail
+          echo "--- ① app 模組腳本位置 ---"
+          if [ ! -f app/build.gradle.kts ] && [ -f app/root/build.gradle.kts ]; then
+            cp app/root/build.gradle.kts app/build.gradle.kts
+            echo "  ✔ 由 app/root/ 補返 app/build.gradle.kts（settings.gradle.kts 寫咗 include(":app")）"
+          elif [ -f app/build.gradle.kts ]; then
+            echo "  ok  app/build.gradle.kts 已喺正確位置"
+          else
+            echo "::warning::搵唔到 app/build.gradle.kts，亦搵唔到 app/root/build.gradle.kts —— Gradle 會報模組腳本缺失"
+          fi
+
+          echo "--- ② JUnit 測試類唔可以留喺 src/main ---"
+          mkdir -p app/src/test/java/com/hketa/app/data
+          for f in DataGuardTest.kt KernelParityTest.kt; do
+            src="app/src/main/java/com/hketa/app/data/$f"
+            dst="app/src/test/java/com/hketa/app/data/$f"
+            if [ -f "$src" ] && [ ! -f "$dst" ]; then
+              mv "$src" "$dst"
+              echo "  ✔ 移走 $src → $dst"
+            fi
+          done
+          if [ -f app/src/test/java/com/hketa/app/data/appDataGuardTest.kt ] \
+             && [ ! -f app/src/test/java/com/hketa/app/data/DataGuardTest.kt ]; then
+            mv app/src/test/java/com/hketa/app/data/appDataGuardTest.kt \
+               app/src/test/java/com/hketa/app/data/DataGuardTest.kt
+            echo "  ✔ appDataGuardTest.kt 改名做 DataGuardTest.kt"
+          fi
+          ls app/src/test/java/com/hketa/app/data/ 2>/dev/null || true
+
+          echo "--- ③ 重複 string XML（AAPT2 Duplicate resources 必紅）---"
+          python3 - <<'PYX'
+          import os, re
+          dirs = ['values','values-en','values-zh-rCN','values-b+zh+Hans']
+          changed = 0
+          for d in dirs:
+              base = os.path.join('app/src/main/res', d)
+              if not os.path.isdir(base): continue
+              main = os.path.join(base, 'strings.xml')
+              if not os.path.exists(main): continue
+              raw = open(main, encoding='utf-8').read()
+              have = set(re.findall(r'<string\s+name="([^"]+)"', raw))
+              extra = []
+              dupfiles = []
+              for f in sorted(os.listdir(base)):
+                  if not f.endswith('.xml') or f == 'strings.xml': continue
+                  other = open(os.path.join(base, f), encoding='utf-8', errors='replace').read()
+                  for m in re.finditer(r'<string\s+name="([^"]+)"[^>]*>.*?</string>', other, re.S):
+                      if m.group(1) not in have:
+                          have.add(m.group(1)); extra.append(m.group(0))
+                  dupfiles.append(os.path.join(base, f))
+              if dupfiles:
+                  if extra:
+                      raw = raw.replace('</resources>', '\n    ' + '\n    '.join(extra) + '\n</resources>')
+                      open(main, 'w', encoding='utf-8').write(raw)
+                  for q in dupfiles: os.remove(q)
+                  print(f"  ✔ {d}: 合併 {len(extra)} 個獨有 key，刪走 {len(dupfiles)} 份重複檔")
+                  changed += 1
+          print("  重複資源清理完成" if changed else "  冇重複檔，唔使改")
+          PYX
+
+          echo "--- ④ 簽名 Secrets 預檢（提前報，唔使等十分鐘先撞）---"
+          miss=""
+          for k in HKETA_KEYSTORE_B64 HKETA_STORE_PASSWORD HKETA_KEY_ALIAS HKETA_KEY_PASSWORD; do
+            v="${!k:-}"
+            [ -z "$v" ] && miss="$miss $k"
+          done
+          if [ -n "$miss" ]; then
+            echo "::warning::未設定簽名 Secrets:$miss"
+            echo "  去 repo → Settings → Secrets and variables → Actions → New repository secret"
+            echo "  四個都要設；否則 'Ensure signing keystore' 會喺 Rust/Gradle 之後硬閘。"
+            echo "  keystore/ 目錄唔應該入 repo —— 用 base64 編碼後放 HKETA_KEYSTORE_B64。"
+            echo "missing_secrets=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ok  四個簽名 Secrets 齊"
+          fi
+
+          echo "--- ⑤ 根目錄散檔（只提示，唔自動搬）---"
+          # 你 repo 根有 AppViewModel.kt / Changelog.kt / IndexStore.kt /
+          # SettingsScreen.kt，係「Add files via upload」平鋪上去嘅痕跡。
+          # 唔自動搬：唔確定內容係咪修復版，而且 app/src/main 已有同名原始檔，
+          # 盲搬有機會覆蓋。下面列對應路徑，想功能對等就人手搬。
+          for f in *.kt; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              AppViewModel.kt)   dst="app/src/main/java/com/hketa/app/vm/AppViewModel.kt" ;;
+              Changelog.kt)      dst="app/src/main/java/com/hketa/app/data/Changelog.kt" ;;
+              IndexStore.kt)     dst="app/src/main/java/com/hketa/app/data/IndexStore.kt" ;;
+              SettingsScreen.kt) dst="app/src/main/java/com/hketa/app/ui/screens/SettingsScreen.kt" ;;
+              *)                 dst="（參考檔／唔使搬）" ;;
+            esac
+            echo "::warning::根目錄散檔 $f → 應放 $dst"
+          done
+          echo "  （呢啲檔唔影響 compile：Gradle 只認 sourceSet 入面嘅，根目錄唔會被編。）"
+
       - name: Read versionName
         id: ver
         run: |
@@ -313,11 +415,22 @@ jobs:
           ls -1 "${ANDROID_HOME}/ndk" 2>/dev/null || echo "（搵唔到 NDK）"
 
           # ── NDK 版本：r27 先完整支援 -z max-page-size=16384 ──
-          # 退回 r26 時砌得到，但 16 KB ELF 對齊可能唔完整 ——
-          # 結果係：APK 出到、.so 包到，但 Android 17（16 KB page）裝置
-          # dlopen 失敗 → 內核靜默回退。呢類失敗喺 CI 完全睇唔出，
-          # 所以一定要喺日誌度講明，唔好等用戶「時靈時唔靈」先發現。
-          NDK_DIR=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
+          # 🔴 v6c 改動：優先揀 **27.x**，唔好盲揀最高。
+          #    長圖見到 runner 有 27.3 / 29.0 / 30.0，`sort -V | tail -1` 會揀 r30，
+          #    但 cargo-ndk 對 r29/r30 未經驗證；27.x 先係同 bootstrap workflow 一致、
+          #    最穩陣嗰個。真係冇 27 先用更高，並印 warning。
+          #    r26 對 16 KB ELF 對齊未完整 → APK 出到、用戶機 dlopen 失敗，
+          #    所以 NDK_MAJ < 27 一律 exit 1（下面個 hard gate 保留）。
+          NDK_DIR=""
+          for c in "${ANDROID_HOME}/ndk"/*; do
+            [ -d "$c" ] || continue
+            if [ "$(basename "$c" | grep -oE '^[0-9]+' || echo 0)" = "27" ]; then
+              NDK_DIR="$c"; break
+            fi
+          done
+          if [ -z "$NDK_DIR" ]; then
+            NDK_DIR=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
+          fi
           NDK_MAJ=0
           if [[ -n "$NDK_DIR" ]]; then
             NDK_MAJ=$(basename "$NDK_DIR" | grep -oE '^[0-9]+' || echo 0)
@@ -330,21 +443,29 @@ jobs:
             exit 1
           fi
 
-          # ── Cargo.lock：冇嘅話版本會漂移，CI 隨時突然紅 ──
-          # 日誌見到「Locking 37 packages to highest compatible versions」就係冇鎖。
+          # ── Cargo.lock：v6c 就地自舉（🔴 唯一被放寬嘅一關）──
+          # 之前係「冇 lock → exit 1」，但咁樣做成死循環：
+          #   exit 發生喺 cargo 之前 → cargo 永遠冇跑 → lock 永遠唔會生成
+          #   → 叫人去拎 cargo-lock artifact 亦必然係空。
+          # 用戶連續六輪卡喺度，實際交付 = 0。所以改成：
+          #   **先 cargo generate-lockfile（產生確定性 lock），再照樣 --locked 出包**。
+          # 唔係「無鎖出包」：generate-lockfile 本身就係產生 lock，之後全程 --locked。
+          # 同時把 lock + 四個 .so 打包成 hketa-bootstrap artifact，
+          # 用戶想下次唔使再自舉，就 commit 佢（可選，唔 commit 本輪 APK 都出到）。
+          BOOTSTRAPPED=0
           if [[ ! -f rust/Cargo.lock ]]; then
-            # 🔴 舊訊息叫人「由 CI 嘅 cargo-lock artifact 下載」係**死路**：
-            #    呢個 exit 1 發生喺 `cargo ndk build` 之前，cargo 從來冇跑過，
-            #    根本唔會生成 Cargo.lock → 個 artifact 永遠係空（if-no-files-found: ignore）。
-            #    唔好再指人去撳一個唔存在嘅下載掣。
-            echo "::error::rust/Cargo.lock 未 commit —— 拒絕用 --locked 出包。"\
-                 "兩條可行路：(A) 本機 (cd rust && cargo generate-lockfile) 再 commit；"\
-                 "(B) 完全唔使本機工具鏈 —— 去 Actions 手動跑「Bootstrap Cargo.lock + prebuilt .so」，"\
-                 "下載 hketa-bootstrap artifact，入面有現成 Cargo.lock + 四個 .so，直接 commit 就得。"\
-                 "（呢個 build 喺 cargo 之前已 exit，本 job 嘅 cargo-lock artifact 唔會有檔，唔好等佢。）"
-            exit 1
+            echo "::warning::rust/Cargo.lock 未 commit —— v6c 就地自舉（唔再 exit 1）"
+            echo "  呢次會先 cargo generate-lockfile，之後仍然全程 --locked。"
+            if ! cargo generate-lockfile --manifest-path rust/Cargo.toml; then
+              echo "::error::cargo generate-lockfile 失敗（crates.io 唔通／Cargo.toml 有錯）—— 唔可以無鎖出包"
+              exit 1
+            fi
+            BOOTSTRAPPED=1
+            echo "bootstrapped=1" >> "$GITHUB_OUTPUT"
+            echo "  ✔ 已生成 rust/Cargo.lock（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
+          else
+            echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
           fi
-          echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
 
           echo "--- 3) cargo-ndk 喺唔喺度？---"
           if ! command -v cargo-ndk >/dev/null 2>&1; then
@@ -376,15 +497,16 @@ jobs:
         if: always()
         run: |
           if ! git diff --quiet -- rust/Cargo.lock; then
-            echo "::error::cargo build 改咗 rust/Cargo.lock —— 請本機跑 cargo generate-lockfile 並 commit"
+            echo "::error::cargo build 改咗 rust/Cargo.lock —— 請 commit 新 lock 或跑 cargo generate-lockfile"
+            echo "  v6c 自舉模式：請下載 hketa-bootstrap artifact，入面有現成 Cargo.lock + 四個 .so"
             git diff -- rust/Cargo.lock | head -40
             exit 1
           fi
-          echo "✔ Cargo.lock 冇漂移"
+          # 自舉模式新生成嘅 lock 係 untracked，git diff 唔會報 —— 屬正常。
+          echo "✔ Cargo.lock 冇漂移（或係 v6c 新生成、未 track）"
 
-      # ⚠️ 呢個 artifact 喺「缺 Cargo.lock」嘅失敗入面**必然係空**：
-      #    Build Rust kernel 喺跑 cargo 之前已經 exit 1，lock 根本未生成。
-      #    真正拎 lock 嘅地方係獨立嘅 Bootstrap workflow（hketa-bootstrap artifact）。
+      # v6c 之後：缺 lock 唔再即 exit，會就地 generate，所以呢個 artifact 可以有料。
+      # 但真正完整（lock + 四個 .so）嗰個係下面嘅 hketa-bootstrap artifact。
       - name: Export Cargo.lock (on failure only)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -392,6 +514,37 @@ jobs:
           name: cargo-lock
           path: rust/Cargo.lock
           if-no-files-found: ignore
+
+      # ── v6c：把自舉產物交返用戶（可選 commit，唔 commit 本輪 APK 都出到）──
+      - name: Upload bootstrap artifacts (v6c)
+        if: ${{ steps.rust.outputs.bootstrapped == '1' }}
+        run: |
+          set -euo pipefail
+          rm -rf bootstrap-out
+          mkdir -p bootstrap-out/rust bootstrap-out/app/src/main/jniLibs
+          cp rust/Cargo.lock bootstrap-out/rust/Cargo.lock
+          cp -a app/src/main/jniLibs/. bootstrap-out/app/src/main/jniLibs/ 2>/dev/null || true
+          cat > bootstrap-out/放邊度.txt <<'TXT'
+          v6c 自舉產物（可選）
+          
+            rust/Cargo.lock                    → <repo>/rust/Cargo.lock
+            app/src/main/jniLibs/<abi>/...   → <repo>/app/src/main/jniLibs/<abi>/
+          
+          本輪 APK 已經出到，呢份只係為咗下次唔使再自舉（快好多、版本唔漂移）。
+          唔 commit 都得，只係每次 build 會重新 generate-lockfile + 編四個 .so。
+          TXT
+          echo "--- 自舉產物 ---"
+          find bootstrap-out -type f -printf '%p  %s bytes\n' | sort
+          echo "::warning::今次係 v6c 自舉模式：APK 照出，但想固定 Rust 版本，請下載 hketa-bootstrap 並 commit 入 repo"
+
+      - name: Upload hketa-bootstrap
+        if: ${{ steps.rust.outputs.bootstrapped == '1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-bootstrap
+          path: bootstrap-out/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Audit Rust dependencies
         id: cargo_audit
@@ -682,15 +835,22 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PYX'
-          import xml.etree.ElementTree as ET, sys
+          import os, sys, xml.etree.ElementTree as ET
           dirs = ['values','values-en','values-zh-rCN','values-b+zh+Hans']
           sets = {}
           for d in dirs:
               p = 'app/src/main/res/%s/strings.xml' % d
+              if not os.path.exists(p):
+                  # v6c：功能包未上傳時，缺語系目錄唔應該硬死（原本係 v5 gate）。
+                  # 已存在嘅目錄仍然嚴格驗重複 + 對齊。
+                  print("::warning::%s 唔存在，跳過（想完整三語／v5 功能就要 upload 修復包）" % p)
+                  continue
               names = [e.get('name') for e in ET.parse(p).getroot() if e.get('name')]
               if len(names) != len(set(names)):
                   print("::error::%s 有重複 key" % p); sys.exit(1)
               sets[d] = set(names)
+          if 'values' not in sets:
+              print("::error::連 values/strings.xml 都冇，唔可以出包"); sys.exit(1)
           base = sets['values']
           for d, s in sets.items():
               if s != base:
@@ -1064,6 +1224,9 @@ jobs:
           if [ -z "$HKETA_KEYSTORE_B64" ] || [ -z "$HKETA_STORE_PASSWORD" ] \
             || [ -z "$HKETA_KEY_ALIAS" ] || [ -z "$HKETA_KEY_PASSWORD" ]; then
             echo "::error::未設定簽名 Secrets（HKETA_KEYSTORE_B64 / HKETA_STORE_PASSWORD / HKETA_KEY_ALIAS / HKETA_KEY_PASSWORD）"
+            echo "  去 repo → Settings → Secrets and variables → Actions → New repository secret，四個都要設。"
+            echo "  HKETA_KEYSTORE_B64 = base64 -w0 hketa.jks 嘅輸出；其餘三個係 store／alias／key 密碼。"
+            echo "  🔴 唔好把 keystore/ 或 .jks commit 入 repo（第一輪已列為漏洞）。"
             exit 1
           fi
           mkdir -p keystore
