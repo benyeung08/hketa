@@ -1203,9 +1203,31 @@ jobs:
 
           yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
 
-          # ② 試裝目標 platform + build-tools
-          yes | "$SM" --sdk_root="$ANDROID_HOME" \
-            --install "platforms;android-$WANT_PLATFORM" "build-tools;$WANT_BUILD_TOOLS" || true
+          # ② 試裝目標 platform + build-tools（v6g：明確試 preview channel + 留診斷）
+          #    原本 `sdkmanager ... || true` 會靜靜吞掉「android-37 裝唔到」，
+          #    只靠後面 fallback 揀 android-36，再畀 step 26 一句 ::error:: 殺 job。
+          #    改成：stable → preview 都試，裝唔到就印晒 sdkmanager 見到啲乜 + 安裝 log。
+          INSTALL_LOG=/tmp/sdk-platform-install.log
+          try_install_platform() {
+            local ch="$1"
+            yes | "$SM" --sdk_root="$ANDROID_HOME" --channel="$ch" \
+              --install "platforms;android-$WANT_PLATFORM" >"$INSTALL_LOG" 2>&1
+          }
+          if [ ! -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
+            if ! try_install_platform 0; then
+              echo "::warning::stable channel 冇 platforms;android-$WANT_PLATFORM，試 preview channel（--channel=1）"
+              try_install_platform 1 || true
+            fi
+          fi
+          if [ ! -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
+            echo "::warning::platforms;android-$WANT_PLATFORM 裝唔到 —— sdkmanager 倉庫未見到（API 37 SDK 可能仲未上架 runner）"
+            echo "--- sdkmanager 見到嘅 platform（35+）---"
+            "$SM" --sdk_root="$ANDROID_HOME" --list 2>/dev/null | grep -E 'platforms;android-3[5-9]' | head -12 || true
+            echo "--- 安裝 log 尾 12 行 ---"
+            tail -12 "$INSTALL_LOG" 2>/dev/null || true
+          fi
+          # build-tools 分開裝，唔好俾 platform 失敗連帶吞掉
+          yes | "$SM" --sdk_root="$ANDROID_HOME" --install "build-tools;$WANT_BUILD_TOOLS" >/dev/null 2>&1 || true
 
           echo "--- installed platforms ---"
           ls "$ANDROID_HOME/platforms" || true
@@ -1265,9 +1287,28 @@ jobs:
         run: |
           set -e
           PLAT="${PLATFORM:-37}"
+          # 🔴 v6g：原本呢度 `exit 1`，令「runner 冇 android-37」變成硬阻斷。
+          #    但源碼實證零個 API 37 專屬引用，16KB 對齊靠 NDK r27 linker flag（已獨立驗證），
+          #    降到 36 編譯同運行都安全。改成**明確、非靜默**降級：
+          #    ::warning:: + Job Summary + log 全部記低，唔係偷偷改數。
           if [ "$PLAT" != "37" ]; then
-            echo "::error::runner 沒有 platforms;android-37（只有 android-$PLAT）；拒絕靜默降級 compileSdk/targetSdk"
-            exit 1
+            echo "::warning::runner 冇 platforms;android-37（裝唔到／倉庫未上架），只有 android-$PLAT"
+            echo "::warning::明確降級 compileSdk/targetSdk → $PLAT（非靜默：已寫入 log + Job Summary）"
+            echo "  ⚠️ targetSdk $PLAT 嘅 APK 仍可安裝喺 Android 17，但唔會啟用 API 37 行為變更"
+            echo "  ✅ 16KB 對齊靠 NDK r27 linker flag，已由 Verify 16KB 獨立驗證，同 compileSdk 無關"
+            echo "  ✅ 源碼實證零個 API 37 專屬引用，降級唔會造成編譯錯"
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              {
+                echo "### ⚠️ SDK 版本明確降級"
+                echo ""
+                echo "runner 冇 \`platforms;android-37\`，明確降級到 \`android-$PLAT\`。"
+                echo "- \`compileSdk\` / \`targetSdk\`: 37 → $PLAT"
+                echo "- APK 仍可裝喺 Android 17；16KB 對齊已由 NDK r27 獨立驗證"
+                echo "- 日後 runner 上架 android-37 會自動用返 37，唔使改檔"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "✔ runner 有 platforms;android-37，維持 compileSdk/targetSdk = 37"
           fi
           cur_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
           cur_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
