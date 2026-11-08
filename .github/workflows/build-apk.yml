@@ -7,6 +7,10 @@ on:
     tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
+      allow_sdk_downgrade:
+        description: '⚠️ 緊急用：runner 裝唔到 android-37 時容許降級（預設關＝絕不降級，保證 targetSdk 37）'
+        type: boolean
+        default: false
       publish:
         description: '把 APK 提交到 builds 目錄'
         type: boolean
@@ -1186,6 +1190,7 @@ jobs:
         env:
           WANT_PLATFORM: "37"
           WANT_BUILD_TOOLS: "36.0.0"
+          ALLOW_SDK_DOWNGRADE: ${{ github.event.inputs.allow_sdk_downgrade || 'false' }}
         run: |
           set -x
           ls "$ANDROID_HOME" || true
@@ -1203,31 +1208,49 @@ jobs:
 
           yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
 
-          # ② 試裝目標 platform + build-tools（v6g：明確試 preview channel + 留診斷）
-          #    原本 `sdkmanager ... || true` 會靜靜吞掉「android-37 裝唔到」，
-          #    只靠後面 fallback 揀 android-36，再畀 step 26 一句 ::error:: 殺 job。
-          #    改成：stable → preview 都試，裝唔到就印晒 sdkmanager 見到啲乜 + 安裝 log。
+          # ② 硬裝 platforms;android-37（Android 17 正式 SDK，2026-06-16 上架）
+          #    v6g 會 fallback 去 36 並「明確降級」；v6h 按用戶要求**絕不降級**。
+          #    逐層試：licenses → stable → preview，全部留 log；裝唔到就 hard fail + 列解法。
           INSTALL_LOG=/tmp/sdk-platform-install.log
+          : > "$INSTALL_LOG"
+          accept_licenses() {
+            yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses >>"$INSTALL_LOG" 2>&1 || true
+          }
           try_install_platform() {
             local ch="$1"
+            accept_licenses
             yes | "$SM" --sdk_root="$ANDROID_HOME" --channel="$ch" \
-              --install "platforms;android-$WANT_PLATFORM" >"$INSTALL_LOG" 2>&1
+              --install "platforms;android-$WANT_PLATFORM" >>"$INSTALL_LOG" 2>&1
           }
           if [ ! -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
             if ! try_install_platform 0; then
-              echo "::warning::stable channel 冇 platforms;android-$WANT_PLATFORM，試 preview channel（--channel=1）"
+              echo "::warning::stable channel 裝唔到 platforms;android-$WANT_PLATFORM，試 preview channel（--channel=1）"
               try_install_platform 1 || true
             fi
           fi
-          if [ ! -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
-            echo "::warning::platforms;android-$WANT_PLATFORM 裝唔到 —— sdkmanager 倉庫未見到（API 37 SDK 可能仲未上架 runner）"
-            echo "--- sdkmanager 見到嘅 platform（35+）---"
-            "$SM" --sdk_root="$ANDROID_HOME" --list 2>/dev/null | grep -E 'platforms;android-3[5-9]' | head -12 || true
-            echo "--- 安裝 log 尾 12 行 ---"
-            tail -12 "$INSTALL_LOG" 2>/dev/null || true
-          fi
           # build-tools 分開裝，唔好俾 platform 失敗連帶吞掉
-          yes | "$SM" --sdk_root="$ANDROID_HOME" --install "build-tools;$WANT_BUILD_TOOLS" >/dev/null 2>&1 || true
+          accept_licenses
+          yes | "$SM" --sdk_root="$ANDROID_HOME" --install "build-tools;$WANT_BUILD_TOOLS" >>"$INSTALL_LOG" 2>&1 || true
+
+          if [ ! -d "$ANDROID_HOME/platforms/android-$WANT_PLATFORM" ]; then
+            echo "::error::裝唔到 platforms;android-$WANT_PLATFORM —— 唔會降級（要求完整 Android 17 / targetSdk 37）"
+            echo "--- sdkmanager --list 見到嘅 35+ platform ---"
+            "$SM" --sdk_root="$ANDROID_HOME" --list 2>/dev/null | grep -E 'platforms;android-3[5-9]' | head -20 || true
+            echo "--- 安裝 log 尾 25 行 ---"
+            tail -25 "$INSTALL_LOG" 2>/dev/null || true
+            echo "--- 四個解法 ---"
+            echo "  1) runs-on 改用較新 image：ubuntu-24.04（預裝 SDK 較新）"
+            echo "  2) 加 android-actions/setup-android@v3 重設 cmdline-tools"
+            echo "  3) self-hosted runner 預裝 platforms;android-37 + build-tools;36.0.0"
+            echo "  4) 真係急住拎 APK：workflow_dispatch 手動開 allow_sdk_downgrade（預設關）"
+            if [ "${ALLOW_SDK_DOWNGRADE:-false}" != "true" ]; then
+              echo "::error::拒絕出 targetSdk 36 嘅包。要 37 就先裝到 platforms;android-37。"
+              exit 1
+            fi
+            echo "::warning::⚠️ allow_sdk_downgrade=true —— 呢次例外降級，唔係完整 Android 17 版"
+          else
+            echo "✔ 已裝 platforms;android-37（Android 17 正式 SDK）"
+          fi
 
           echo "--- installed platforms ---"
           ls "$ANDROID_HOME/platforms" || true
@@ -1287,28 +1310,21 @@ jobs:
         run: |
           set -e
           PLAT="${PLATFORM:-37}"
-          # 🔴 v6g：原本呢度 `exit 1`，令「runner 冇 android-37」變成硬阻斷。
-          #    但源碼實證零個 API 37 專屬引用，16KB 對齊靠 NDK r27 linker flag（已獨立驗證），
-          #    降到 36 編譯同運行都安全。改成**明確、非靜默**降級：
-          #    ::warning:: + Job Summary + log 全部記低，唔係偷偷改數。
+          # 🔴 v6h：撤銷 v6g 嘅「明確降級」。用戶要求完整支援 Android 17 +
+          #    喺真 Android 17 設備上能用 → compileSdk / targetSdk 必須 = 37。
+          #    只有 workflow_dispatch 手動開 allow_sdk_downgrade 先行到非 37 分支。
           if [ "$PLAT" != "37" ]; then
-            echo "::warning::runner 冇 platforms;android-37（裝唔到／倉庫未上架），只有 android-$PLAT"
-            echo "::warning::明確降級 compileSdk/targetSdk → $PLAT（非靜默：已寫入 log + Job Summary）"
-            echo "  ⚠️ targetSdk $PLAT 嘅 APK 仍可安裝喺 Android 17，但唔會啟用 API 37 行為變更"
-            echo "  ✅ 16KB 對齊靠 NDK r27 linker flag，已由 Verify 16KB 獨立驗證，同 compileSdk 無關"
-            echo "  ✅ 源碼實證零個 API 37 專屬引用，降級唔會造成編譯錯"
+            if [ "${ALLOW_SDK_DOWNGRADE:-false}" != "true" ]; then
+              echo "::error::runner platform=android-$PLAT，唔係 37 —— 拒絕降級（要完整 Android 17 支援）"
+              exit 1
+            fi
+            echo "::warning::⚠️ allow_sdk_downgrade=true：例外降級到 android-$PLAT，呢個 APK 唔係完整 Android 17 版"
             if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-              {
-                echo "### ⚠️ SDK 版本明確降級"
-                echo ""
-                echo "runner 冇 \`platforms;android-37\`，明確降級到 \`android-$PLAT\`。"
-                echo "- \`compileSdk\` / \`targetSdk\`: 37 → $PLAT"
-                echo "- APK 仍可裝喺 Android 17；16KB 對齊已由 NDK r27 獨立驗證"
-                echo "- 日後 runner 上架 android-37 會自動用返 37，唔使改檔"
-              } >> "$GITHUB_STEP_SUMMARY"
+              echo "### ⚠️ 例外降級：targetSdk 38 以下" >> "$GITHUB_STEP_SUMMARY"
+              echo "runner 冇 android-37，用戶手動開啟 allow_sdk_downgrade → $PLAT" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "✔ runner 有 platforms;android-37，維持 compileSdk/targetSdk = 37"
+            echo "✔ runner 有 platforms;android-37，維持 compileSdk / targetSdk = 37"
           fi
           cur_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
           cur_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
@@ -1334,6 +1350,17 @@ jobs:
           fi
           echo "--- final ---"
           grep -nE 'compileSdk|buildToolsVersion|minSdk|targetSdk' app/build.gradle.kts
+          # 🔴 v6h：最終硬閘 —— 唔係 37 就唔好出包（除非用戶手動開咗降級）
+          final_compile=$(grep -m1 '^[[:space:]]*compileSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          final_target=$(grep -m1 '^[[:space:]]*targetSdk' app/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          echo "最終：compileSdk=$final_compile targetSdk=$final_target"
+          if [ "${ALLOW_SDK_DOWNGRADE:-false}" != "true" ]; then
+            if [ "$final_compile" != "37" ] || [ "$final_target" != "37" ]; then
+              echo "::error::最終 compileSdk/targetSdk 唔係 37 —— 拒絕出非 Android 17 嘅 release 包"
+              exit 1
+            fi
+            echo "Android 17（API 37）建置設定確認 ✔"
+          fi
 
       # AGP 9.1.1（compileSdk 37 嘅硬門檻）要求最低 Gradle 9.3.1。
       # runner 預裝嘅 Gradle 可能係 8.9 —— 淨係靠 PATH 唔穩陣，所以：
@@ -1525,6 +1552,112 @@ jobs:
           ls -lh apk-out
           test -n "$(ls -A apk-out)" || { echo "::error::no APK produced"; exit 1; }
 
+      - name: Verify Android 17 device readiness (v6h)
+        id: a17
+        env:
+          ALLOW_SDK_DOWNGRADE: ${{ github.event.inputs.allow_sdk_downgrade || 'false' }}
+        run: |
+          set -euo pipefail
+          BT="${BUILD_TOOLS:-36.0.0}"
+          BT_DIR="$ANDROID_HOME/build-tools/$BT"
+          APK=$(ls -1 apk-out/*.apk 2>/dev/null | head -1 || true)
+          if [ -z "$APK" ]; then
+            echo "::error::搵唔到 release APK，唔可以做 Android 17 就緒驗證"
+            exit 1
+          fi
+          echo "驗證：$APK（build-tools $BT）"
+          PASS=1
+
+          # ① 16 KB ZIP 對齊：未壓縮 .so 必須喺 16 KB 邊界（zipalign -P 16）
+          ZIPALIGN="$BT_DIR/zipalign"
+          if [ ! -x "$ZIPALIGN" ]; then
+            echo "::error::搵唔到 zipalign（$ZIPALIGN）—— 唔可以跳過 16 KB ZIP 對齊檢查"
+            exit 1
+          fi
+          if "$ZIPALIGN" -c -P 16 -v 4 "$APK" > /tmp/zipalign.log 2>&1; then
+            echo "  ✔ 16 KB ZIP 對齊通過（zipalign -c -P 16 -v 4）"
+            tail -6 /tmp/zipalign.log
+          else
+            echo "::error::APK 內未壓縮 .so 唔係 16 KB ZIP 對齊 —— 16 KB 裝置會安裝／dlopen 失敗"
+            tail -20 /tmp/zipalign.log
+            PASS=0
+          fi
+
+          # ② .so 必須係 Stored（未壓縮），否則 AGP 唔會幫佢對齊
+          python3 - <<'PYX' || PASS=0
+          import zipfile, glob, sys
+          apk = sorted(glob.glob('apk-out/*.apk'))[0]
+          bad = []
+          with zipfile.ZipFile(apk) as z:
+              for i in z.infolist():
+                  if i.filename.startswith('lib/') and i.filename.endswith('.so'):
+                      if i.compress_type != 0:
+                          bad.append((i.filename, i.compress_type))
+                      else:
+                          print("  ok  %s Stored（未壓縮）" % i.filename)
+          if bad:
+              for f, c in bad:
+                  print("::error::%s 被壓縮（compress_type=%s）—— 要 jniLibs.useLegacyPackaging = false" % (f, c))
+              sys.exit(1)
+          if not any(i.filename.endswith('.so') for i in zipfile.ZipFile(apk).infolist()):
+              print("::error::APK 入面冇任何 .so —— Rust 內核冇打包到")
+              sys.exit(1)
+          PYX
+
+          # ③ 簽名：v2/v3 必須有效，否則 Android 17 唔裝
+          APKSIGNER="$BT_DIR/apksigner"
+          if [ -x "$APKSIGNER" ]; then
+            if "$APKSIGNER" verify --verbose --min-sdk-version 26 "$APK" > /tmp/apksigner.log 2>&1; then
+              echo "  ✔ apksigner verify 通過"
+              grep -E 'Verified using|Signer #' /tmp/apksigner.log | head -6 || true
+            else
+              echo "::error::apksigner verify 失敗 —— Android 17 會拒絕安裝"
+              cat /tmp/apksigner.log
+              PASS=0
+            fi
+          else
+            echo "::error::搵唔到 apksigner（$APKSIGNER）"
+            PASS=0
+          fi
+
+          # ④ badging：targetSdk 必須 37、minSdk ≤ 37
+          AAPT="$BT_DIR/aapt"
+          if [ -x "$AAPT" ]; then
+            INFO=$("$AAPT" dump badging "$APK" 2>/dev/null | head -4 || true)
+            echo "$INFO"
+            if [ "${ALLOW_SDK_DOWNGRADE:-false}" != "true" ]; then
+              if ! printf '%s' "$INFO" | grep -qE "targetSdkVersion:'?37'?"; then
+                echo "::error::APK 嘅 targetSdkVersion 唔係 37 —— 唔係完整 Android 17 版"
+                PASS=0
+              else
+                echo "  ✔ targetSdkVersion = 37"
+              fi
+            fi
+          else
+            echo "::warning::搵唔到 aapt，跳過 badging（targetSdk 已由 step 26 硬閘確認）"
+          fi
+
+          # ⑤ 16 KB ELF 層（step 18 已驗，呢度寫入 Summary 做真機交接）
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Android 17 / 16 KB 就緒檢查"
+              echo ""
+              echo "- APK：\`$APK\`"
+              echo "- 16 KB ZIP 對齊：\`zipalign -c -P 16 -v 4\`"
+              echo "- .so 未壓縮（\`useLegacyPackaging = false\`）"
+              echo "- 16 KB ELF LOAD 對齊：\`Verify 16KB\` step（NDK r27 linker flag）"
+              echo "- 簽名：\`apksigner verify\`"
+              echo "- targetSdk：37（\`compileSdk\` 亦係 37）"
+              echo ""
+              echo "> CI 靜態檢查唔等於真機可用 —— 請照 \`Android17_真機驗收清單.md\` 喺 16 KB 裝置／模擬器實測。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$PASS" != "1" ]; then
+            echo "::error::Android 17 就緒驗證未通過 —— 拒絕交付一個喺真 Android 17 設備上可能用唔到嘅 APK"
+            exit 1
+          fi
+          echo "Android 17 就緒驗證全部通過 ✔"
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
