@@ -34,12 +34,14 @@ import androidx.navigation.compose.rememberNavController
 import com.hketa.app.ui.screens.EtaScreen
 import com.hketa.app.ui.screens.FavoritesScreen
 import com.hketa.app.ui.screens.HomeScreen
+import com.hketa.app.ui.screens.HubScreen
 import com.hketa.app.ui.screens.NearbyScreen
 import com.hketa.app.ui.screens.RailScreen
 import com.hketa.app.ui.screens.RouteStopsScreen
 import com.hketa.app.ui.screens.SearchScreen
 import com.hketa.app.R
 import com.hketa.app.data.UpdateState
+import com.hketa.app.data.UserPrefs
 import com.hketa.app.ui.StatusBar
 import com.hketa.app.ui.UpdateDialog
 import com.hketa.app.ui.VersionHistorySheet
@@ -58,6 +60,8 @@ object Dest {
     const val FAVORITES = "favorites"
     const val SETTINGS = "settings"
     const val ABOUT = "about"
+    /** hkbus.app 功能對齊：規劃／最近／收藏集／改動／車費／外觀 */
+    const val HUB = "hub"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +78,21 @@ fun AppRoot(
     // 而家一開 App 就自己做；bootstrap() 內部有「淨係行一次」嘅守衛。
     val context = LocalContext.current
     LaunchedEffect(Unit) {
+        UserPrefs.init(context)
         vm.bootstrap(context, onNeedLocation)
+    }
+
+    // 對齊 hkbus.app「最近查詢」：無論由主頁／搜尋／收藏／鐵路頁開，
+    // 只要選中嘅路線或車站變咗就自動記低。集中喺度，唔使改十幾個 lambda。
+    LaunchedEffect(Unit) {
+        vm.selectedRoute.collect { rd ->
+            if (rd != null) UserPrefs.addRecent("route", rd.key, rd.title)
+        }
+    }
+    LaunchedEffect(Unit) {
+        vm.selectedStop.collect { st ->
+            if (st != null) UserPrefs.addRecent("stop", "${st.op.name}|${st.id}", st.name)
+        }
     }
 
     val busy by vm.busy.collectAsState()
@@ -283,6 +301,17 @@ fun AppRoot(
                         icon = { Box(Modifier.size(1.dp)) }
                     )
                     NavigationBarItem(
+                        selected = currentRoute == Dest.HUB,
+                        onClick = {
+                            navController.navigate(Dest.HUB) {
+                                launchSingleTop = true
+                                popUpTo(Dest.HOME) { inclusive = false }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.tab_hub)) },
+                        icon = { Box(Modifier.size(1.dp)) }
+                    )
+                    NavigationBarItem(
                         selected = currentRoute == Dest.SETTINGS,
                         onClick = {
                             navController.navigate(Dest.SETTINGS) {
@@ -386,6 +415,15 @@ fun AppRoot(
                     onCheckUpdate = {
                         vm.checkUpdate(true)
                         showUpdate = true
+                    }
+                )
+            }
+            composable(Dest.HUB) {
+                HubScreen(
+                    vm = vm,
+                    onOpenRoute = { rd ->
+                        vm.openRoute(rd)
+                        navController.navigate(Dest.ROUTE) { launchSingleTop = true }
                     }
                 )
             }
