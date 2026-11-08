@@ -927,6 +927,25 @@ jobs:
       - name: Preflight - verify i18n keys (v5)
         run: |
           set -euo pipefail
+          # 🔴 v6f：每個 step 係獨立 shell，step 21 定義嘅 need()/absent() **唔會帶過嚟**。
+          #    v5 由一開始就漏咗定義，但之前十幾輪全部卡喺 Rust step，從未行到呢度；
+          #    v6e 修好 Rust 後第一次跑到 → `bash: need: command not found` → **exit 127**。
+          #    同時 `fail` 未初始化，`set -u` 下 `if [ "$fail" -ne 0 ]` 會 unbound variable → exit 1。
+          fail=0
+          need() {
+            if [ ! -f "$1" ]; then
+              echo "::warning::缺少檔案 $1"
+              fail=1
+            else
+              echo "  ok  $1"
+            fi
+          }
+          absent() {
+            if [ -f "$1" ]; then
+              echo "::warning::殘留舊檔（應該刪） $1"
+              fail=1
+            fi
+          }
           python3 - <<'PYX'
           import os, sys, xml.etree.ElementTree as ET
           dirs = ['values','values-en','values-zh-rCN','values-b+zh+Hans']
@@ -1085,11 +1104,14 @@ jobs:
             fi
           done
 
+          # 🔴 v6f：呢度全部係 warning 級（引用咗 BuildConfig／符號 regex 誤報／殘留舊檔），
+          #    原始註釋寫「唔會阻住出 APK」但 `exit 1` 會直接殺 job。
+          #    真正致命嘅檢查（缺 values/strings.xml、四份 key 唔對齊）喺上面個
+          #    python heredoc 已經 `sys.exit(1)`，`set -e` 會照樣硬閘。
           if [ "$fail" -ne 0 ]; then
-            echo "::warning::預檢有發現 —— 上面列出嘅嘢最好執一執（但唔會阻住出 APK）"
-            exit 1
+            echo "::warning::預檢有發現 —— 只係提示，唔阻住出 APK（致命錯已由上面 python 擋）"
           fi
-          echo "預檢全部通過 ✔"
+          echo "預檢完成 ✔（四份 strings.xml 對齊）"
 
       # 預檢三項全部係「診斷性質」：有發現會變黃色警告，但**唔會再阻住出 APK**。
       #
