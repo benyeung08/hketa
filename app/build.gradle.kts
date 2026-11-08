@@ -95,6 +95,15 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            // 🔴 Android 17 / 16 KB page size 必需：
+            //    .so 必須「未壓縮」存進 APK，AGP 8.5.1+ 先會幫佢做 16 KB ZIP 對齊。
+            //    若用 legacy packaging（壓縮 .so），16 KB 核心嘅裝置會安裝／dlopen 失敗，
+            //    或者落入「16 KB 向後相容模式」並彈警告（官方明示唔可靠）。
+            //    ELF 層嘅 -z max-page-size=16384 已由 rust/.cargo/config.toml 處理；
+            //    呢度補嘅係 APK/ZIP 層，兩層都要過先叫「真 Android 17 設備上能用」。
+            useLegacyPackaging = false
+        }
     }
 }
 
