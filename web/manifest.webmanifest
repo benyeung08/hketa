@@ -1,0 +1,10 @@
+{
+  "name": "HKETA Hybrid — 香港巴士到站預報",
+  "short_name": "HKETA",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f1419",
+  "theme_color": "#0f1419",
+  "lang": "zh-Hant",
+  "icons": []
+}
