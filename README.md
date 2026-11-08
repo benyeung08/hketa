@@ -37,6 +37,23 @@ android/.../EtaBridge.kt          → OkHttp 打官方 API、LocationManager 取
 - 設定頁檢查 GitHub Releases 更新、資料來源說明、重建索引
 - 無廣告、無追蹤；定位只用於當下排序，不儲存不上傳
 
+## App 圖示
+
+`assets/logo-source.png` 是你提供的彩虹巴士原圖，已產生一整套 launcher icon：
+
+- `res/mipmap-*/ic_launcher.png`、`ic_launcher_round.png`（48–192px，Android 7.1 及舊 launcher）
+- `res/mipmap-*/ic_launcher_background.png`（去主體的平滑彩虹）、`ic_launcher_foreground.png`（去背的小人＋巴士，縮到安全區）
+- `res/mipmap-anydpi-v26/ic_launcher.xml`、`ic_launcher_round.xml`（Android 8+ adaptive icon，圓／方／藥丸遮罩都唔會切到主體）
+- `web/icon-192.png`、`icon-512.png`、`icon-maskable-512.png`、`favicon.png`（Pages／PWA／加到主畫面）
+
+`AndroidManifest.xml` 已設 `android:icon` 與 `android:roundIcon`。換圖時覆蓋 `assets/logo-source.png` 再跑：
+
+```bash
+python3 tools/make_icons.py            # 或 python3 tools/make_icons.py 新圖.png
+```
+
+腳本會自動去背、重建彩虹背景、輸出全部密度，並更新 `assets/icon-preview.png` 預覽圖。需要 `numpy / Pillow / scipy`（本機工具鏈用，App 本身零依賴）。
+
 ## 快速開始（推薦：完全在 GitHub 上）
 
 1. 把本目錄 push 到你的 GitHub repo（`main` 分支）。
