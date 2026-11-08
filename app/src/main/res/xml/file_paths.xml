@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- APK 下載落 filesDir/update/；唔再暴露 external-files-path Download/ -->
-    <files-path
-        name="update"
-        path="update/" />
-</paths>
