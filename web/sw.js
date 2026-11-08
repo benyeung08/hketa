@@ -1,6 +1,9 @@
 // 只服務 GitHub Pages（https）版本；APK 內為 file://，註冊會失敗並被忽略。
-const CACHE = 'hketa-hybrid-v1';
-const CORE = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest'];
+const CACHE = 'hketa-hybrid-v2';
+const CORE = [
+  './', './index.html', './style.css', './app.js', './manifest.webmanifest',
+  './favicon.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
