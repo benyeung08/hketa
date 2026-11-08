@@ -263,6 +263,31 @@ ETA 資料全部經 HTTPS 向上述政府／公共接口取得，唔收集、唔
 Leaflet JS／CSS 已打包入 APK `assets/hketa_offline/`，**唔再連 `unpkg.com`**。
 `allowBackup="false"`，崩潰記錄只寫私有目錄並保留最近 5 次。
 
+## 與 hkbus.app/zh 嘅功能對齊（v5）
+
+保留原生 Compose 架構，**唔係 WebView 包網頁**。底部導覽新增「更多」分頁，一次過補入
+之前對照缺嘅六類功能：
+
+| 功能 | 做法 | 資料來源 |
+|---|---|---|
+| 車費 | 由現有 hkbus 聚合檔多抽 `fare` 欄位；容錯食 array／object／primitive | `data.hkbus.app/routeFareList.min.json` |
+| 點對點規劃 | 純 Kotlin 反向索引，直達 + 一次轉乘，靠 `seq` 判斷方向 | 本機 `hketa_index.json`，零網絡 |
+| 瀏覽歷史 | 自動記低開過嘅路線／車站（最多 30 筆） | 本地 SharedPreferences |
+| 自訂收藏集 | 分組 + 勾選加入／移出，删收藏自動 prune | 本地 SharedPreferences |
+| 路線改動公告 | 三個開源來源逐一試，失敗顯示「暫無」唔崩 | hkbus 開源 `public/notice.json` |
+| 深色／字型 | 跟隨系統／淺色／深色 + 0.85–1.40× 字型 | 本地設定，即刻重組 |
+
+另外主介面文字由 338 增至 **388** 個 key，四語（繁／簡 region／簡 BCP47／英）完全對齊；
+新增 6 個純 JVM 單元測試驗規劃演算法（直達、一次轉乘、無路線、同站、空索引、倒頭車）。
+
+**誠實邊界**
+- 點對點只做「直達 + 一次轉乘」，唔做多段轉乘／行車時間優化／轉乘優惠，
+  同 hkbus.app 後端完整 journey planner 唔同等。
+- 公告來源 URL 要實測；全部唔通就顯示「暫無改動公告」，唔會阻塞出包。
+- 深色模式只切 Material3 配色；部分舊頁面仍有 hardcoded 深色底（RouteMap 底圖、
+  少數卡片），唔會跟住轉，屬既有技術債。
+- 車費只作參考，實際以營辦商為準。
+
 ### Rust 索引內核（可選加速層）
 
 `rust/` 編譯出 `libhketa_store.so` 落 `app/src/main/jniLibs/{abi}/`，四個 ABI

@@ -294,3 +294,26 @@ Actual HTTPS endpoints (listed honestly): `data.etabus.gov.hk`, `rt.data.gov.hk`
 In-app updates verify **SHA-256** against the Release `<apk>.sha256` asset and then
 **compare the signing certificate** with the installed app. Any failure aborts the install;
 a missing checksum (other than 404) is fail-closed, never silently downgraded.
+
+## Feature parity with hkbus.app/zh (v5)
+
+Still a native Compose app — **not a WebView wrapper**. A fifth "More" tab adds
+the six features that were missing in the earlier comparison:
+
+| Feature | Implementation |
+|---|---|
+| Fares | Extra `fare` field parsed from the existing hkbus aggregate (array/object/primitive tolerant) |
+| Point-to-point planning | Pure-Kotlin reverse index; direct + one transfer, direction checked via stop `seq` |
+| Recently viewed | Auto-recorded routes/stops (max 30), local SharedPreferences |
+| Collections | Named groups with checkbox membership, auto-pruned on favourite removal |
+| Route change notices | Three open-source sources tried in order; graceful empty state |
+| Dark mode / font size | System / Light / Dark + 0.85–1.40× type scale |
+
+UI strings grew from 338 to **388 keys**, aligned across all four locale files.
+Six pure-JVM unit tests cover the planner (direct, transfer, no route, same stop,
+empty index, wrong direction).
+
+Honest limits: planning is direct + one transfer only (no multi-leg optimisation);
+notice URLs should be verified and fail to an empty state; dark mode switches
+Material3 colours only — a few legacy screens keep a fixed dark background;
+fares are indicative.
