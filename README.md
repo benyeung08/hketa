@@ -70,7 +70,7 @@ Compose 自動 recompose，唔使重啟 Activity。
 
 ## 介面結構（參考 App1933）
 
-底部導覽四頁：**主頁 / 收藏 / 搜尋 / 設定**
+底部導覽五頁：**主頁 / 收藏 / 搜尋 / 設定 / 更多**（v5 起新增「更多」分頁）
 
 | 分頁 | 內容 |
 |---|---|
@@ -78,6 +78,7 @@ Compose 自動 recompose，唔使重啟 Activity。
 | 收藏 | 已收藏車站，進入即並發拉取全部 ETA |
 | 搜尋 | 路線號／車站名搜尋；頂部有「鐵路」「附近」入口 |
 | 設定 | 索引管理、語言、版本更新、資料來源 |
+| 更多 | 車費、點對點規劃、瀏覽歷史、自訂收藏集、路線改動公告、深色／字型大小（v5 新增） |
 
 **與 App1933 嘅差異（唔會做）**：club1933 會員、eCoin 錢包、九巴月票、遊戲室、
 bot1933 AI 客服、實時載客量、路線地圖 —— 呢啲要九巴私有 API 或商戶資質，
@@ -106,7 +107,7 @@ CI 會自動建 APK 並掛上 Release —— 用戶開 App 就查到。
 本倉庫附咗 `.github/workflows/build-apk.yml`：
 
 1. 將呢個專案 push 上你嘅 GitHub repo（main 分支）
-2. 去 repo 嘅 **Actions** 頁，揀 **Build HKATE APK**，撳 **Run workflow**
+2. 去 repo 嘅 **Actions** 頁，揀 **Build HKATE Release APK**，撳 **Run workflow**
 3. 跑完之後喺該次執行嘅 **Artifacts** 下載 **`hkate-release-apk`**（只有 release APK，連 `.sha256` 校驗檔）
 4. 傳到手機安裝即可（首次安裝允許「未知來源」）
 

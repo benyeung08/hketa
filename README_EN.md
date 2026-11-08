@@ -124,8 +124,8 @@ CI builds the APK and attaches it to a Release, and the app picks it up.
 This repo ships `.github/workflows/build-apk.yml`:
 
 1. Push this project to your GitHub repo (the `main` branch)
-2. Open the **Actions** tab, pick **Build HKATE APK**, then **Run workflow**
-3. When it finishes, download the `hketa-release-apk` artifact
+2. Open the **Actions** tab, pick **Build HKATE Release APK**, then **Run workflow**
+3. When it finishes, download the `hkate-release-apk` artifact
 4. Transfer it to your phone and install (allow "install from unknown sources" the first time)
 
 Pushing a `v*` tag will also attach the APK to a Release automatically. The workflow additionally
