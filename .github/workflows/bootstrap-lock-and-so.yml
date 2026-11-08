@@ -1,0 +1,183 @@
+name: Bootstrap Cargo.lock + prebuilt .so
+
+# ─────────────────────────────────────────────────────────────
+# 做乜用：解開「要 Cargo.lock 先 build 到，但要 build 先有 Cargo.lock」呢個死循環。
+#
+# 主 workflow `Build Rust kernel` 喺跑 cargo **之前**就檢查 rust/Cargo.lock，
+# 冇就 exit 1 → cargo 從來冇跑過 → 主 job 個 `cargo-lock` artifact 永遠係空。
+# 所以舊錯誤訊息叫人「由 CI artifact 下載」係搵唔到嘢嘅。
+#
+# 呢份 workflow 獨立、手動觸發、只讀權限、唔會 push／唔會改 repo：
+#   ① 由 crates.io 生成真嘅 rust/Cargo.lock（37 個 crate + checksum）
+#   ② 用 runner 已有嘅 NDK r27+ 編四個 ABI 嘅 libhketa_store.so
+#   ③ 驗 16 KB 對齊
+#   ④ 打包成一個 artifact，目錄結構同 repo 一模一樣
+#
+# 你下載 → 解壓 → 把入面嘅 rust/ 同 app/ 直接放返 repo → commit
+# → 之後主 workflow 行 `mode=prebuilt`，**連 Cargo.lock 檢查都唔使過**就出到 APK。
+#
+# 全程可以喺 GitHub 網頁撳完成，唔使本機裝 Rust／Android NDK／Android SDK。
+# ─────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+    inputs:
+      build_so:
+        description: '同時編譯四個 ABI 嘅 .so（建議開；淨係想要 Cargo.lock 就閂）'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # ① 真正嘅 lock：cargo 會解析 Cargo.toml 並寫入每個 crate 嘅 checksum。
+      #    呢步唔需要 NDK、唔需要 Android SDK。
+      - name: Generate rust/Cargo.lock
+        run: |
+          set -euo pipefail
+          test -f rust/Cargo.toml || { echo "::error::搵唔到 rust/Cargo.toml"; exit 1; }
+          cd rust
+          cargo generate-lockfile
+          echo "✔ 生成咗 Cargo.lock（$(grep -c '^\[\[package\]\]' Cargo.lock) 個套件）"
+          head -5 Cargo.lock
+
+      # ② 揀 NDK：優先 27.x（同主 workflow WANT_NDK 一致、cargo-ndk 最穩陣），
+      #    冇 27.x 就揀最高嘅 ≥27。r30 喺 runner 上有，但未經 cargo-ndk 驗證，
+      #    所以優先返 27；真係要用 30 會印 warning 講清楚。
+      - name: Pick Android NDK (r27+)
+        id: ndk
+        if: ${{ inputs.build_so }}
+        run: |
+          set -euo pipefail
+          D=""
+          for c in "${ANDROID_HOME}/ndk"/*; do
+            [ -d "$c" ] || continue
+            v=$(basename "$c" | grep -oE '^[0-9]+' || echo 0)
+            if [ "$v" = "27" ]; then D="$c"; break; fi
+          done
+          if [ -z "$D" ]; then
+            D=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
+          fi
+          if [ -z "$D" ] || [ ! -d "$D" ]; then
+            CM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+            [ -x "$CM" ] || CM=$(command -v sdkmanager || true)
+            if [ -n "$CM" ]; then
+              yes | "$CM" --install "ndk;27.2.12479018" || true
+              D=$(ls -1d "${ANDROID_HOME}/ndk"/* 2>/dev/null | sort -V | tail -1)
+            fi
+          fi
+          if [ -z "$D" ] || [ ! -d "$D" ]; then
+            echo "::error::搵唔到 NDK r27+"; exit 1
+          fi
+          MAJ=$(basename "$D" | grep -oE '^[0-9]+' || echo 0)
+          if [ "$MAJ" -lt 27 ]; then echo "::error::NDK major $MAJ < 27"; exit 1; fi
+          if [ "$MAJ" != "27" ]; then
+            echo "::warning::用緊 NDK major $MAJ（優先想用 27.x）。cargo-ndk 對呢個版本未驗證；若下面編譯失敗，試吓 runner 換 27.2.12479018。"
+          fi
+          echo "NDK = $D（major $MAJ）"
+          echo "path=$D" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_NDK_HOME=$D" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$D"  >> "$GITHUB_ENV"
+
+      - name: Add Android targets
+        if: ${{ inputs.build_so }}
+        run: |
+          rustup target add \
+            armv7-linux-androideabi aarch64-linux-android \
+            i686-linux-android x86_64-linux-android
+
+      - name: Install cargo-ndk
+        if: ${{ inputs.build_so }}
+        run: |
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            cargo install cargo-ndk --locked
+          fi
+          cargo-ndk --version
+
+      - name: Build four ABIs (--locked)
+        if: ${{ inputs.build_so }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/jniLibs
+          cd rust
+          cargo ndk \
+            -t armeabi-v7a \
+            -t arm64-v8a \
+            -t x86 \
+            -t x86_64 \
+            -o ../app/src/main/jniLibs \
+            build --release --features android --locked 2>&1 | tee /tmp/bootstrap-cargo.log
+          cd ..
+          echo "--- 產出 ---"
+          find app/src/main/jniLibs -name 'libhketa_store.so' -printf '%p  %s bytes\n' | sort
+
+      # ③ 16 KB 對齊：用返 v3 修好嘅寫法（LOAD 行最後一欄就係 Align）。
+      #    唔好用 $(i-1)=="Align" ——「Align」只喺表頭，會恆空 → 假陽性。
+      - name: Verify 16KB alignment
+        if: ${{ inputs.build_so }}
+        run: |
+          set -euo pipefail
+          READELF=$(find "${ANDROID_NDK_HOME:-${ANDROID_HOME}/ndk}" -name 'llvm-readelf' -type f 2>/dev/null | head -1)
+          if [ -z "$READELF" ]; then echo "::error::搵唔到 llvm-readelf"; exit 1; fi
+          bad=0; n=0
+          for f in $(find app/src/main/jniLibs -name 'libhketa_store.so' | sort); do
+            n=$((n+1))
+            A=$("$READELF" -l "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u | tr '\n' ' ')
+            echo "  $(basename "$(dirname "$f")"): Align = ${A:-（讀唔到）}"
+            if [ -z "${A// /}" ] || echo "$A" | grep -q '0x1000'; then
+              echo "    ::error::未做 16 KB 對齊"; bad=1
+            fi
+          done
+          if [ "$n" -lt 4 ]; then echo "::error::預期 4 個 .so，實際 $n 個"; exit 1; fi
+          if [ "$bad" = "1" ]; then echo "::error::有 .so 未做 16 KB 對齊"; exit 1; fi
+          echo "16 KB 對齊 + 四個 ABI 全齊 ✔"
+
+      # ④ 打包：目錄結構同 repo 一模一樣，解壓後直接 cp -a 就得。
+      - name: Stage artifact
+        run: |
+          set -euo pipefail
+          rm -rf out
+          mkdir -p out/rust out/app/src/main/jniLibs
+          cp rust/Cargo.lock out/rust/Cargo.lock
+          if [ -d app/src/main/jniLibs ]; then
+            cp -a app/src/main/jniLibs/. out/app/src/main/jniLibs/ 2>/dev/null || true
+          fi
+          cat > out/放邊度.txt <<'TXT'
+          HKETA bootstrap 產物 —— 直接對應 repo 根目錄
+
+            rust/Cargo.lock
+                → <repo>/rust/Cargo.lock          （必須 commit）
+
+            app/src/main/jniLibs/<abi>/libhketa_store.so   × 4
+                → <repo>/app/src/main/jniLibs/<abi>/libhketa_store.so
+                  （四個 ABI：armeabi-v7a / arm64-v8a / x86 / x86_64，全部要 commit）
+
+          做法（GitHub 網頁就做到）：
+            1. 喺呢次 workflow run 底部撳 hketa-bootstrap 下載 zip
+            2. 解壓；入面 rust/ 同 app/ 兩個目錄直接拖上去 repo（或 cp -a out/. <repo>/）
+            3. Commit（例如 "lock rust deps + prebuilt 4-ABI kernel"）
+            4. 再跑主 workflow「Build HKATE Release APK」→ 會行 mode=prebuilt 直接出 APK
+
+          注意：
+            * 唔好手改 Cargo.lock（入面係 37 個 crate 嘅 checksum）
+            * .gitignore 已有 !app/src/main/jniLibs/**/*.so，唔會漏咗 .so
+            * 呢份 workflow 係只讀，唔會自動幫你 commit／push
+          TXT
+          echo "--- artifact 內容 ---"
+          find out -type f -printf '%p  %s bytes\n' | sort
+
+      - name: Upload hketa-bootstrap
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-bootstrap
+          path: out/
+          if-no-files-found: error
+          retention-days: 14

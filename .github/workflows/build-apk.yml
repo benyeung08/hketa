@@ -300,7 +300,6 @@ jobs:
           # Android 17（API 37）／16 KB page size 要求 NDK r27 或以上：
           #   * r27 起 lld 先完整支援 -z max-page-size=16384
           #   * r26 砌到，但對 16 KB ELF 對齊嘅處理未完整
-          # 所以優先 27.2，裝唔到先退回 26.1（照出，但可能冇 16 KB 對齊）。
           # 🔴 唔好再 fallback 去 r26 / ndk-bundle：r26 對 16 KB ELF 對齊未完整，
           #    配埋舊版 Verify 16KB 嘅假陽性 → APK 出到、CI 全綠、用戶機 dlopen 失敗。
           WANT_NDK="27.2.12479018"
@@ -334,9 +333,15 @@ jobs:
           # ── Cargo.lock：冇嘅話版本會漂移，CI 隨時突然紅 ──
           # 日誌見到「Locking 37 packages to highest compatible versions」就係冇鎖。
           if [[ ! -f rust/Cargo.lock ]]; then
+            # 🔴 舊訊息叫人「由 CI 嘅 cargo-lock artifact 下載」係**死路**：
+            #    呢個 exit 1 發生喺 `cargo ndk build` 之前，cargo 從來冇跑過，
+            #    根本唔會生成 Cargo.lock → 個 artifact 永遠係空（if-no-files-found: ignore）。
+            #    唔好再指人去撳一個唔存在嘅下載掣。
             echo "::error::rust/Cargo.lock 未 commit —— 拒絕用 --locked 出包。"\
-                 "請喺本機執行 (cd rust && cargo generate-lockfile)，"\
-                 "或由 CI 嘅 cargo-lock artifact 下載，然後 commit rust/Cargo.lock。"
+                 "兩條可行路：(A) 本機 (cd rust && cargo generate-lockfile) 再 commit；"\
+                 "(B) 完全唔使本機工具鏈 —— 去 Actions 手動跑「Bootstrap Cargo.lock + prebuilt .so」，"\
+                 "下載 hketa-bootstrap artifact，入面有現成 Cargo.lock + 四個 .so，直接 commit 就得。"\
+                 "（呢個 build 喺 cargo 之前已 exit，本 job 嘅 cargo-lock artifact 唔會有檔，唔好等佢。）"
             exit 1
           fi
           echo "✔ rust/Cargo.lock 已鎖定（$(grep -c '^\[\[package\]\]' rust/Cargo.lock) 個套件）"
@@ -377,6 +382,9 @@ jobs:
           fi
           echo "✔ Cargo.lock 冇漂移"
 
+      # ⚠️ 呢個 artifact 喺「缺 Cargo.lock」嘅失敗入面**必然係空**：
+      #    Build Rust kernel 喺跑 cargo 之前已經 exit 1，lock 根本未生成。
+      #    真正拎 lock 嘅地方係獨立嘅 Bootstrap workflow（hketa-bootstrap artifact）。
       - name: Export Cargo.lock (on failure only)
         if: failure()
         uses: actions/upload-artifact@v4
