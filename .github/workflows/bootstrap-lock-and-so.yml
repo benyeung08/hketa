@@ -17,6 +17,14 @@ name: Bootstrap Cargo.lock + prebuilt .so
 # → 之後主 workflow 行 `mode=prebuilt`，**連 Cargo.lock 檢查都唔使過**就出到 APK。
 #
 # 全程可以喺 GitHub 網頁撳完成，唔使本機裝 Rust／Android NDK／Android SDK。
+#
+# 🆕 v6b：預設 auto_commit=true —— 跑完自動 commit 返 repo，唔使 download → 解壓 → upload。
+#    ⚠️ 關鍵：用 GITHUB_TOKEN push 嘅 commit **唔會觸發 push workflow**
+#    （GitHub 官方行為，防止無限 loop）。所以 commit 完要顯式用
+#    `gh workflow run build-apk.yml` 觸發一次主 workflow（workflow_dispatch 係例外，會觸發）。
+#    呢個 step 用 continue-on-error，萬一權限唔夠都唔會抹走已 commit 嘅成果。
+#
+#    on: 得 workflow_dispatch → bootstrap 永遠唔會被 push 觸發 → 唔存在 loop。
 # ─────────────────────────────────────────────────────────────
 on:
   workflow_dispatch:
@@ -25,15 +33,24 @@ on:
         description: '同時編譯四個 ABI 嘅 .so（建議開；淨係想要 Cargo.lock 就閂）'
         type: boolean
         default: true
+      auto_commit:
+        description: '自動把 Cargo.lock + 四個 .so commit 返 repo，並觸發出包（唔使下載／搬檔）'
+        type: boolean
+        default: true
 
+# 🔴 auto_commit=true 要 write；想保持純只讀就閂咗個 input，
+#    或者直接沿用 v6 原版（contents: read + 手動搬 artifact）。
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -174,6 +191,46 @@ jobs:
           echo "--- artifact 內容 ---"
           find out -type f -printf '%p  %s bytes\n' | sort
 
+      # ── 🆕 一鍵：自動 commit 返 repo ────────────────────────────
+      - name: Commit Cargo.lock + prebuilt .so
+        id: commit
+        if: ${{ inputs.auto_commit }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 明確列路徑：唔會誤加 keystore/ 或根目錄散檔
+          git add rust/Cargo.lock app/src/main/jniLibs
+          if git diff --cached --quiet; then
+            echo "✔ 檔案同 repo 已有嘅一致，唔使 commit"
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore: lock rust deps + prebuilt 4-ABI kernel (bootstrap)"
+          git push origin "HEAD:${{ github.ref_name }}"
+          echo "changed=1" >> "$GITHUB_OUTPUT"
+          echo "✔ 已 push 去 ${{ github.ref_name }}"
+
+      # GITHUB_TOKEN 嘅 push 唔會觸發 push workflow → 要顯式 dispatch。
+      # continue-on-error：萬一 actions:write 唔夠權限，成果（已 commit）仍然喺度，
+      # 用戶只要手動去 Actions 撳一次「Build HKATE Release APK」就得。
+      - name: Trigger release build
+        if: ${{ inputs.auto_commit && steps.commit.outputs.changed == '1' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh workflow run build-apk.yml --ref "${{ github.ref_name }}"; then
+            echo "✔ 已觸發主 workflow（build-apk.yml）"
+          else
+            echo "::warning::自動觸發唔到主 workflow —— 請去 Actions 手動撳一次「Build HKATE Release APK」"
+            exit 1
+          fi
+
+      # 保留 artifact 做 fallback / 人工檢查（out/ 一定有 Cargo.lock，唔會空包）
       - name: Upload hketa-bootstrap
         uses: actions/upload-artifact@v4
         with:
