@@ -300,6 +300,35 @@ jobs:
             echo "::warning::裝唔到 cargo-ndk —— Rust 內核呢次會行純 Kotlin 回退，APK 照出"
           fi
 
+      # ── v6d：🔴 補返 Android Rust targets ─────────────────────
+      # exit 101 = cargo/rustc 編譯失敗。最常見原因就係呢度：
+      #   `cargo ndk -t arm64-v8a ...` 內部會 `cargo build --target aarch64-linux-android`，
+      #   但 runner 預設只裝咗 host target（x86_64-unknown-linux-gnu）。
+      #   冇 `rustup target add` → rustc 報 "can't find crate for core" /
+      #   "target ... not installed" → **exit 101**。
+      # bootstrap workflow 一早有呢一步，v6c 移植自舉時漏咗，責任喺我。
+      - name: Prepare Android Rust targets (v6d)
+        run: |
+          set -euo pipefail
+          echo "--- rustup / rustc ---"
+          rustup --version
+          rustc --version
+          echo "--- 裝四個 Android targets（冪等，重跑唔會出錯）---"
+          rustup target add \
+            armv7-linux-androideabi \
+            aarch64-linux-android \
+            i686-linux-android \
+            x86_64-linux-android
+          echo "--- 已裝 targets ---"
+          rustup target list --installed
+          for t in armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android; do
+            if ! rustup target list --installed | grep -qx "$t"; then
+              echo "::error::Android target $t 裝唔到 —— cargo ndk 一定會 exit 101"
+              exit 1
+            fi
+          done
+          echo "✔ 四個 Android targets 齊"
+
       - name: Cache cargo registry + target
         uses: actions/cache@v4
         with:
@@ -443,6 +472,20 @@ jobs:
             exit 1
           fi
 
+          # ── v6d：🔴 export NDK 路徑畀 cargo-ndk ──────────────────
+          # cargo-ndk 靠 ANDROID_NDK_HOME / ANDROID_NDK_ROOT 搵 clang + linker。
+          # v6c 只計咗 NDK_DIR 做版本檢查，**冇 export** → cargo-ndk 報
+          # "ANDROID_NDK_HOME is not set" / 搵唔到 linker → exit 101。
+          # bootstrap workflow 有寫去 GITHUB_ENV，主 workflow 漏咗。
+          # 注意：寫 $GITHUB_ENV 只對**後續 step**有效，呢個 step 內要再 export 一次。
+          export ANDROID_NDK_HOME="$NDK_DIR"
+          export ANDROID_NDK_ROOT="$NDK_DIR"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "  ✔ ANDROID_NDK_HOME=$NDK_DIR"
+          ls "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/"*-clang 2>/dev/null | head -4 || \
+            echo "::warning::喺 NDK 度搵唔到 clang，cargo ndk 可能會失敗"
+
           # ── Cargo.lock：v6c 就地自舉（🔴 唯一被放寬嘅一關）──
           # 之前係「冇 lock → exit 1」，但咁樣做成死循環：
           #   exit 發生喺 cargo 之前 → cargo 永遠冇跑 → lock 永遠唔會生成
@@ -470,18 +513,42 @@ jobs:
           echo "--- 3) cargo-ndk 喺唔喺度？---"
           if ! command -v cargo-ndk >/dev/null 2>&1; then
             echo "冇預編譯版，由 source 砌（慢，最後手段）"
-            cargo install cargo-ndk --locked || cargo install cargo-ndk
+            if ! cargo install cargo-ndk --locked; then
+              echo "::warning::--locked 裝唔到，試唔加 --locked"
+              cargo install cargo-ndk
+            fi
           fi
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            echo "::error::cargo-ndk 裝唔到 —— 冇佢就砌唔到四個 ABI"
+            exit 1
+          fi
+          cargo-ndk --version
+
+          echo "--- 3b) 前置體檢（v6d）---"
+          echo "  ANDROID_NDK_HOME = ${ANDROID_NDK_HOME:-（未設！）}"
+          echo "  targets:"; rustup target list --installed | sed 's/^/    /'
+          echo "  Cargo.toml:"; grep -E '^(name|version|edition)' rust/Cargo.toml | sed 's/^/    /'
 
           echo "--- 4) cargo ndk build ---"
           cd rust
-          cargo ndk \
+          # 🔴 v6d：失敗時唔好淨係得一個 exit 101 —— 把真因打成 ::error:: annotation，
+          #    並保留原本 exit code。之前用戶連貼幾張 Annotations 圖都睇唔到原因。
+          if cargo ndk \
             -t armeabi-v7a \
             -t arm64-v8a \
             -t x86 \
             -t x86_64 \
             -o ../app/src/main/jniLibs \
-            build --release --features android --locked 2>&1 | tee /tmp/cargo-build.log
+            build --release --features android --locked 2>&1 | tee /tmp/cargo-build.log; then
+            echo "✔ cargo ndk build 成功"
+          else
+            RC=$?
+            echo "::error::cargo ndk build 失敗（exit $RC）—— 下面係最尾 40 行"
+            tail -40 /tmp/cargo-build.log | while IFS= read -r l; do echo "::error::$l"; done
+            grep -nE 'error(\[E|:)|could not compile|not installed|ANDROID_NDK|linker|failed to run|No such file' \
+              /tmp/cargo-build.log | head -20 | while IFS= read -r l; do echo "::error::cargo: $l"; done
+            exit "$RC"
+          fi
           cd ..
           echo "--- 產出 ---"
           ls -la "$SO"/*/libhketa_store.so
@@ -1434,6 +1501,15 @@ jobs:
           echo
           echo "=============== 最尾 40 行 ==============="
           tail -40 /tmp/release-build.log 2>/dev/null || true
+          echo
+          echo "=============== v6d：cargo-build.log 全文（Rust 101 嘅真因喺度）==============="
+          cat /tmp/cargo-build.log 2>/dev/null || echo "(冇 cargo-build.log，即係未行到 cargo ndk)"
+          echo
+          echo "=============== cargo 錯誤轉 annotation ==============="
+          grep -nE 'error(\[E|:)|could not compile|not installed|ANDROID_NDK|linker|failed to run|No such file|panicked' \
+            /tmp/cargo-build.log 2>/dev/null | head -30 \
+            | while IFS= read -r line; do echo "::error::$line"; echo "$line"; done
+          echo "(v6d 完)"
 
       - name: Write errors to job summary
         if: failure()
