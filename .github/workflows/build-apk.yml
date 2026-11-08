@@ -165,22 +165,39 @@ jobs:
               if not os.path.exists(main): continue
               raw = open(main, encoding='utf-8').read()
               have = set(re.findall(r'<string\s+name="([^"]+)"', raw))
-              extra = []
-              dupfiles = []
+              merged = 0
               for f in sorted(os.listdir(base)):
                   if not f.endswith('.xml') or f == 'strings.xml': continue
-                  other = open(os.path.join(base, f), encoding='utf-8', errors='replace').read()
-                  for m in re.finditer(r'<string\s+name="([^"]+)"[^>]*>.*?</string>', other, re.S):
+                  q = os.path.join(base, f)
+                  other = open(q, encoding='utf-8', errors='replace').read()
+                  blocks = list(re.finditer(r'<string\s+name="([^"]+)"[^>]*>.*?</string>', other, re.S))
+                  if not blocks:
+                      # 🔴 v6e：colors.xml / themes.xml 只有 <color>/<style>，
+                      #    v6c 舊邏輯會當「重複檔」直接 os.remove() → AAPT2 之後報
+                      #    "resource color/purple_500 not found"。必須保留。
+                      print(f"  ok  {d}/{f} 冇 <string>，保留（color/style 等非字串資源）")
+                      continue
+                  extra = []
+                  for m in blocks:
                       if m.group(1) not in have:
                           have.add(m.group(1)); extra.append(m.group(0))
-                  dupfiles.append(os.path.join(base, f))
-              if dupfiles:
                   if extra:
                       raw = raw.replace('</resources>', '\n    ' + '\n    '.join(extra) + '\n</resources>')
                       open(main, 'w', encoding='utf-8').write(raw)
-                  for q in dupfiles: os.remove(q)
-                  print(f"  ✔ {d}: 合併 {len(extra)} 個獨有 key，刪走 {len(dupfiles)} 份重複檔")
+                      merged += len(extra)
+                  # 移除已合併嘅 <string> 區塊；若檔入面仲有其他資源定義就回寫保留，
+                  # 唔好成個檔刪咗。
+                  remain = re.sub(r'<string\s+name="([^"]+)"[^>]*>.*?</string>', '', other, flags=re.S)
+                  other_tag = re.search(r'<(?!/?resources\b|!--|\?)([a-zA-Z_][\w.:-]*)\s', remain)
+                  if other_tag:
+                      open(q, 'w', encoding='utf-8').write(remain)
+                      print(f"  ✔ {d}/{f}: 移除重複 <string>，保留 <{other_tag.group(1)}> 等非字串資源")
+                  else:
+                      os.remove(q)
+                      print(f"  ✔ {d}/{f}: 得 <string>，刪走重複檔")
                   changed += 1
+              if merged:
+                  print(f"  ✔ {d}: 合併咗 {merged} 個獨有 key 入 strings.xml")
           print("  重複資源清理完成" if changed else "  冇重複檔，唔使改")
           PYX
 
@@ -284,7 +301,7 @@ jobs:
           set -u
           if command -v cargo-ndk >/dev/null 2>&1; then
             echo "✔ cargo-ndk 已經喺度：$(command -v cargo-ndk)"
-            cargo-ndk --version || true
+            echo "  （唔直接執行 binary 查版本 —— 佢只接受 \`cargo ndk\` 呼叫）"
             exit 0
           fi
           echo "cargo-ndk 唔喺度，嘗試安裝…"
@@ -522,7 +539,16 @@ jobs:
             echo "::error::cargo-ndk 裝唔到 —— 冇佢就砌唔到四個 ABI"
             exit 1
           fi
-          cargo-ndk --version
+          # 🔴 v6e：唔好直接執行 `cargo-ndk --version`！
+          #    cargo-ndk 個 binary 設計成**只能經 cargo subcommand 呼叫**：
+          #      main() 檢查 argv[1] == "ndk"，否則印
+          #      "This binary may only be called via `cargo ndk`." 然後 exit(1)。
+          #    直接 `cargo-ndk --version` → argv[1]="--version" → exit 1，
+          #    喺 `set -euo pipefail` 下即刻殺咗成個 step，**連 ::error:: 都冇**。
+          #    呢個就係 v6d 長圖 L182 嗰句 + Error: exit code 1 嘅真因。
+          #    存在性用 `command -v` 就夠，唔使執行個 binary。
+          echo "  ✔ cargo-ndk 路徑：$(command -v cargo-ndk)"
+          echo "     （版本查詢會觸發上面個限制，刻意略過；實際呼叫一律用 \`cargo ndk\`）"
 
           echo "--- 3b) 前置體檢（v6d）---"
           echo "  ANDROID_NDK_HOME = ${ANDROID_NDK_HOME:-（未設！）}"

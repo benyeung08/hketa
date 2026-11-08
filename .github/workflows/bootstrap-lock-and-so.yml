@@ -114,10 +114,16 @@ jobs:
       - name: Install cargo-ndk
         if: ${{ inputs.build_so }}
         run: |
+          set -euo pipefail
           if ! command -v cargo-ndk >/dev/null 2>&1; then
             cargo install cargo-ndk --locked
           fi
-          cargo-ndk --version
+          if ! command -v cargo-ndk >/dev/null 2>&1; then
+            echo "::error::cargo-ndk 裝唔到"; exit 1
+          fi
+          # 🔴 v6e：唔好 `cargo-ndk --version` —— 個 binary 只接受 `cargo ndk` 呼叫，
+          #    直接執行會印 "This binary may only be called via `cargo ndk`." 並 exit 1。
+          echo "✔ cargo-ndk 路徑：$(command -v cargo-ndk)"
 
       - name: Build four ABIs (--locked)
         if: ${{ inputs.build_so }}
