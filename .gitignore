@@ -2,6 +2,7 @@
 .gradle/
 .idea/
 local.properties
+android/local.properties
 android/build/
 android/app/build/
 android/app/src/main/assets/web/*
@@ -13,5 +14,12 @@ node_modules/
 .DS_Store
 *.apk
 *.aab
+
+# 簽名私鑰一律不得入庫（CI 只從 Secrets 解碼到 android/keystore.jks）
+*.jks
+*.jks.b64
+*.keystore
+!app/debug.keystore
+android/keystore.jks
 keystore/*.jks
-!keystore/.gitkeep
+keystore/*.jks.b64
