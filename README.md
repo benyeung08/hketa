@@ -1,6 +1,6 @@
 # HKETA Hybrid — 把 hketa 的功能做成 hkbus.app 形態的 APK
 
-一句話：**用 Kotlin 做 Android 原生殼與網路／定位橋接，用 HTML + JavaScript 做 UI 與 ETA 邏輯，前端放在 GitHub Pages、APK 由 GitHub Actions 自動產出。**
+一句話：**用 Kotlin 做 Android 原生殼與網路／定位橋接，用 HTML + JavaScript 做 UI 與 ETA 邏輯，前端整包內置進 APK，由 GitHub Actions 一鍵產出 APK。** 唔使開 GitHub Pages、唔使部署網站。
 
 `benyeung08/hketa` 是 Kotlin + Compose 的**純原生** App（README 開頭就寫明「無 WebView、無網頁外殼」）；`hkbus.app` 本身則是開源 PWA（`hkbus/hk-independent-bus-eta`，React + TypeScript + Vite + MUI，GPL-3.0，可自建、可部署 GitHub Pages）[citation:7][citation:4][citation:13]。本專案等於把 hketa 的功能「搬回」混合式架構，但**不是**直接把別人的網站塞進 WebView。
 
@@ -16,12 +16,19 @@
 ## 架構
 
 ```
-web/          HTML + JS + CSS  → GitHub Pages（瀏覽器版）
-                 ↓ CI 複製
+web/   HTML + JS + CSS + logo
+          │  CI 複製
+          ▼
 android/app/src/main/assets/web/   → 打包進 APK，file:// 離線載入
-                 ↕ JavascriptInterface「HKETA」
-android/.../EtaBridge.kt          → OkHttp 打官方 API、LocationManager 取定位、讀版本號
+          ↕ JavascriptInterface「HKETA」
+android/.../MainActivity.kt        → WebView 殼、定位權限、返回鍵
+android/.../EtaBridge.kt           → OkHttp 打官方 API、讀版本號、讀 assets
+          │
+          ▼
+   app-debug.apk / app-release.apk（Artifacts 直接下載）
 ```
+
+`web/` 也可選配部署成網頁版，但本 repo 唔附 Pages workflow —— 只拎 APK 完全唔使理。
 
 **為什麼要 Kotlin 橋接而不讓 JS 直接 fetch**：政府 ETA 接口多數不開 CORS，瀏覽器直連會被擋；由原生層發請求就沒有這問題，也能統一做網域白名單、避免 WebView 變成任意代理。這同時讓 Kotlin 不只是個殼，而是真的負責網路、定位、版本與外部連結。
 
@@ -54,15 +61,21 @@ python3 tools/make_icons.py            # 或 python3 tools/make_icons.py 新圖.
 
 腳本會自動去背、重建彩虹背景、輸出全部密度，並更新 `assets/icon-preview.png` 預覽圖。需要 `numpy / Pillow / scipy`（本機工具鏈用，App 本身零依賴）。
 
-## 快速開始（推薦：完全在 GitHub 上）
+## 只拎 APK（三步）
+
+前端 HTML/JS 已打包進 APK 的 `assets/`，**唔使開 GitHub Pages、唔使部署任何網頁**。
 
 1. 把本目錄 push 到你的 GitHub repo（`main` 分支）。
-2. Actions → **Build HKETA Hybrid APK** → Run workflow。
-3. 跑完在 Artifacts 下載 `hketa-hybrid-apk`（含 debug 與 release APK）。
-4. push `v*` 標籤會自動把 APK 掛到 Release，App 內「檢查更新」就讀得到。
-5. 同一個 workflow 會把 `web/` 部署到 GitHub Pages，得到瀏覽器版。
+2. Actions → **Build HKETA Hybrid APK** → **Run workflow**。
+3. 跑完在該次執行的 **Artifacts** 下載 `hketa-hybrid-apk`，解壓後拎 `app-debug.apk` 裝落手機（首次安裝允許「未知來源」）。
 
-> CI 產出的 release APK 預設是 **unsigned**。要正式簽名，在 repo Secrets 加 `HKETA_KEYSTORE_B64`（keystore 的 base64）、`HKETA_KEYSTORE_PASSWORD`、`HKETA_KEY_ALIAS`、`HKETA_KEY_PASSWORD`；workflow 會解碼並由 `app/build.gradle.kts` 自動套用。個人使用可直接裝 debug APK。
+push `v*` 標籤會自動把 APK 掛到 Release，App 內「檢查更新」就讀得到；唔打 tag 唔影響拎 APK。
+
+> CI 產出的 release APK 預設是 **unsigned**，個人使用直接裝 **debug** 就得。要正式簽名，在 repo Secrets 加 `HKETA_KEYSTORE_B64`（keystore 的 base64）、`HKETA_KEYSTORE_PASSWORD`、`HKETA_KEY_ALIAS`、`HKETA_KEY_PASSWORD`。
+
+## 之前見過 `Get Pages site failed / Not Found`？
+
+個 repo 未開 Pages 先會咁，同 APK 無關。而家 `.github/workflows/` 只剩 `build-apk.yml` 一個檔，Permissions 亦縮到 `contents: write`，唔會再碰 Pages API —— **Re-run 或再 push 一次就出到 APK**，唔使去 Settings 改任何嘢。
 
 ## 本機建置
 
@@ -75,7 +88,7 @@ cd android && gradle wrapper --gradle-version 8.9 && ./gradlew :app:assembleDebu
 # 產出 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-前端也可單獨跑：`cd web && python3 -m http.server 8080`，但瀏覽器直連官方 API 會遇到 CORS，完整功能請用 APK。
+`web/` 亦可選配用 `python3 -m http.server 8080` 單獨預覽，但瀏覽器直連官方 API 會遇到 CORS；完整功能以 APK 為準，且拎 APK 完全唔需要呢一步。
 
 ## 官方資料來源（免授權，HTTPS）
 
