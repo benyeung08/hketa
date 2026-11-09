@@ -1,5 +1,6 @@
 name: Build HKETA Hybrid APK
 
+# 只做一件事：產出 APK。不部署任何網頁、不需要 GitHub Pages、不需要 Pages 權限。
 on:
   push:
     branches: [main]
@@ -8,29 +9,12 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: hketa-hybrid-${{ github.ref }}
+  group: hketa-hybrid-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  pages:
-    name: Deploy web to GitHub Pages
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-      - id: deploy
-        uses: actions/deploy-pages@v4
-
   apk:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -44,11 +28,15 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
+      # 明確裝 Gradle 8.9，避免 runner 預裝版本浮動令 `gradle wrapper` 失敗
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
       - name: Bundle web assets into APK
         run: |
           mkdir -p android/app/src/main/assets/web
           cp -R web/. android/app/src/main/assets/web/
-          # Pages 版才需要 Service Worker；file:// 環境註冊會失敗，保留檔案不影響
           ls -la android/app/src/main/assets/web
 
       - name: Generate Gradle wrapper
@@ -57,7 +45,7 @@ jobs:
           gradle wrapper --gradle-version 8.9 --distribution-type bin
           chmod +x gradlew
 
-      - name: Decode signing keystore
+      - name: Decode signing keystore (optional)
         env:
           B64: ${{ secrets.HKETA_KEYSTORE_B64 }}
         if: env.B64 != ''
@@ -66,7 +54,8 @@ jobs:
       - name: Assemble APK
         working-directory: android
         env:
-          HKETA_KEYSTORE: ${{ secrets.HKETA_KEYSTORE_B64 != '' && '../keystore.jks' || '' }}
+          # 路徑相對於 android/（Gradle projectDir），對應上一步寫入的位置
+          HKETA_KEYSTORE: ${{ secrets.HKETA_KEYSTORE_B64 != '' && 'keystore.jks' || '' }}
           HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
           HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
           HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
