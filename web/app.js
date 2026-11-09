@@ -119,7 +119,7 @@
     lang: localStorage.getItem('hketa_lang') || '',
     index: null,
     favs: JSON.parse(localStorage.getItem('hketa_favs') || '[]'),
-    repo: localStorage.getItem('hketa_repo') || '',
+    repo: localStorage.getItem('hketa_repo') || 'benyeung08/hketa',
     point: JSON.parse(localStorage.getItem('hketa_point') || 'null'),
     route: null,
     stop: null,
@@ -153,47 +153,73 @@
 
   // ---- 索引 ----
   var INDEX_KEY = 'hketa_index_v1';
-  function saveIndex() { try { localStorage.setItem(INDEX_KEY, JSON.stringify(state.index)); } catch (e) {} }
-  function buildIndex(force) {
-    if (!force) {
-      var c = localStorage.getItem(INDEX_KEY);
-      if (c) { try { state.index = JSON.parse(c); return Promise.resolve(); } catch (e) {} }
+  var INDEX_TTL = 24 * 60 * 60 * 1000; // 24 小時後自動重建，避免路線改動永遠不更新
+  function legacyIndex() {
+    var c = localStorage.getItem(INDEX_KEY);
+    if (!c) return null;
+    try { return JSON.parse(c); } catch (e) { return null; }
+  }
+  // 索引動輒數 MB，WebView localStorage 約 5MB 就爆；APK 版改存原生 filesDir
+  function readIndex() {
+    if (NATIVE && window.HKETA.readIndex) {
+      return nativeCall('readIndex').then(function (s) {
+        if (s) { try { return JSON.parse(s); } catch (e) {} }
+        return legacyIndex();
+      }).catch(function () { return legacyIndex(); });
     }
-    setStatus(t('building'));
-    return Promise.all([api(KMB + 'route/'), api(KMB + 'route-stop/'), api(KMB + 'stop')])
-      .then(function (res) {
-        var r = res[0], rs = res[1], s = res[2];
-        var stops = {};
-        (s.data || []).forEach(function (x) {
-          stops[x.stop] = { id: x.stop, tc: x.name_tc, en: x.name_en, lat: +x.lat, lng: +x.long, co: 'KMB' };
-        });
-        var byRoute = {};
-        (rs.data || []).forEach(function (x) {
-          var k = x.route + '|' + x.bound + '|' + x.service_type;
-          (byRoute[k] = byRoute[k] || []).push(x);
-        });
-        var routes = (r.data || []).map(function (x) {
-          var k = x.route + '|' + x.bound + '|' + (x.service_type || '01');
-          var seqs = (byRoute[k] || []).sort(function (a, b) { return a.seq - b.seq; }).map(function (y) { return y.stop; });
-          return {
-            co: 'KMB', route: x.route, bound: x.bound, serviceType: x.service_type || '01',
-            orig: x.orig_tc, dest: x.dest_tc, origEn: x.orig_en, destEn: x.dest_en, stops: seqs
-          };
-        });
-        state.index = { routes: routes, stops: stops, ctbRoutes: [], builtAt: Date.now() };
-        saveIndex(); setStatus(t('ready'));
-        // 背景補城巴路線清單（不阻塞）
-        return api(CTB + 'route/CTB').then(function (j) {
-          state.index.ctbRoutes = (j.data || []).map(function (x) {
-            return { co: 'CTB', route: x.route, bound: x.bound, orig: x.orig_tc, dest: x.dest_tc, origEn: x.orig_en, destEn: x.dest_en, stops: [] };
-          });
-          saveIndex();
-        }).catch(function () {});
-      })
-      .catch(function (e) {
-        setStatus(t('loadErr')); toast(e.message || t('loadErr'));
-        state.index = state.index || { routes: [], stops: {}, ctbRoutes: [], builtAt: 0 };
+    return Promise.resolve(legacyIndex());
+  }
+  function saveIndex() {
+    var txt = JSON.stringify(state.index);
+    if (NATIVE && window.HKETA.writeIndex) {
+      return nativeCall('writeIndex', txt).catch(function () {
+        try { localStorage.setItem(INDEX_KEY, txt); } catch (e) { toast(t('loadErr')); }
       });
+    }
+    try { localStorage.setItem(INDEX_KEY, txt); } catch (e) { toast(t('loadErr')); }
+    return Promise.resolve();
+  }
+  function buildIndex(force) {
+    return readIndex().then(function (cached) {
+      if (!force && cached && cached.routes && Date.now() - (cached.builtAt || 0) < INDEX_TTL) {
+        state.index = cached; setStatus(t('ready')); return null;
+      }
+      setStatus(t('building'));
+      return Promise.all([api(KMB + 'route/'), api(KMB + 'route-stop/'), api(KMB + 'stop')])
+        .then(function (res) {
+          var r = res[0], rs = res[1], s = res[2];
+          var stops = {};
+          (s.data || []).forEach(function (x) {
+            stops[x.stop] = { id: x.stop, tc: x.name_tc, en: x.name_en, lat: +x.lat, lng: +x.long, co: 'KMB' };
+          });
+          var byRoute = {};
+          (rs.data || []).forEach(function (x) {
+            var k = x.route + '|' + x.bound + '|' + x.service_type;
+            (byRoute[k] = byRoute[k] || []).push(x);
+          });
+          var routes = (r.data || []).map(function (x) {
+            var k = x.route + '|' + x.bound + '|' + (x.service_type || '01');
+            var seqs = (byRoute[k] || []).sort(function (a, b) { return a.seq - b.seq; }).map(function (y) { return y.stop; });
+            return {
+              co: 'KMB', route: x.route, bound: x.bound, serviceType: x.service_type || '01',
+              orig: x.orig_tc, dest: x.dest_tc, origEn: x.orig_en, destEn: x.dest_en, stops: seqs
+            };
+          });
+          state.index = { routes: routes, stops: stops, ctbRoutes: [], builtAt: Date.now() };
+          saveIndex(); setStatus(t('ready'));
+          // 補城巴路線清單
+          return api(CTB + 'route/CTB').then(function (j) {
+            state.index.ctbRoutes = (j.data || []).map(function (x) {
+              return { co: 'CTB', route: x.route, bound: x.bound, orig: x.orig_tc, dest: x.dest_tc, origEn: x.orig_en, destEn: x.dest_en, stops: [] };
+            });
+            saveIndex();
+          }).catch(function () {});
+        })
+        .catch(function (e) {
+          setStatus(t('loadErr')); toast(e.message || t('loadErr'));
+          state.index = state.index || { routes: [], stops: {}, ctbRoutes: [], builtAt: 0 };
+        });
+    });
   }
 
   function loadRail() {
@@ -236,7 +262,8 @@
       return {
         min: toMinutes(pick(x, 'eta', 'estimatedArrivalTime', 'arrivalTime', 'time', 'min')),
         dest: pick(x, 'dest_tc', 'dest_ch', 'dest', 'destination', 'dest_en'),
-        rmk: pick(x, 'rmk_tc', 'rmk_ch', 'remark', 'rmk_en')
+        rmk: pick(x, 'rmk_tc', 'rmk_ch', 'remark', 'rmk_en'),
+        route: pick(x, 'route', 'route_no', 'routeName', 'lineRef')
       };
     }).filter(function (x) { return x.min !== null || x.dest; }).slice(0, 6);
   }
@@ -249,12 +276,39 @@
     if (co === 'NLB') return [NLB + 'stop.php?action=estimatedArrivals&routeId=' + rt + '&stopId=' + id, 'GET', ''];
     if (co === 'MTR') return [MTR + 'getSchedule.php?line=' + rt + '&sta=' + id + '&lang=TC', 'GET', ''];
     if (co === 'LRT') return [MTR + 'lrt/getSchedule?station_id=' + id + '&with_special=1', 'GET', ''];
-    if (co === 'MTRB') return [MTR + 'bus/getSchedule', 'POST', JSON.stringify({ route: stop.route, stop: stop.id, lang: 'TC' })];
+    // 官方 MTR Bus API v1.13 規定 POST body 必須是 {language, routeName}
+    if (co === 'MTRB') return [MTR + 'bus/getSchedule', 'POST', JSON.stringify({ language: 'zh', routeName: stop.route })];
     return [KMB + 'stop-eta/' + id, 'GET', ''];
   }
   function fetchEta(stop) {
     var u = etaUrl(stop);
-    return api(u[0], u[1], u[2]).then(function (j) { return normalizeEta(stop.co || 'KMB', j); });
+    return api(u[0], u[1], u[2]).then(function (j) {
+      var list = normalizeEta(stop.co || 'KMB', j);
+      // KMB stop-eta 會回傳「全站所有路線」；預報頁標題是單一路線，必須過濾
+      if (stop.route) list = list.filter(function (e) {
+        return !e.route || String(e.route).toUpperCase() === String(stop.route).toUpperCase();
+      });
+      return list;
+    });
+  }
+
+  // 限制同時在途的請求數，避免收藏一多就一次打爆 API（429）
+  function mapLimit(items, limit, fn) {
+    return new Promise(function (resolve) {
+      var i = 0, running = 0, done = 0;
+      if (!items.length) return resolve();
+      function next() {
+        while (running < limit && i < items.length) {
+          var idx = i++;
+          running++;
+          Promise.resolve(fn(items[idx], idx)).catch(function () {}).then(function () {
+            running--; done++;
+            if (done === items.length) resolve(); else next();
+          });
+        }
+      }
+      next();
+    });
   }
 
   // ---- 距離 ----
@@ -303,7 +357,7 @@
       }).join('');
       // 每站只查一條路線，慳請求（與 hketa 主頁策略相同）
       return Promise.all(near.slice(0, 5).map(function (x) {
-        return fetchEta({ co: 'KMB', id: x.s.id, route: (state.index.routes[0] || {}).route || '' })
+        return fetchEta({ co: 'KMB', id: x.s.id, route: '' })
           .then(function (l) {
             var sid = window.CSS && CSS.escape ? CSS.escape(x.s.id) : String(x.s.id).replace(/["\\]/g, '');
             var el = box.querySelector('[data-id="' + sid + '"] [data-eta]');
@@ -315,15 +369,28 @@
     }).then(function () { setStatus(t('ready')); });
   }
 
-  function renderSearch(q) {
-    q = (q || '').trim().toUpperCase();
+  function renderSearch(q, fromInput) {
+    var input = document.getElementById('q');
+    if (!input) {
+      $view.innerHTML = '<div class="btn-row"><input id="q" class="input" placeholder="' + esc(t('hint')) + '"></div>' +
+        '<div id="searchResults"></div>';
+      input = document.getElementById('q');
+      input.addEventListener('input', function () { renderSearchResults(input.value); });
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') input.blur(); });
+    }
+    if (!fromInput) input.value = q || '';
+    renderSearchResults(input.value);
+  }
+  function renderSearchResults(raw) {
+    var q = (raw || '').trim().toUpperCase();
+    var box = document.getElementById('searchResults');
+    if (!box) return;
     var all = (state.index.routes || []).concat(state.index.ctbRoutes || []);
     var list = q ? all.filter(function (r) {
       return r.route.toUpperCase().indexOf(q) >= 0 || String(r.dest || '').indexOf(q) >= 0 || String(r.orig || '').indexOf(q) >= 0;
     }) : all.slice(0, 30);
     var rail = q ? (state.rail.lines || []).filter(function (l) { return l.code.indexOf(q) >= 0 || String(l.en).toUpperCase().indexOf(q) >= 0; }) : [];
-    var html = '<div class="btn-row"><input id="q" class="input" placeholder="' + esc(t('hint')) + '" value="' + esc(q) + '"></div>' +
-      '<h2>' + esc(t('routes')) + ' · ' + list.length + '</h2>';
+    var html = '<h2>' + esc(t('routes')) + ' · ' + list.length + '</h2>';
     if (!list.length && !rail.length) html += '<div class="empty">' + esc(t('noResult')) + '</div>';
     html += list.slice(0, 60).map(function (r, i) {
       return '<div class="card tap" data-act="route" data-co="' + esc(r.co) + '" data-i="' + i + '" data-q="' + esc(q) + '">' +
@@ -334,9 +401,8 @@
       return '<div class="card"><div class="row"><span class="route-no">' + esc(l.code) + '</span><span class="dest">' +
         esc(L(l.tc, l.en)) + '</span>' + badge('MTR') + '</div></div>';
     }).join('');
-    $view.innerHTML = html;
-    var input = document.getElementById('q');
-    input.addEventListener('input', function () { renderSearch(input.value); });
+    // 只更新結果區，不再重建輸入框：避免掉焦點、中斷中文輸入法、重複渲染
+    box.innerHTML = html;
   }
 
   function renderRoute(r) {
@@ -362,6 +428,7 @@
       '<div class="sub" style="margin-bottom:10px">' + esc(t('autoRefresh')) + '</div><div id="etaBox" class="card"><span class="spin"></span></div>';
     $view.innerHTML = head;
     function tick() {
+      if (document.hidden) return; // 背景不發請求，配合 MainActivity 的 pauseTimers 省電
       var box = document.getElementById('etaBox'); if (!box) return;
       fetchEta(stop).then(function (l) { if (box.isConnected) box.innerHTML = etaHtml(l); })
         .catch(function (e) { if (box.isConnected) box.innerHTML = '<div class="sub">' + esc(e.message) + '</div>'; });
@@ -380,12 +447,12 @@
         esc(L(f.tc, f.en)) + '</div><div class="sub">' + badge(f.co) + ' ' + esc(f.route || '') + '</div></div>' +
         '<div class="min" data-eta>—</div></div></div>';
     }).join('');
-    Promise.all(state.favs.map(function (f, i) {
+    mapLimit(state.favs, 3, function (f, i) {
       return fetchEta(f).then(function (l) {
         var el = box.querySelector('[data-i="' + i + '"] [data-eta]');
         if (el) el.innerHTML = l.length && l[0].min !== null ? l[0].min + '<small>' + esc(t('min')) + '</small>' : '—';
-      }).catch(function () {});
-    }));
+      });
+    });
   }
 
   function renderSettings() {
@@ -493,5 +560,9 @@
   }
   applyI18n();
   if (!NATIVE) setStatus(t('browser'));
+  // MainActivity 在定位授權完成後派發此事件，主頁立即重算附近車站
+  document.addEventListener('hketa:location', function () {
+    if (state.tab === 'home') render();
+  });
   Promise.all([buildIndex(false), loadRail()]).then(function () { render(); }).catch(function () { render(); });
 })();
