@@ -21,6 +21,7 @@ android {
     signingConfigs {
         if (!ciKeystore.isNullOrBlank()) {
             create("ci") {
+                // CI 傳入相對路徑（如 keystore.jks），相對於本 android/ 專案目錄
                 storeFile = file(ciKeystore)
                 storePassword = System.getenv("HKETA_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("HKETA_KEY_ALIAS")
