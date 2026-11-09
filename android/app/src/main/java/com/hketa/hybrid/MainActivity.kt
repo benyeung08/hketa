@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -12,8 +14,14 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Kotlin 層只做四件事：載入內置前端、提供 JS 橋接、要定位權限、處理返回鍵。
- * 所有 UI 與 ETA 邏輯都在 assets/web/ 的 HTML + JavaScript。
+ * Kotlin 層：載入內置前端、提供 JS 橋接、要定位權限、處理返回鍵與生命週期。
+ *
+ * 修復重點：
+ *  - 只在 ASSET 模式注入 JavascriptInterface；REMOTE 模式不把原生能力暴露給第三方頁面。
+ *  - 使用 API 24+ 的 shouldOverrideUrlLoading(view, request)，POST／非 file 導覽也能攔。
+ *  - onPause/onResume 暫停 WebView 計時器，避免背景每 20 秒繼續打 API。
+ *  - 定位授權完成後通知前端重新整理主頁。
+ *  - onDestroy 先移除 View 再 destroy，降低 WebView 崩潰機率。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -50,9 +58,10 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString HKETA-Hybrid/1.0"
         }
 
+        web.webChromeClient = WebChromeClient()
         web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                // 只允許內置頁面；外部連結一律交給系統瀏覽器
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val url = request.url.toString()
                 return if (url.startsWith("file:///android_asset/")) false else {
                     EtaBridge.openExternal(this@MainActivity, url)
                     true
@@ -60,9 +69,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        web.addJavascriptInterface(EtaBridge(this, web), "HKETA")
-        requestLocationPermission()
+        // 絕不在 REMOTE 模式注入：第三方頁面不應取得定位／任意 API 代理能力
+        if (LOAD_MODE == "ASSET") {
+            web.addJavascriptInterface(EtaBridge(this, web), "HKETA")
+        }
 
+        requestLocationPermission()
         web.loadUrl(if (LOAD_MODE == "REMOTE") REMOTE_URL else ASSET_URL)
     }
 
@@ -80,12 +92,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LOCATION && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
+            web.evaluateJavascript("window.dispatchEvent(new Event('hketa:location'))", null)
+        }
+    }
+
+    override fun onPause() {
+        web.onPause()
+        web.pauseTimers()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        web.resumeTimers()
+        web.onResume()
+    }
+
     @Deprecated("Deprecated in Java", ReplaceWith("onBackPressedDispatcher"))
     override fun onBackPressed() {
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
+        web.removeAllViews()
         web.destroy()
         super.onDestroy()
     }
