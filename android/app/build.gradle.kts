@@ -3,8 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// 有 CI Secrets 才啟用正式簽名；否則 release 產出 unsigned APK。
+// 有 CI Secrets 才啟用正式簽名；否則 release 產出 unsigned APK（CI 會移除，不掛到 Release）。
 val ciKeystore: String? = System.getenv("HKETA_KEYSTORE")
+// 由 CI 從 tag 帶入，避免 versionName 永遠停在 1.0.0 而讓「檢查更新」誤報。
+val ciVersionName: String = System.getenv("HKETA_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.2.1"
 
 android {
     namespace = "com.hketa.hybrid"
@@ -14,8 +16,8 @@ android {
         applicationId = "com.hketa.hybrid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = ciVersionName
     }
 
     signingConfigs {
@@ -46,7 +48,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-
 }
 
 dependencies {
