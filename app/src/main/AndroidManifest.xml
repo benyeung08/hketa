@@ -6,8 +6,10 @@
     <!-- Android 8+ 由 App 內啟動安裝 Intent 必須聲明；用戶仍要喺系統設定開啟「允許安裝未知來源」 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- 下載嘅更新 APK 同路線資料快取唔應被 adb backup 提取 -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
