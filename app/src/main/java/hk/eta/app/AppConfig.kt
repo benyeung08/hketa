@@ -3,9 +3,9 @@ package hk.eta.app
 /** 全部需要用戶自行填寫嘅 GitHub 座標集中喺呢度，改一次就夠。 */
 object AppConfig {
     /** 換成你嘅 GitHub 帳號 */
-    const val OWNER = "OWNER"
+    const val OWNER = "benyeung08"
     /** 換成你嘅 repository 名稱 */
-    const val REPO = "REPO"
+    const val REPO = "hketa"
 
     /** GitHub 託管嘅 hketa.json（設定頁「資料來源」用） */
     const val REMOTE_JSON_URL =

@@ -154,20 +154,26 @@ object RouteDataUpdate {
         val v = validate(d)
         if (!v.ok) error("資料驗證失敗：\n" + v.problems.joinToString("\n"))
 
-        // 先寫快取，寫入失敗都唔影響呢次 session，但會如實回報。
+        // 先寫快取；renameTo 失敗要如實反映，唔好標成「已快取」。
+        var cacheOk = false
         try {
             val tmp = File(ctx.filesDir, "$CACHE_NAME.part")
             tmp.writeText(text, Charsets.UTF_8)
-            if (cacheFile(ctx).exists()) cacheFile(ctx).delete()
-            tmp.renameTo(cacheFile(ctx))
+            val dest = cacheFile(ctx)
+            if (dest.exists()) dest.delete()
+            cacheOk = tmp.renameTo(dest)
+            if (!cacheOk) tmp.delete()
         } catch (e: Exception) {
             // 快取失敗唔阻塞套用，只清除可能寫壞嘅暫存檔
             File(ctx.filesDir, "$CACHE_NAME.part").delete()
         }
         AppState.data = d
-        AppState.sourceLabel = Fmt.zh(AppState.lang, "線上路線資料", "Online route data")
+        AppState.sourceLabel = if (cacheOk)
+            Fmt.zh(AppState.lang, "線上路線資料", "Online route data")
+        else
+            Fmt.zh(AppState.lang, "線上路線資料（未快取）", "Online route data (not cached)")
         AppState.dataUpdatedAt = Fmt.nowTime()
-        AppState.dataCached = true
+        AppState.dataCached = cacheOk
         return d
     }
 
