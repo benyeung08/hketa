@@ -36,8 +36,10 @@ android {
         // 若要硬性禁止 Android 18+ 安裝，取消下行註解；
         // 一般建議保持註解，讓日後新系統仍可安裝（只是未實測）。
         // maxSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        // repo 已有 v1.0.0–v1.2.1 共 15 個舊 tag；新版必須大於舊版，
+        // 否則 App 內更新判斷會倒退，覆蓋安裝亦會失敗。
+        versionCode = 16
+        versionName = "2.0.0"
 
         // 由 Gradle 產生，不在 res/values/strings.xml 手寫，避免重複資源。
         resValue("string", "expected_signing_cert_sha256", signingCertSha256)
