@@ -1,25 +1,22 @@
 *.iml
 .gradle/
 .idea/
-local.properties
-android/local.properties
-android/build/
-android/app/build/
-android/app/src/main/assets/web/*
-!android/app/src/main/assets/web/.gitkeep
-android/gradlew
-android/gradlew.bat
-android/gradle/wrapper/
-node_modules/
 .DS_Store
+local.properties
+build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
 *.apk
+*.ap_
 *.aab
+*.log
 
-# 簽名私鑰一律不得入庫（CI 只從 Secrets 解碼到 android/keystore.jks）
+# 永久簽名金鑰：絕對唔可以 commit
 *.jks
-*.jks.b64
 *.keystore
-!app/debug.keystore
-android/keystore.jks
-keystore/*.jks
-keystore/*.jks.b64
+*.p12
+*.pfx
+*.base64.txt
+signing.properties
