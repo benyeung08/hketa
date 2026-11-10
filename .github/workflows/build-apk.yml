@@ -24,31 +24,52 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 喺 2026 年新版 ubuntu-latest runner 上
+      # 內部呼叫已被 cmdline-tools 移除嘅舊 sdkmanager tools 包，會直接令 job 失敗
+      # （本 repo 最近一次 run 正正死喺呢一步）。改用 runner 預裝嘅 Android SDK。
+      - name: Verify Android SDK
+        run: |
+          SDK=$(command -v sdkmanager || true)
+          if [ -z "$SDK" ] && [ -x "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          if [ -z "$SDK" ]; then
+            echo "::error::sdkmanager not found; install Android cmdline-tools on the runner"
+            exit 1
+          fi
+          echo "SDKMANAGER=$SDK" >> "$GITHUB_ENV"
+          echo "Using sdkmanager: $SDK"
 
       - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null || true
+        run: yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       # 支援範圍 Android 8 (API 26) – 17 (API 37)，所以 compile 用 android-37。
       # AGP 9.1.1 預設 build-tools 為 36.0.0；平台在不同 channel 可能叫
       # android-37 或 android-37.0，兩者都試，再用 --list 動態兜底。
       - name: Install SDK packages
         run: |
-          sdkmanager "platform-tools" "build-tools;36.0.0" > /dev/null
-          sdkmanager --list > "$RUNNER_TEMP/sdk-list.txt" || true
-          if ! sdkmanager "platforms;android-37" > /dev/null 2>&1; then
-            if ! sdkmanager "platforms;android-37.0" > /dev/null 2>&1; then
-              P=$(grep -oE 'platforms;android-37(\.[0-9]+)?' "$RUNNER_TEMP/sdk-list.txt" | head -1 || true)
-              echo "Falling back to SDK package: $P"
-              sdkmanager "$P" > /dev/null
+          "$SDKMANAGER" "platform-tools" "build-tools;36.0.0" > /dev/null
+          "$SDKMANAGER" --list > "$RUNNER_TEMP/sdk-list.txt" || true
+          # Android 17 / API 37 屬 Preview，sdkmanager 包名通常係 platforms;android-37.0，
+          # 所以先試 .0，再試無後綴，最後先由 --list 動態兜底。
+          INSTALLED=""
+          for P in "platforms;android-37.0" "platforms;android-37"; do
+            if "$SDKMANAGER" "$P" > /dev/null 2>&1; then INSTALLED="$P"; break; fi
+          done
+          if [ -z "$INSTALLED" ]; then
+            P=$(grep -oE 'platforms;android-37(\.[0-9]+)?' "$RUNNER_TEMP/sdk-list.txt" | head -1 || true)
+            if [ -z "$P" ]; then
+              echo "::error::No Android 37 platform package available on this runner"
+              exit 1
             fi
+            "$SDKMANAGER" "$P" > /dev/null
+            INSTALLED="$P"
           fi
-          echo "Installed platforms:"
-          ls -1 "$ANDROID_HOME/platforms"
+          echo "Installed platform: $INSTALLED"
+          ls -1 "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platforms"
 
       - name: Point Gradle to Android SDK
-        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+        run: echo "sdk.dir=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" > local.properties
 
       # 不把 gradle-wrapper.jar（二進位檔）放進 repo，改為在 runner 上裝 Gradle 9.3.1。
       - name: Install Gradle 9.3.1
@@ -99,7 +120,9 @@ jobs:
           echo "Permanent signing cert SHA-256: \`$CERT\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate hketa.json
-        run: python3 -m json.tool app/src/main/assets/hketa.json > /dev/null
+        run: |
+          test -f app/src/main/assets/hketa.json || { echo "::error::missing app/src/main/assets/hketa.json"; exit 1; }
+          python3 -m json.tool app/src/main/assets/hketa.json > /dev/null
 
       # 檢查四類路線資料、收費／服務班次覆蓋、XML/R.id、簽名與更新設定一致性
       - name: Validate project consistency
