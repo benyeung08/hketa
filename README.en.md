@@ -1,444 +1,296 @@
-# HKETA · Kotlin / JSON Rebuild
+# HKETA · Signed Release APK (v1.0.0)
 
-[繁體中文 README](README.md) · **English**
+[繁體中文](README.md) · **English**
 
-A **100% Kotlin** native Android rebuild of [shamough1792/HKETA](https://github.com/shamough1792/HKETA) (originally Cordova + JavaScript). Routes, stops, fares and service schedules are all driven by one **`hketa.json`**, and **GitHub Actions** builds the APK automatically.
+An Android **release-only** project that rebuilds the Hong Kong public transport ETA app [`shamough1792/HKETA`](https://github.com/shamough1792/HKETA) using **GitHub Actions + JavaScript + TypeScript + Kotlin + open APIs**. It produces **only a signed release APK** — no debug APK, no debug artifact, no PR build.
 
-## Features
+Covers KMB/LWB, Citybus, NLB, green minibuses (GMB), MTR and Light Rail. Bilingual UI (Traditional Chinese / English), a stop map opened through a native `geo:` intent, keep-screen-awake, and an **in-app updater in the Settings tab**: check GitHub Releases, download the APK, show progress, and hand it to the system installer.
 
-- **Four transport modes** — Bus (KMB / CTB / NLB), Green Minibus (GMB), Metro (MTR), Light Rail (LRT): 30 demo routes and 355 stops
-- **Complete route data** — every route has **fares** (full / child / senior / section fares), outbound & inbound stops, and **service schedules** (first & last departure, peak / off-peak headway, journey time)
-- **Search + two-level filtering** — search by route number or Chinese/English origin/destination; mode chips (All / Bus / Minibus / Metro / Light Rail) plus operator chips
-- **Route details** — stop list, direction switch, bilingual termini, fare & schedule summary and a full detail dialog
-- **ETA** — per-stop departure times, minutes to arrival, destination, scheduled-service remark, MTR / LRT platform
-- **Bilingual UI** — one-tap 中文 / EN switch, synced across screens
-- **Map** — opens any installed map app via `geo:`
-- **Refresh** with last-updated time
-- **Settings → Route data update** — online update of fares / routes / schedules for all four modes, validated then cached
-- **Settings** — signature consistency, full app version, in-app APK update, **online release history** (the only version-history source), About
-- **Signature-consistent updates** — new APKs from GitHub Releases are verified against the permanent key before installation is offered
+The original project is Cordova + JavaScript (MIT); this project is also MIT but **does not copy its `www/` assets** — the UI and API layer are written from scratch.
 
-> ⚠️ The bundled JSON is **demo data, not live arrival times**; stop coordinates are approximate. See [Connecting real data](#connecting-real-live-eta-and-route-data).
+> ⚠️ **The signing key is yours, not something I can generate.** This is a project that is *configured* to produce a release build; you must create the keystore yourself and add four values to GitHub Secrets before Actions can emit `HKETA-release.apk`. No Android SDK/Gradle and no private key were available when this was prepared, so **no physical `.apk` is attached**.
 
 ---
 
-## Supported range: Android 8 – 17
+## Stack
 
-| Android | API | Status |
-|---|---|---|
-| 8.0 / 8.1 Oreo | 26 / 27 | ✅ Minimum supported |
-| 9 – 16 | 28 – 36 | ✅ |
-| 17 Cinnamon Bun | 37 | ✅ `targetSdk` |
+| What you asked for | What it does here |
+| --- | --- |
+| GitHub | `.github/workflows/build-apk.yml`: push to `main` / `v*` tag / manual dispatch → install SDK 36 → typecheck → **signed release build** → `apksigner verify` + SDK range assertion → upload Artifact; a tag also attaches the APK to a GitHub Release (**which doubles as the app's update source**) |
+| JavaScript | `native-plugin/hketa-native/www/hketaNative.js` (Cordova JS bridge), `scripts/build-web.mjs`, `scripts/verify-kotlin.js` |
+| TypeScript | `src/`: types, six API clients, normalisation, UI, native-bridge wrapper, **`update-panel.ts` (Settings + updater)** → `www/js/app.js` via esbuild |
+| Kotlin | `HkEtaNative.kt`: device/app info, `geo:` map intent, Toast, keep-awake, **`DownloadManager` download + install intent + unknown-source permission** |
+| API | Live ETA JSON from `data.etabus.gov.hk`, `rt.data.gov.hk`, `data.etagmb.gov.hk`, plus **`api.github.com/repos/{owner}/{repo}/releases/latest`** |
 
-`minSdk = 26`, `targetSdk = 37`, `compileSdk = 37`. Android 7.1 and below (≤ API 25) are refused by the system / Play.
-
-**No `maxSdk` is set**: future Android 18 devices can still install (untested), so users are not locked out after an OS upgrade. Uncomment `maxSdk = 37` in `app/build.gradle.kts` if you really want a hard ceiling.
-
-Because the minimum is already API 26, **every supported device uses the adaptive icon**; `mipmap-*/ic_launcher*.png` are kept only as fallback for a few OEM launchers. The toolchain was upgraded accordingly to AGP 9.1.1 (the first stable AGP supporting API 37).
+Under the hood: **Cordova CLI 13 + cordova-android 15.1.0 (Kotlin 2.1.21)**. Kotlin is a Cordova plugin called from TypeScript via `cordova.exec`. cordova-android 15 ships Kotlin Gradle support; enabling `GradlePluginKotlinEnabled` in `config.xml` is enough. **Device support: Android 8.0–17 (API 26–37)** — see below.
 
 ---
 
-## Permanent signing consistency (one-time setup)
+## Layout
 
-Android requires that **every new version of the same package name is signed with the same key**, otherwise installation fails with `INSTALL_FAILED_UPDATE_INCONSISTENT_CERTIFICATES`. The default CI `debug.keystore` differs per machine, so without a fixed key every Actions build could produce a different certificate and installed users could never upgrade.
-
-Two layers are implemented:
-
-**① One key for every APK** — `debug`, `release` and GitHub Releases all bind to the same `signingConfigs.permanent`. The keystore itself never enters the repo; it is stored as base64 in GitHub Secrets and restored to the runner's temp directory at build time.
-
-**② In-app self-check** — CI extracts the certificate SHA-256 from the keystore and injects it into `R.string.expected_signing_cert_sha256`. On every launch the app compares its own signing certificate; a mismatch blocks loading and shows a warning, preventing repackaging / re-signing. **Settings → Signature consistency** shows live status, both fingerprints and a re-verify button.
-
-### Setup (once)
-
-```bash
-export HKETA_KEYSTORE_PASSWORD='a long store password'
-export HKETA_KEY_PASSWORD='another long key password'
-bash scripts/gen_keystore.sh
+```
+hketa-apk/
+├── .github/workflows/build-apk.yml    # signed release APK only (also the update source)
+├── README.md / README.en.md           # zh-Hant / English
+├── config.xml                         # v1.0.0 / min 26 / target 36 / Kotlin switch
+├── build.json.example                 # local signing template (build.json is gitignored)
+├── package.json / package-lock.json / tsconfig.json / .npmrc
+├── scripts/  build-web.mjs · verify-kotlin.js · generate-icons.py
+├── src/
+│   ├── types / native / ui / main / version
+│   ├── update-panel.ts                # Settings screen + updater flow
+│   └── api/  http / kmb / ctb / nlb / gmb / mtr / lrt / index / update
+├── www/      index.html · css/app.css · js/app.js · img/app-logo.png
+├── native-plugin/hketa-native/        # JS bridge + Kotlin + plugin.xml
+├── plugins/                           # Cordova install output (gitignored)
+└── res/android/                       # logo-source.png + icons/{mdpi..xxxhdpi}/ + preview
 ```
 
-The script generates `hketa-release.jks` (RSA 4096, **valid for 36,500 days ≈ 100 years**) and `hketa-release.jks.base64.txt`. Then go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+> `native-plugin/` is deliberately **not** inside `plugins/`: `cordova plugin add` writes into `plugins/`, so keeping the source there would overwrite itself.
+
+---
+
+## Quick start
+
+### 1. Browser preview
+
+```bash
+npm install
+npm run typecheck
+npm run build
+npm run dev
+```
+
+Browser mode uses a fallback native bridge: the map button becomes a console hint, update checks hit the real GitHub API, but **download/install reports that the Android build is required** and falls back to opening the release page.
+
+### 2. Build the APK locally (JDK 17 + Node 22 + Android SDK 36 + Build Tools 36.0.0)
+
+```bash
+npm run android:add   # add platform + install ./native-plugin/hketa-native
+npm run apk
+# output: platforms/android/app/build/outputs/apk/release/app-release.apk
+```
+
+> The local Kotlin plugin is deliberately **not** declared as a `<plugin>` in `config.xml`, to stop Cordova's restore mechanism from writing it back into `package.json` devDependencies. It is installed explicitly with `cordova plugin add ./native-plugin/hketa-native`.
+>
+> cordova-android 15.1.0's bundled AGP 8.10.1 / Gradle 8.14.2 / Kotlin 2.1.21 is all you need — no toolchain overrides.
+
+### 3. Let GitHub produce the APK (recommended)
+
+```bash
+git init && git add . && git commit -m "HKETA v1.0.0 release"
+git remote add origin https://github.com/<you>/hketa-apk.git
+git push -u origin main
+```
+
+**Actions → Build HKETA signed release APK → latest run → Artifacts** → `HKETA-release.apk`.
+Pushing a `v1.0.0` tag also attaches the APK to a GitHub Release — **this step creates the update source for the app**.
+
+### 4. Configure release signing
+
+```bash
+keytool -genkeypair -v \
+  -keystore release.keystore -alias hketa \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storetype PKCS12
+```
+
+Repo → **Settings → Secrets and variables → Actions**:
 
 | Secret | Value |
-|---|---|
-| `HKETA_KEYSTORE_BASE64` | contents of `.base64.txt` |
-| `HKETA_KEYSTORE_PASSWORD` | store password |
-| `HKETA_KEY_ALIAS` | `hketa` (default) |
-| `HKETA_KEY_PASSWORD` | key password |
+| --- | --- |
+| `HKETA_KEYSTORE_BASE64` | `base64 -w0 release.keystore` (macOS: `base64 -i release.keystore \| tr -d '\n'`) |
+| `HKETA_KEYSTORE_PASSWORD` | Keystore password |
+| `HKETA_KEY_ALIAS` | `hketa` |
+| `HKETA_KEY_PASSWORD` | Key password |
+| `HKETA_KEYSTORE_TYPE` | Optional, defaults to `PKCS12` |
 
-⚠️ If any one is missing the workflow **fails fast** with the missing name; it never silently falls back to a temporary debug key. `.jks`, `.p12` and `.base64.txt` are in `.gitignore`.
-
-### What CI does on every run
-
-1. Restores the keystore from Secrets → derives the cert SHA-256 with `keytool -list -v` → injects `HKETA_SIGNING_CERT_SHA256` (Gradle writes it into an app resource).
-2. Signs both `assembleDebug` and `assembleRelease` with the same key.
-3. Reads both APK fingerprints back with `apksigner verify --print-certs`, compares them with the keystore value, **fails on mismatch**, and writes the fingerprint into the Actions Step Summary.
-
-Manual check:
-
-```bash
-$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs HKETA-debug.apk
-# Signer #1 certificate SHA-256 digest: must match "Expected cert" in the app
-```
-
-> ⚠️ **The key is the identity.** Back up the `.jks` and both passwords offline. Losing or regenerating it means installed users can never upgrade; the only recovery is changing `applicationId` and republishing. No certificate is literally permanent, but a 100-year validity plus safe custody is effectively permanent. On Google Play, also enable Play App Signing and treat this key as the upload key.
->
-> For local development without the environment variables, Gradle keeps the AGP default (debug key / unsigned release) and `expected_signing_cert_sha256` is empty → **the in-app check is disabled** so no false alarm appears.
+If any required value is missing, the workflow fails immediately and names the missing secret — it never silently emits an unsigned file. For local builds: `cp build.json.example build.json` and fill in real values (gitignored).
 
 ---
 
-## In-app settings & updates
+## What "release" means here
 
-Tap **Settings** at the bottom of the home screen to open `SettingsActivity`; the adjacent **Data update** button opens the same page scrolled straight to the Route data update card (`focus=data`). The five UI cards are described below in six parts.
-
-### ① Signature consistency
-
-- Live status: `✅ Consistent, safe to upgrade` / `⚠️ Not set (dev build)` / `❌ Mismatch, possibly repackaged`
-- Actual and expected certificate SHA-256, selectable for copying
-- "Re-verify signature" re-checks immediately
-
-> There is deliberately **no "edit expected fingerprint"** option. The expected value comes only from the permanent key at build time; letting anyone change it in-app would bypass the whole anti-tamper mechanism.
-
-### ② App version (top of the update card)
-
-Read locally from `PackageManager` — no network needed:
-
-| Field | Source |
-|---|---|
-| Version name | `versionName` |
-| `versionCode` | `longVersionCode` on API 28+, `versionCode` on 26–27 |
-| First installed / Last updated | `firstInstallTime` / `lastUpdateTime` |
-| Signing cert | first 12 chars of the actual SHA-256 |
-
-Below it, "Current version" is compared with "Latest version".
-
-### ③ APK update (the signature-consistent updater)
-
-```
-Tap "Check GitHub for updates"
-  → GET api.github.com/repos/<OWNER>/<REPO>/releases/latest
-  → numeric comparison of tag_name against current versionName
-  → newer + release has an .apk → show "Download & verify signature"
-     → download to cacheDir/updates/hketa-update.apk (progress %)
-     → getPackageArchiveInfo reads candidate packageName + signing cert
-     → triple check:
-         (a) packageName == hk.eta.app
-         (b) candidate cert == currently installed cert
-         (c) candidate cert == build-time expected fingerprint (if set)
-     → only if all pass: "Signature OK — install update"
-     → ACTION_VIEW + content:// (FLAG_GRANT_READ_URI_PERMISSION) to system installer
-  → any mismatch → delete download, show reason, no install button appears
-```
-
-In short: **a different key, wrong package name, unsigned or corrupt APK can never be installed**, so users never end up with a version that cannot be upgraded later.
-
-### ④ Settings → Route data update (Bus / Minibus / Metro / Light Rail)
-
-One `hketa.json` holds all four modes and is swapped in a single operation:
-
-| Mode | `mode` | Operators | Bundled demo routes |
-|---|---|---|---|
-| Bus | `bus` | KMB / CTB / NLB | 12 |
-| Green Minibus | `minibus` | GMB | 4 |
-| Metro | `metro` | MTR | 10 |
-| Light Rail | `light_rail` | LRT | 4 |
-
-Every route must carry three groups: **fares** (`fare`: full / child / senior, payment method, `sections`), **route** (`bounds` directions + `stopIds` resolving into `stops`), and **service schedules** (`services`: days, first/last, peak / off-peak headway, journey time). The route detail screen shows a summary plus a full dialog.
-
-Update flow:
-
-```
-Tap "Check & update route data"
-  → GET raw.githubusercontent.com/.../hketa.json (Cache-Control: no-cache)
-  → org.json parse
-  → RouteDataUpdate.validate():
-      (a) all four modes present, each with at least one route
-      (b) every route.co / route.mode valid, number non-empty
-      (c) every stopId exists in stops
-      (d) every route has a valid fare.full > 0 and >= 1 service with first/last
-  → any failure → reject, list every problem, existing data untouched
-  → all pass → write filesDir/route-data.json (data cache)
-             → update AppState, effective immediately
-             → show vOld → vNew, route/stop/fare/schedule diff, per-mode stats
-```
-
-The card shows the current data version, source (bundled / online cached), generation time, and per-mode "routes · stops · fare coverage · schedule coverage". "Restore bundled data" (with confirmation) deletes the cache and switches back to the APK's bundled JSON.
-
-> **Difference from "Online release history":** the cache here is **the route data itself**, needed offline — not an activity log. After the earlier merge, **version history still has exactly one online source (GitHub Releases)** and the app writes no update log at all. At startup the app prefers a validated data cache and falls back to bundled JSON if missing or corrupt. Home-screen "Refresh" re-fetches and re-validates when online data is in use.
-
-To change data: edit `hketa.json` in the repo and push (no new APK), then tap update in the app. If `OWNER/REPO` in `AppConfig.kt` are unset, a hint is shown instead of hitting a placeholder URL. See [Connecting real data](#connecting-real-live-eta-and-route-data); `RouteDataUpdate.validate()` is the gate that prevents partial or malformed data from landing.
-
-### ⑤ Online release history (the only version-history source)
-
-The former "live release history" and "on-device update log" were merged into **one online source**: every record is fetched live from `GET /repos/<OWNER>/<REPO>/releases?per_page=30` with `Cache-Control: no-cache` — **no cache, nothing written on-device, no update log**. It loads automatically when Settings opens; "Reload online history" re-fetches manually.
-
-Two status lines:
-
-- `● Online · GitHub Releases (no cache) · N releases` / `● Connecting…` / `● Connection failed: …` (green / blue / red)
-- `Last sync HH:mm · source api.github.com/.../releases`
-
-Each release shows:
-
-- `tag_name`, release name, publish time (GitHub UTC string), `.apk` filename and size
-- badges comparing against the installed `versionName`: `[Latest]`, `[Installed]`, `[Newer]`, `[Older]`, `[Pre-release]`, `[No APK]`
-- first line of the notes; **tap to expand / collapse full release notes**, then "→ Open GitHub release page"
-
-`draft` releases are filtered out; `prerelease` is kept and labelled. No releases / API failure shows a clear status instead of a blank screen. Update-check, download, verification and install results are still shown live in section ③, but are **never written to any on-device log**.
-
-> ⚠️ Unauthenticated GitHub API allows **60 requests per IP per hour**. Opening Settings costs one request; normal use is fine, but hammering it on the same network yields `HTTP 403` — wait an hour or use an authenticated token. Staying online-only means no cache; that is the trade-off.
-
-### ⑥ About
-
-Android 8–17 support, demo-data notice, permanent-signing note.
-
-### One thing to configure
-
-`app/src/main/java/hk/eta/app/AppConfig.kt`:
-
-```kotlin
-const val OWNER = "your-github-account"
-const val REPO  = "HKETA-Kotlin"
-```
-
-`REMOTE_JSON_URL` (data), `RELEASES_API` (APK update) and `RELEASES_HISTORY_API` (online history) are all derived from these two values. Until they are filled in, update / history actions show a hint and never call a placeholder URL.
-
-### Publishing an update users actually receive
-
-1. Bump `versionCode` / `versionName` in `app/build.gradle.kts` (e.g. `2` / `1.1.0`).
-2. `git tag v1.1.0 && git push origin v1.1.0`.
-3. The workflow builds, verifies signatures and attaches **`HKETA-release.apk`** to that Release (the body also includes the cert fingerprint).
-4. Users: open app → Settings → Check for updates → Download → Verify → Install, upgrading in place.
-
-> A Release must contain an `.apk` asset. Pushing a branch without a `v*` tag makes `/releases/latest` return 404 and the app explains it. The workflow deliberately renames the release APK to `HKETA-release.apk` so the updater can find it.
-
-### Permissions & compatibility
-
-- `REQUEST_INSTALL_PACKAGES`: required from Android 8+ to launch an install Intent. Users must still enable "Install unknown apps" for HKETA in system settings; otherwise a hint points them to GitHub Releases.
-- `ApkFileProvider`: a pure-framework `ContentProvider` serving only APKs in `cacheDir/updates/`, `exported=false` + `grantUriPermissions=true`. Since `file://` is forbidden from API 26 and the project intentionally avoids AndroidX, this replaces `androidx.core.content.FileProvider`.
-- Certificate reading branches by platform: `GET_SIGNATURES` on API 26–27, `GET_SIGNING_CERTIFICATES` on 28+ (`SignatureVerifier` handles both installed and archive APKs).
+- `version="1.0.0"`, `android-versionCode="1"`
+- `cordova build android --release --buildConfig=build.json` (`debuggable=false`)
+- The workflow runs `apksigner verify --verbose`; an unsigned result fails the job
+- All `--debug` / `app-debug.apk` / debug artifacts / PR triggers removed
+- Single output name: `HKETA-release.apk`
 
 ---
 
-## Getting the APK (no Android Studio needed)
+## Supported range: Android 8.0 – 17
 
-1. Complete the four signing Secrets above, then push this folder to GitHub (default branch `main`).
-2. Open **Actions**, wait for `Build HKETA APK` (about 3–6 minutes).
-3. Download `HKETA-debug.apk` (or `HKETA-release`) from that run's **Artifacts** and install on an Android phone. Both artifacts share the same permanent key, so they can replace each other; the Step Summary lists the fingerprint.
+**This describes devices: the APK installs and runs on Android 8.0 through Android 17.** It does **not** mean `targetSdkVersion=37` — see below for the difference.
 
-The workflow installs JDK 17, the Android 17 SDK (`platforms;android-37`, `build-tools;36.0.0`) and Gradle 9.3.1, restores the permanent keystore from Secrets, runs `json.tool` and `scripts/validate.py` (four-mode data, fares / schedules, XML, `R.id`, signing and update settings), then `assembleDebug` / `assembleRelease`, and finally compares both APK fingerprints with `apksigner`. The repo contains **no binaries** (not even `gradle-wrapper.jar` or a `.jks`), so a fork runs immediately.
+| Setting | Value | Means |
+| --- | --- | --- |
+| `android-minSdkVersion` | **26** | Android 8.0 Oreo (oldest installable) |
+| `android-targetSdkVersion` | **36** | Android 16 Baklava (cordova-android 15 official ceiling) |
+| `android-compileSdkVersion` | **36** | Compiled against API 36 |
+| `android-maxSdkVersion` | **not set** | see below |
 
-Push a `v*` tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`, to also attach the APK to a GitHub Release.
+Android version → API: 8.0 = 26, 8.1 = 27, 9 = 28, 10 = 29, 11 = 30, 12 = 31/32, 13 = 33, 14 = 34, 15 = 35, 16 = 36, 17 = 37 ([uses-sdk table](https://developer.android.com/guide/topics/manifest/uses-sdk-element), [AOSP codenames](https://source.android.com/docs/setup/about/build-numbers)).
 
----
+**Why no `maxSdk=37`?** Google explicitly discourages `maxSdkVersion`: Android is forward compatible, and a hard cap can cause the OS to remove the app after the user upgrades to Android 18; Play also uses it as a filter ([official `<uses-sdk>` doc](https://developer.android.com/guide/topics/manifest/uses-sdk-element#maxsdk)). So the project uses **min 26 to block Android 7 and older, and no upper cap** — Android 17 (API 37) and later remain installable. On `SDK > 37` the Settings screen shows a "beyond verified range" notice instead of blocking the app.
 
-## Local build
+### Why target stays at 36, not 37
 
-Requires JDK 17 + Android SDK (`platforms;android-37`, `build-tools;36.0.0`) and Android Studio Panda 3 (2025.3.3) or newer:
+`targetSdk` selects which behaviour changes apply; Android 17 devices are **backward compatible**, so a target-36 app still installs and runs there — it simply does not opt into API 37 behaviours. This satisfies Google Play's current rule (new apps and updates must target ≥ 36 from 2026-08-31; API 37 becomes mandatory around August 2027).
 
-```bash
-# If Gradle is not installed locally, install 9.3.1; otherwise skip
-gradle wrapper --gradle-version 9.3.1     # optional: generate wrapper for Android Studio
-echo "sdk.dir=$ANDROID_HOME" > local.properties
-gradle assembleDebug
-# Output: app/build/outputs/apk/debug/app-debug.apk
-```
+Forcing 37 today breaks the toolchain, not just one config line:
 
-To produce a locally signed APK with the same identity, export the same four variables before building (plus the derived fingerprint):
+- The [Cordova Android Platform Guide](https://cordova.apache.org/docs/en/latest/guide/platforms/android/index.html) lists **cordova-android 15.x as officially supporting API 24–36**; in [issue #1982](https://github.com/apache/cordova-android/issues/1982) a maintainer reports 37.x builds but "not extensively tested".
+- **AGP 8.13 officially tops out at API 36.1** ([AGP 8.13 release notes](https://developer.android.com/studio/releases/gradle-plugin#8-13-0)). compileSdk 37 needs AGP 9.x + Gradle 9.x + JDK 21, while cordova-android 15 is built on AGP 8.10.1 / Gradle 8.14.2 / JDK 17 — swapping the whole chain is high risk.
+- The API 37 platform package is `platforms;android-37.0` (with a minor version), but Cordova's `check_android_target` looks for `android-37`; that `37.0` vs `37` mismatch is exactly what [issue #1982](https://github.com/apache/cordova-android/issues/1982) reports.
 
-```bash
-export HKETA_KEYSTORE_FILE=/path/to/hketa-release.jks
-export HKETA_KEYSTORE_PASSWORD='...'
-export HKETA_KEY_ALIAS=hketa
-export HKETA_KEY_PASSWORD='...'
-export HKETA_SIGNING_CERT_SHA256=$(keytool -list -v -keystore "$HKETA_KEYSTORE_FILE" \
-  -storepass "$HKETA_KEYSTORE_PASSWORD" -alias "$HKETA_KEY_ALIAS" \
-  | grep -m1 'SHA256:' | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-Z' 'a-z' | tr -d '[:space:]')
-gradle assembleRelease
-```
+So this release **stays on the officially buildable 36** and treats API 37 as "runs on the device, not targeted". When cordova-android ships 37 support, bump `config.xml` target/compile to 37, switch the workflow to `platforms;android-37.0` + `build-tools;37.0.0`, sync `scripts/verify-kotlin.js` and the aapt2 assertion, and test the Android 17 behaviour changes (mandatory large-screen resizability, Certificate Transparency, `ACCESS_LOCAL_NETWORK`, etc.).
 
-Without them you get a dev build with verification disabled — do not distribute it.
+> You can experiment by re-adding `AndroidGradlePluginVersion` / `GradleVersion` / `android-buildToolsVersion` overrides, but **CI success is not guaranteed**, so they are not enabled by default.
 
-### Tech stack (deliberately minimal)
+### Per-version compatibility handling
 
-| Item | Version / choice |
-|---|---|
-| Language | Kotlin (built into AGP 9, KGP 2.2.10) |
-| AGP / Gradle | 9.1.1 / 9.3.1 |
-| SDK | compile 37, min 26, target 37 |
-| UI | Native Android Views + XML layouts (**no** Compose / AndroidX) |
-| JSON | Android built-in `org.json` (**no** Gson / Moshi / kotlinx.serialization) |
-| APK update | `HttpURLConnection` + `getPackageArchiveInfo` + custom `ContentProvider` (**no** AndroidX FileProvider / OkHttp) |
-| Route data update | `org.json` + `RouteDataUpdate.validate()` + `filesDir` data cache (**no** SQLite / Room / third-party JSON lib) |
-| Version history | Live GitHub `/releases` only (**no** SharedPreferences / Room / DataStore / any on-device log) |
+| API | Android | What this project does |
+| --- | --- | --- |
+| 26 | 8.0 | `minSdk`; `canRequestPackageInstalls()` + `REQUEST_INSTALL_PACKAGES` for in-app installs |
+| 28 | 9 | `PackageInfo.longVersionCode`, falls back to `versionCode` |
+| 29 | 10 | `DownloadManager` writes into Downloads (system service, exempt from Scoped Storage) |
+| 30 | 11 | `<queries>` in `plugin.xml` (geo / https / APK mime); Kotlin launches implicit intents directly and catches `ActivityNotFoundException`, so package visibility filtering cannot break them |
+| 33 | 13 | `PackageManager.PackageInfoFlags`; download notifications come from the system DownloadManager, no `POST_NOTIFICATIONS` needed |
+| 34 | 14 | Install intent uses `FLAG_GRANT_READ_URI_PERMISSION` with a content URI, never a file URI |
+| 35 | 15 | Edge-to-edge: `viewport-fit=cover` + responsive CSS |
+| 36 | 16 | `targetSdk` / `compileSdk` — cordova-android 15's validated ceiling |
+| 37 | 17 | Runs via platform backward compatibility; shown in the Settings "Supported range" row |
 
-API 37 requires AGP 9.1.1+. AGP 9 bundles Kotlin, so `org.jetbrains.kotlin.android` and `kotlinOptions {}` are gone; `jvmTarget` follows `compileOptions`. `dependencies` is **empty** — Kotlin stdlib comes from the built-in KGP, so Actions never fails on third-party downloads.
+**Two gates**
 
-> Troubleshooting: in the rare case the built-in Kotlin does not provide stdlib, add one line to `app/build.gradle.kts` (matching AGP 9.1.1's KGP 2.2.10):
-> `dependencies { implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") }`
-
-After local edits, run `python3 scripts/validate.py` to check JSON references, XML resources, `R.id` bindings, the workflow and toolchain versions in one go (Python 3; PyYAML additionally validates the YAML).
+- `scripts/verify-kotlin.js` (`before_build` hook) reads `cdv-gradle-config.json` and fails the build unless `MIN_SDK_VERSION=26`, `SDK_VERSION`/`COMPILE_SDK_VERSION=36`, and **no maxSdk**
+- The workflow runs `aapt2 dump badging` on the produced APK, asserts `sdkVersion:'26'` / `targetSdkVersion:'36'`, and rejects any `maxSdkVersion`
 
 ---
 
-## JSON is the database
+## App icon
 
-`app/src/main/assets/hketa.json` defines the entire app's content. Changing data needs no Kotlin changes and no new APK (when using the online update).
+The rainbow-bus image you supplied is now the launcher icon; the source is kept at `res/android/logo-source.png` (1080×1080).
 
-```jsonc
-{
-  "version": "2.0.0",
-  "generatedTimestamp": "2026-11-10T19:00:00+08:00",
-  "demo": true,
-  "note": { "zh": "示範資料，非即時", "en": "Demo data, not live" },
-  "fareDisclaimer": { "zh": "收費只作參考", "en": "Fares are indicative; refer to operators" },
-  "apiDocs": { "kmb_eta_spec": "https://..." },
-  "modes": [
-    { "id": "bus",        "zh": "巴士",     "en": "Bus" },
-    { "id": "minibus",    "zh": "專線小巴", "en": "Minibus" },
-    { "id": "metro",      "zh": "地鐵",     "en": "Metro" },
-    { "id": "light_rail", "zh": "輕鐵",     "en": "Light Rail" }
-  ],
-  "operators": [ { "id": "KMB", "zh": "九巴／龍運", "en": "KMB & LWB" } ],
-  "stops": {
-    "KMB1_O_01": {
-      "name": { "zh": "竹園邨總站", "en": "CHUK YUEN ESTATE BUS TERMINUS" },
-      "lat": 22.3417, "lng": 114.1947
-    }
-  },
-  "routes": [{
-    "id": "KMB_1", "co": "KMB", "mode": "bus", "number": "1",
-    "name": { "zh": "竹園邨 ↔ 尖沙咀碼頭", "en": "Chuk Yuen ↔ Star Ferry" },
-    "bounds": [{
-      "dir": "O",                       // O outbound / I inbound; MTR also uses UT / DT
-      "label": { "zh": "去程", "en": "Outbound" },
-      "orig":  { "zh": "竹園邨", "en": "CHUK YUEN ESTATE" },
-      "dest":  { "zh": "尖沙咀碼頭", "en": "STAR FERRY" },
-      "stopIds": ["KMB1_O_01", "KMB1_O_02"]
-    }],
-    "fare": {                            // Fares in HKD
-      "currency": "HKD", "full": 6.7, "child": 3.4, "senior": 2.0,
-      "method": { "zh": "八達通／現金", "en": "Octopus / cash" },
-      "note":   { "zh": "分段收費另計", "en": "Section fares apply" },
-      "sections": [
-        { "from": { "zh": "竹園邨", "en": "Chuk Yuen" },
-          "to":   { "zh": "旺角", "en": "Mong Kok" }, "full": 4.2 }
-      ]
-    },
-    "services": [{                       // Schedules (multiple: weekday / weekend)
-      "days":     { "zh": "星期一至五", "en": "Mon–Fri" },
-      "first": "05:30", "last": "00:20",
-      "peakMin": 5, "offPeakMin": 10, "journeyMin": 45,
-      "note": { "zh": "繁忙時間加密", "en": "More frequent at peak" }
-    }]
-  }],
-  "etas": {
-    "KMB1_O_01": {
-      "generatedTimestamp": "2026-11-09T18:40:00+08:00",
-      "etas": [{
-        "seq": 1, "time": "18:46", "minutes": 5,
-        "dest":   { "zh": "尖沙咀碼頭", "en": "STAR FERRY" },
-        "remark": { "zh": "原定班次", "en": "Scheduled Bus" },
-        "platform": "1", "scheduled": true
-      }]
-    }
-  }
-}
-```
+| Layer | Contents | Size |
+| --- | --- | --- |
+| `ic_launcher_background` | Clean rainbow gradient with the subject removed | 108dp × 5 densities |
+| `ic_launcher_foreground` | Cut-out bus + driver on transparency, centred at 78% height | same |
+| `ic_launcher_monochrome` | White silhouette for Android 13+ themed icons | same |
+| `ic_launcher` | Legacy square fallback | 48 / 72 / 96 / 144 / 192 px |
 
-Field names follow DATA.GOV.HK conventions: `co`, `dir` = `O`/`I`, `seq`, `eta` timestamp, `rmk` remark — so switching to real APIs needs little model change. Stops without ETA show "No arrival data".
+`<platform name="android">` in `config.xml` declares `src` / `background` / `foreground` / `monochrome` for `mdpi` through `xxxhdpi`; cordova-android 15 generates `mipmap-*-v26/ic_launcher.xml` automatically — **no Gradle or AndroidManifest edits**. Since `minSdk=26`, every supported device gets the adaptive icon and every OEM mask (circle, rounded square, squircle) crops correctly.
 
-**`modes` / `fare` / `services` are mandatory for online updates.** `RouteDataUpdate.validate()` checks each route, so a half-updated dataset with missing fares or schedules can never be applied. Settings → Route data update simply consumes this JSON.
+Also included: `logo-playstore-512.png` (store listing), `www/img/app-logo.png` (shown in the header and Settings), and **`res/android/logo-preview.png`** — a four-up preview of all launcher appearances.
+
+To swap the artwork or resize: `scripts/generate-icons.py` (needs Pillow / numpy / opencv-python; the PNGs are committed, so a normal build needs no Python). Details in `res/android/README.md`.
+
+> ⚠️ The image was supplied by you for use as the icon; the code is MIT but that **does not cover the image's licence**. Confirm you own the rights to use and adapt it before publishing.
 
 ---
 
-## Updating route data without a new APK
+## In-app update (Settings tab)
 
-1. Set `OWNER` / `REPO` in `app/src/main/java/hk/eta/app/AppConfig.kt` (shared by data source, APK update and online history; `EtaRepository` reads `AppConfig.REMOTE_JSON_URL`).
-2. Edit `app/src/main/assets/hketa.json` (four modes / fares / schedules) and push.
-3. On the phone tap home-screen **Data update** → **Check & update route data**; once validated it applies. Subsequent **Refresh** re-fetches.
+The header has two tabs: **ETA / Settings**. Settings contains:
 
-To revert instantly: Settings → **Restore bundled data**. Fetch or validation failures keep the existing data, so the screen never goes blank. gh-pages also works: point `AppConfig.REMOTE_JSON_URL` at `https://<OWNER>.github.io/<REPO>/hketa.json`.
+| Section | Contents |
+| --- | --- |
+| Application | Current version (`PackageInfo.versionName` + build), language, keep-awake, device info |
+| In-app update | GitHub owner / repo, check-on-launch toggle, check button, release card, progress bar, download & install, allow installs, open download page |
 
----
+**Flow**
 
-## Connecting real live ETA and route data
+1. `GET https://api.github.com/repos/{owner}/{repo}/releases/latest`
+2. Strip the leading `v` from `tag_name` and compare three numeric segments against the installed version
+3. Find the `HKETA-release.apk` asset (fallback: first `.apk`; if none, only "Open download page" is offered)
+4. TypeScript calls Kotlin `downloadApk()` → system `DownloadManager` downloads into Downloads with a visible notification
+5. TypeScript polls `downloadProgress()` every 900 ms and updates the bar; Kotlin returns a semantic `state` (`running` / `success` / `failed`), so no Android integer constants are hardcoded in JS
+6. On completion, check `canInstallUnknown()`. On Android 8+ without permission, open `ACTION_MANAGE_UNKNOWN_APP_SOURCES`; installation resumes automatically when the user returns
+7. `installApk()` fires an `ACTION_VIEW` install intent using `DownloadManager.getUriForDownloadedFile()`'s content URI; on failure it falls back to opening the release page in a browser
 
-`Fmt.kt` defines the `LiveEtaProvider` interface; `DemoEtaProvider` currently reads the JSON. For production, implement it with `HttpURLConnection` against the operator APIs and swap the one line in `EtaActivity.rebuild()`.
+A small green dot appears on the Settings tab when an update is available. Preferences (repo, auto-check, language, keep-awake) persist in `localStorage`.
 
-Official references (**always check the latest data dictionary for endpoints**):
+**Before first use, change these**
 
-- DATA.GOV.HK open data portal: https://data.gov.hk/en/
-- KMB / LWB ETA API spec: https://data.etabus.gov.hk/datagovhk/kmb_eta_api_specification.pdf
-- Citybus / NLB Stop-ETA API spec: https://static.data.gov.hk/opendata/eta/bus-route-list-and-eta-specific-stop-api-specifications.pdf
-- Citybus / NLB Stop-ETA data dictionary: https://static.data.gov.hk/ogcio/datagovhk/opendata/eta/bus-route-list-and-eta-specific-stop-api-data-dictionary.pdf
-- Multi-operator open-source reference: https://github.com/hkbus/hk-bus-eta
+- `src/version.ts`: `DEFAULT_OWNER` / `DEFAULT_REPO` (defaults: `yourname/hketa-apk`)
+- `config.xml`: `<author href="https://github.com/yourname/hketa-apk">`
+- Or skip the code edits and just enter owner / repo in the app's Settings screen, then press **Save**
 
-Typical response fields: `co`, `route`, `dir`, `seq`, `stop`, `dest_en/tc`, `eta_seq`, `eta` (ISO 8601), `rmk_en/tc`; MTR adds `plat` (platform) and `time`. Map `eta` into `Eta.time`, compute `minutes`, and the UI needs no change.
+> The unauthenticated API allows 60 requests/hour; auto-check runs once per launch only.
 
-**Routes / fares / schedules** follow the same pattern: write an aggregator that converts bus, minibus and MTR (metro + light rail) route lists, fare tables and timetables into the `hketa.json` schema above (`modes` / `fare` / `services`), pass it through `RouteDataUpdate.validate()`, and distribute it via Settings → Route data update. Actual endpoints and licensing terms are governed by **DATA.GOV.HK and the operators' latest publications**; the bundled 30 routes and all fares are illustrative values, not official prices or timetables.
+**Two hard constraints**
 
----
-
-## Project structure
-
-```
-.github/workflows/build-apk.yml   # builds APK on push / v* tag
-README.md                        # Traditional Chinese README
-README.en.md                     # this English README
-app/src/main/assets/hketa.json   # single data source
-app/src/main/java/hk/eta/app/
-  Models.kt            # data classes + AppState (language / data)
-  JsonParser.kt        # org.json → data classes
-  EtaRepository.kt     # bundled assets / GitHub raw sources
-  RouteDataUpdate.kt   # 4-mode validation, stats, online update, cache, restore
-  DataUpdater.kt       # shared "Refresh" entry point (same validation)
-  Fmt.kt               # formatting (fares / schedules) + LiveEtaProvider hook
-  AppConfig.kt         # GitHub OWNER / REPO (data + APK update + online history)
-  MainActivity.kt      # search, filters, route list, startup signature check, settings entry
-  SignatureVerifier.kt # SHA-256 check for installed / archive APKs
-  UpdateChecker.kt     # app version, Releases / online history, download, cert check, install Intent
-  ApkFileProvider.kt   # pure-framework content:// provider (API 26+ installs)
-  SettingsActivity.kt  # signature / app version / APK update / route data / online history / About
-  RouteDetailActivity.kt  # directions, stops, map
-  EtaActivity.kt       # departure list, refresh
-app/src/main/res/
-  layout/ values/ drawable/           # XML layouts / colors / styles / chip backgrounds
-  mipmap-mdpi … mipmap-xxxhdpi/       # ic_launcher.png + round (OEM fallback)
-  drawable-nodpi/                     # adaptive foreground / background (512×512)
-  mipmap-anydpi-v26/                  # adaptive icon (all devices from minSdk 26)
-art/logo_source.png                  # original logo artwork, not packaged
-art/icon_preview.png                 # icon preview, not packaged
-scripts/gen_icon.py                  # regenerate all icon resources after replacing artwork
-scripts/gen_keystore.sh              # one-time permanent signing key generation
-scripts/validate.py                  # local consistency checks
-```
+- 🔑 **The new APK must be signed with the SAME keystore** or Android rejects the install with a signature mismatch — this is why the Secrets must be kept long-term.
+- 📱 `REQUEST_INSTALL_PACKAGES` enables sideload / self-distribution; **Google Play restricts this permission**. For Play, use Play In-App Updates and remove in-app installation (route to the store listing via `openUrl` instead).
 
 ---
 
-## App logo
+## Publishing a new version
 
-The launcher icon uses the supplied rainbow-bus artwork (original 1080×1080 in `art/logo_source.png`):
+1. Edit `config.xml`: `version="1.1.0"`, `android-versionCode="2"` (**versionCode must increase**)
+2. Update `package.json` and `FALLBACK_APP_VERSION` in `src/version.ts` to `1.1.0`
+3. Update any version text in `www/index.html`
+4. `git commit` → `git tag v1.1.0` → `git push origin main --tags`
+5. The workflow creates the Release + `HKETA-release.apk`
+6. Older installs now see `v1.1.0` under **Settings → Check for updates** and can download it
 
-- **All supported devices (API 26+)**: the adaptive icon in `mipmap-anydpi-v26/`. Since the system shows only the central 72dp of a 108dp canvas, the script scales the artwork to 66.7% and centres it as the foreground over a full rainbow gradient background. Circular / squircle masks keep the robot head and wheels intact with no white edges; the right half of `art/icon_preview.png` is a simulated preview.
-- **Fallback**: `mipmap-*/ic_launcher.png` (48 / 72 / 96 / 144 / 192 px) and `ic_launcher_round.png` for the few OEM launchers that ignore adaptive XML; `AndroidManifest.xml` also sets `android:roundIcon`. Normally unused at minSdk 26.
-
-To replace it: overwrite `art/logo_source.png` with a square image, run `python3 scripts/gen_icon.py` from the repo root (requires Pillow), and all densities plus adaptive resources are rebuilt; `art/icon_preview.png` shows the result. Push, and the next Actions APK uses the new logo.
-
----
-
-## Verification status & known limitations
-
-- `python3 scripts/validate.py` passes locally: 30 routes / 355 stops / 18 ETA stops, four modes (`bus:12 / minibus:4 / metro:10 / light_rail:4`), XML resources, `R.id` bindings, toolchain pins, signing / update settings and the workflow are all consistent. CI runs the same check before building.
-- **No compiled `.apk` is included in this repo**, and the authoring environment had no Android SDK, so the AGP 9 toolchain, `ContentProvider` install flow, dynamic lists and data cache have **not been compiled or run on a device here**. The first real build is the GitHub Actions run after you push.
-- Bundled JSON is demo data: not live ETA, approximate coordinates, indicative fares and schedules. Not for travel planning.
-- Online features need network access and a configured repo. Unauthenticated GitHub API: 60 requests / IP / hour.
-- In-app install needs "Install unknown apps" enabled for HKETA in system settings.
+> Use `v1.1.0` style tags; the leading `v` is stripped before comparison.
 
 ---
 
-## Credits & license
+## API endpoints
 
-- Feature set adapted from [shamough1792/HKETA](https://github.com/shamough1792/HKETA) (MIT)
-- Data-model concepts from [hkbus/hk-bus-eta](https://github.com/hkbus/hk-bus-eta) and DATA.GOV.HK data dictionaries
-- This project is MIT — see `LICENSE`
+| Source | Endpoint | Key params |
+| --- | --- | --- |
+| KMB / LWB | `https://data.etabus.gov.hk/v1/transport/kmb/eta/{stop_id}/{route}/{service_type}` | Normal service is `service_type=1`; also `/stop-eta/{stop_id}`, `/route/`, `/stop/{stop_id}` |
+| Citybus | `https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/{stop_id}/{route}` | `company_id` is always uppercase `CTB` (NWFB routes merged in) |
+| NLB | `https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estimatedArrivals` | `routeId`, `stopId`, `language=zh` |
+| GMB | `https://data.etagmb.gov.hk/eta/route-stop/{route_id}/{stop_id}` | Or `/eta/stop/{stop_id}`; returns `timestamp` / `diff` / `remarks_tc` |
+| MTR | `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=&sta=&lang=` | `lang=TC` / `EN`; returns `UP` / `DOWN` |
+| Light Rail | `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=&with_special=1` | Returns `platform_list[].route_list[]` |
+| Update | `https://api.github.com/repos/{owner}/{repo}/releases/latest` | Unauthenticated: 60 req/hr |
 
-Live transport data belongs to the Transport Department, the operators and the MTR Corporation. Routes, stops, schedules and coordinates in the demo JSON exist only to demonstrate the UI and must not be used as travel information.
+Official specs: [KMB/LWB](https://data.etabus.gov.hk/datagovhk/kmb_eta_api_specification.pdf) · [NLB](https://www.nlb.com.hk/datagovhk/BusServiceOpenAPIDocumentation2.0.pdf) · [GMB](https://data.etagmb.gov.hk/static/GMB_ETA_API_Specification.pdf) · [MTR](https://opendata.mtr.com.hk/doc/Next_Train_API_Spec_v1.7.pdf) · [Light Rail](https://opendata.mtr.com.hk/doc/LR_Next_Train_API_Spec_v1.1.pdf). The Citybus v2.01 spec is provided on its DATA.GOV.HK dataset page.
+
+Every client normalises its own format into a single `EtaItem` (route, destination, minutes, remark, platform, scheduled flag); the UI only knows that type.
+
+---
+
+## Try it
+
+Pre-filled on launch: `KMB` / `40` / `647AB0AD358F10DF` / `1` (Mei Foo).
+Others: MTR `TML` + `ADM` + `TC` · Light Rail: blank route + `600` + `1` · Citybus `11` + `001145` + `O`.
+
+---
+
+## Verification status
+
+Checked while preparing this project: `tsc --noEmit` ✅ · esbuild bundle ✅ · `config.xml` / `plugin.xml` XML ✅ · `package.json` / `tsconfig.json` / `package-lock.json` / `build.json.example` JSON ✅ · workflow YAML ✅ · plugin `source-file` path and `.kt` present ✅ · `<queries>` declared ✅ · i18n dictionaries match ✅ · `config.xml` min/target/compile = 26/36/36 with no maxSdk ✅ · `verify-kotlin.js` and aapt2 assertions in sync ✅ · 5 icon declarations and 20 PNGs (paths, dimensions, alpha) ✅ · launcher preview visually reviewed under four masks ✅ · no debug leftovers ✅.
+
+**Not done:** the sandbox has no Android SDK/Gradle and no keystore, so no physical APK was compiled and `DownloadManager` + the install intent were not verified on a real device (some OEMs handle `content://downloads/...` install URIs differently — a browser fallback is included). Signing and packaging are handled by the GitHub Actions workflow above.
+
+---
+
+## Known limitations
+
+- Queries use official `route` / `stop ID` directly; route/stop-name search, full stop lists, inbound/outbound toggles and bookmarks are not built yet.
+- Live API calls with **no offline cache**; HTTP `429` and overnight no-service periods surface as an error or an empty list.
+- A "Scheduled Bus" is not the same as a GPS-tracked arrival; the card labels it in the remark.
+- MTR / LRT use official line and station codes, not Chinese station names; common codes live in `src/api/mtr.ts`.
+- A launcher icon is provided, but **no splash screen** yet (Android 12+ uses the system splash); add a `<splash>` to `config.xml` if needed.
+- `targetSdkVersion=36` (Android 16), **not 37**; Android 17 devices run it through platform backward compatibility. Google Play requires target ≥ 36 for new apps/updates from 2026-08-31, so this complies; API 37 becomes mandatory around August 2027 — confirm the current requirement before publishing ([Play target API policy](https://support.google.com/googleplay/android-developer/answer/11926878)).
+- **API 37 is not targeted yet**: see the toolchain constraints above; bump once cordova-android officially supports it.
+- Android 17 behaviours that only fire at target 37 (mandatory large-screen resizability, CT, `ACCESS_LOCAL_NETWORK`, etc.) are untested because this build does not target 37.
+- `minSdk=26` excludes Android 7.x and older — the cost of "8–17 only".
+- In-app installation needs `REQUEST_INSTALL_PACKAGES` plus user consent and is **not suitable for Play** (see above).
+
+---
+
+## License & sources
+
+- Code: MIT (see `LICENSE`).
+- Functional reference: [shamough1792/HKETA](https://github.com/shamough1792/HKETA) (Cordova / JavaScript / MIT).
+- Concept reference: [DATA.GOV.HK — HKETA](https://data.gov.hk/tc/application/hketa).
+- Live data: HKSAR Transport Department / DATA.GOV.HK / respective operators. Observe each source's terms of use and attribution requirements.
+- Update source: [GitHub Releases API](https://docs.github.com/en/rest/releases/releases).

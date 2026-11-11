@@ -1,0 +1,12 @@
+{
+  "_comment": "複製成 build.json 後填入真實值。build.json 含密碼，已在 .gitignore 排除，切勿 commit。GitHub Actions 會由 Secrets 自動產生，不需手填。",
+  "android": {
+    "release": {
+      "keystore": "release.keystore",
+      "storePassword": "<keystore password>",
+      "alias": "hketa",
+      "password": "<key password>",
+      "keystoreType": "PKCS12"
+    }
+  }
+}

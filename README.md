@@ -1,433 +1,294 @@
-# HKETA · Kotlin / JSON 重製版
+# HKETA · 正式版（signed release APK）
 
-[English README](README.en.md) · **繁體中文**
+**繁體中文** · [English](README.en.md)
 
-把 GitHub 上的 [HKETA](https://github.com/shamough1792/HKETA)（原為 Cordova + JavaScript）用 **100% Kotlin** 重寫成原生 Android App，路線、站位、收費、服務班次全部由一份 **`hketa.json`** 驅動，並用 **GitHub Actions** 自動產出 APK。
+以 **GitHub + JavaScript + TypeScript + Kotlin + 開放 API** 重做 `shamough1792/HKETA` 的香港公共交通到站預報，交付 **v1.0.0 正式版專案**：只產出**已簽名的 release APK**，不含 debug 流程。
 
-原專案功能對照，本版都有：
+資料涵蓋 KMB／LWB、Citybus、NLB、專線小巴、港鐵、輕鐵；UI 繁中／EN 雙語，附站點地圖與螢幕常亮。**「設定」頁內建線上應用更新**：向 GitHub Releases 檢查新版本、下載 APK、顯示進度並交由系統安裝。
 
-- **四類交通**：巴士（KMB／CTB／NLB）、專線小巴 GMB、地鐵 MTR、輕鐵 LRT，共 30 條示範路線、355 個站位
-- **完整路線資料**：每條都有**收費**（全程／小童／長者／分段）、去回程站位、**服務班次**（首尾車、繁忙／非繁忙間隔、全程時間）
-- **路線搜尋 + 雙層篩選**：輸入路線號／中英起終點；模式 chip（全部／巴士／小巴／地鐵／輕鐵）＋營運商 chip
-- **路線詳情**：站位列表、去程／回程切換、中英起終點、收費與服務班次摘要及完整對話框
-- **ETA 到站時間**：逐站顯示班次時間、分鐘數、目的地、原定班次、港鐵／輕鐵月台
-- **雙語介面**：右上角一鍵切 中／EN，各頁同步
-- **地圖**：以 `geo:` 開啟手機內任何地圖 App
-- **重新整理** + 最後更新時間
-- **設定頁 → 路線資料更新**：由 GitHub 線上更新四類嘅收費／路線／服務班次，驗證後套用並快取，見下文
-- **設定頁**：簽名一致性、App 版本、APK 檢查更新、**線上版本紀錄**（唯一版本紀錄來源）、關於
-- **簽名一致性更新**：由 GitHub Releases 抓新版 APK，下載後先核對簽名先至允許安裝
+原專案是 Cordova + JavaScript（MIT）；本專案同樣 MIT，但**不複製原專案 `www/` 內容**，UI 與 API 層重新撰寫。
 
-> ⚠️ 內建 JSON 是**示範資料，不是即時到站時間**；站位座標為約略值。接真實 API 的方法見下文。
+> ⚠️ **簽名檔是你的，不是我能生成的。** 這裡提供的是「設定好就能出正式版」的專案；必須由你產生 keystore、把 4 個值放進 GitHub Secrets，Actions 才會編出 `HKETA-release.apk`。本回合沒有 Android SDK／Gradle，也沒有你的私鑰，因此**沒有附上實體 .apk 檔**。
 
 ---
 
-## 支援範圍：Android 8 – 17
-
-| 系統 | API | 狀態 |
-|---|---|---|
-| 8.0 / 8.1 Oreo | 26 / 27 | ✅ 最低支援 |
-| 9 – 16 | 28 – 36 | ✅ |
-| 17 Cinnamon Bun | 37 | ✅ `targetSdk` |
-
-`minSdk = 26`、`targetSdk = 37`、`compileSdk = 37`。Android 7.1 或以下（≤ API 25）會被系統／Play 拒絕安裝。
-
-**唔設 `maxSdk`**：Android 18 推出後仍可安裝，只係未實測，避免日後用戶升級就裝唔到。若真要硬性封頂，喺 `app/build.gradle.kts` 取消註解 `maxSdk = 37` 即可。
-
-因最低已經係 API 26，**所有支援裝置都行 adaptive icon**；`mipmap-*/ic_launcher*.png` 只保留作少數 OEM launcher 嘅 fallback。工具鏈亦因此升級到支援 API 37 嘅 AGP 9.1.1（見下表）。
-
----
-
-## 永久簽名一致性（一次性設定）
-
-Android 規定：**同一個 package name 嘅新版，必須用同一把 key 簽名先可以覆蓋升級**，否則會彈 `INSTALL_FAILED_UPDATE_INCONSISTENT_CERTIFICATES`。CI 預設嘅 `debug.keystore` 每部機都唔同，如果唔固定，每次 Actions 出嘅 APK 簽名都可能唔一樣，用戶裝咗就永遠更新唔到。
-
-所以呢個專案做咗兩層：
-
-**① 出 APK 用同一把 key** — `debug`、`release`、GitHub Release 全部綁同一個 `signingConfigs.permanent`。keystore 本體唔入 repo，只以 base64 放喺 GitHub Secrets，build 時還原到 runner 臨時目錄。
-
-**② App 內自我核對** — CI 由 keystore 抽出憑證 SHA-256，自動寫入 `R.string.expected_signing_cert_sha256`；App 每次啟動比對自身簽署憑證，唔夾就拒絕載入並提示，防止被重新打包／二次簽名。喺「**設定 → 簽名一致性**」可隨時睇狀態、實際／預期指紋同重新驗證。
-
-### 設定步驟（只做一次）
-
-```bash
-export HKETA_KEYSTORE_PASSWORD='一個長密碼'
-export HKETA_KEY_PASSWORD='另一個長密碼'
-bash scripts/gen_keystore.sh
-```
-
-腳本會生成 `hketa-release.jks`（RSA 4096、**有效期 36500 天 ≈ 100 年**）同 `hketa-release.jks.base64.txt`。然後去 GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**，加呢 4 個：
-
-| Secret | 值 |
-|---|---|
-| `HKETA_KEYSTORE_BASE64` | `.base64.txt` 嘅內容 |
-| `HKETA_KEYSTORE_PASSWORD` | store 密碼 |
-| `HKETA_KEY_ALIAS` | `hketa`（預設） |
-| `HKETA_KEY_PASSWORD` | key 密碼 |
-
-⚠️ 少任何一個，workflow 會 **fail fast** 並講清楚缺邊個，唔會靜靜用返臨時 debug key。`.jks`、`.p12`、`.base64.txt` 已加進 `.gitignore`。
-
-### CI 每次會自動做
-
-1. 由 Secret 還原 keystore → `keytool -list -v` 抽出憑證 SHA-256，注入 `HKETA_SIGNING_CERT_SHA256`（Gradle 再寫入 App 資源）。
-2. `assembleDebug` / `assembleRelease` 都用同一把 key 簽名。
-3. 用 `apksigner verify --print-certs` 反讀兩個 APK 嘅指紋，同 keystore 值比對，**唔夾就 fail**，並把指紋寫入 Actions 嘅 Step Summary。
-
-本機想手動核對：
-
-```bash
-$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs HKETA-debug.apk
-# Signer #1 certificate SHA-256 digest: 應與 App 內「預期憑證」完全一致
-```
-
-> ⚠️ **金鑰即身份**：請離線備份 `.jks` 同兩個密碼。遺失或重建 = 已安裝用戶永久無法升級，只能改 `applicationId` 重新上架。技術上冇「永久」證書，但 100 年有效期 + 妥善保管就等同永久。若上 Google Play，建議另外啟用 Play App Signing，把呢把當 upload key。
->
-> 本機開發若冇設環境變數，Gradle 會沿用 AGP 預設（debug key / release unsigned），`expected_signing_cert_sha256` 為空 → **App 內校驗自動關閉**，唔會誤彈警告。
-
----
-
-## App 內設定與更新（簽名一致性）
-
-首頁底部撳 **「設定」** 會開 `SettingsActivity`；撳隔離嘅 **「資料更新」** 會開同一頁並自動捲去「路線資料更新」區（`focus=data`）。下面按六部分講（UI 上係五張卡：簽名／檢查更新／路線資料更新／線上版本紀錄／關於）：
-
-**① 簽名一致性**
-- 即時狀態：`✅ 一致，可安全升級` / `⚠️ 未設定（開發版）` / `❌ 不一致，可能被重新打包`
-- 顯示「實際憑證」同「預期憑證」SHA-256，可長按選取複製
-- 「重新驗證簽名」即時再核對一次
-
-> 刻意**唔提供「修改預期指紋」**：預期值只由 build 時嘅永久金鑰注入。若喺 App 內可改，任何人撳一下就 bypass 咗防篡改，成個機制就失效。
-
-**② 檢查更新 → App 版本**（更新功能頂部嘅灰底小卡）
-
-即時由 `PackageManager` 讀出，唔使上網：
-
-| 欄位 | 來源 |
-|---|---|
-| 版本名稱 | `versionName` |
-| `versionCode` | API 28+ 用 `longVersionCode`，26–27 用 `versionCode` |
-| 首次安裝 / 最後更新 | `firstInstallTime` / `lastUpdateTime` |
-| 簽名憑證 | 實際憑證 SHA-256 頭 12 位（對照上一區完整指紋） |
-
-下面另有「目前版本」對照「最新版本」，一眼睇到差幾遠。
-
-**③ 檢查更新**（呢個就係「簽名一致性嘅更新功能」）
-
-```
-撳「檢查 GitHub 更新」
-  → GET api.github.com/repos/<OWNER>/<REPO>/releases/latest
-  → 由 tag_name 同目前 versionName 做數字比對
-  → 有新版 + Release 有 .apk → 出現「下載並驗證簽名」
-     → 下載到 cacheDir/updates/hketa-update.apk（顯示 % 進度）
-     → getPackageArchiveInfo 讀候選 APK 嘅 packageName + 簽名憑證
-     → 三重核對：
-         (a) packageName == hk.eta.app
-         (b) 候選憑證 == 目前已安裝版本嘅憑證
-         (c) 候選憑證 == build 時注入嘅預期指紋（如有）
-     → 全部通過先出現「簽名一致，安裝更新」
-     → ACTION_VIEW + content:// （FLAG_GRANT_READ_URI_PERMISSION）交畀系統安裝程式
-  → 任何一步唔夾 → 即刻剷走下載檔、顯示原因、唔會出現安裝掣
-```
-
-即係話：**換咗 key、package name 唔同、APK 無簽名或損毀，都一律裝唔到**，唔會搞到用戶裝咗個以後升唔到級嘅版本。
-
-**④ 設定 → 路線資料更新**（巴士／專線小巴／地鐵／輕鐵）
-
-首頁底部「資料更新」掣會直接開設定頁並捲去呢區（`focus=data`）。一份 `hketa.json` 裝住四類資料，更新時一次過換：
-
-| 類別 | mode | 營運商 | 內建示範路線 |
-|---|---|---|---|
-| 巴士 | `bus` | KMB／CTB／NLB | 12 |
-| 專線小巴 | `minibus` | GMB | 4 |
-| 地鐵 | `metro` | MTR | 10 |
-| 輕鐵 | `light_rail` | LRT | 4 |
-
-每條路線必備三組資料：**收費**（`fare`：全程／小童／長者、付款方式、分段收費 `sections`）、**路線**（`bounds` 去回程 + `stopIds` 對應 `stops`）、**服務班次**（`services`：日子、首尾車、繁忙／非繁忙間隔、全程時間）。路線詳情頁頂部有摘要，撳「收費／服務班次詳情」睇完整內容。
-
-更新流程：
-
-```
-撳「檢查並更新路線資料」
-  → GET raw.githubusercontent.com/.../hketa.json（Cache-Control: no-cache）
-  → org.json parse
-  → RouteDataUpdate.validate()：
-      (a) modes 四類齊全、每類至少 1 條路線
-      (b) 每條 route.co / route.mode 合法、number 非空
-      (c) 所有 stopIds 都喺 stops 入面
-      (d) 每條都有有效 fare.full > 0 同埋至少一筆 services（有首尾車）
-  → 任何一項唔過 → 拒絕套用，逐條列出問題，原有資料完全唔郁
-  → 全部通過 → 寫入 filesDir/route-data.json（資料快取）
-              → 更新 AppState，即時生效
-              → 顯示 v舊 → v新、路線／站位／收費／班次差異、四類統計
-```
-
-卡片本身會顯示目前資料版本、來源（內建／線上已快取）、產生時間，以及四類各自嘅「路線數 · 站位數 · 收費覆蓋 · 班次覆蓋」。另有「還原內建資料」（有確認對話框）刪除快取，改返 APK 內建 JSON。
-
-> **同「線上版本紀錄」嘅分別**：呢度快取嘅係**路線資料本身**（離線要用），唔係操作紀錄；上一版合併後嘅**版本紀錄仍然只有 GitHub Releases 一個線上來源**，App 唔會寫入任何更新 log。開 App 時會優先讀已驗證嘅資料快取，冇／壞咗就自動落內建 JSON。首頁「重新整理」若目前用緊線上資料，會重新抓一次並行同一份驗證。
-
-要改資料：改 repo 入面嘅 `hketa.json` 並 push（唔使出新版 APK），再喺 App 撳更新。未填 `AppConfig.kt` 嘅 `OWNER/REPO` 會提示，唔會打去假網址。接真實官方資料嘅擴充點見「接真實即時 ETA」一節；`RouteDataUpdate.validate()` 就係防止半份／錯格式資料落地嘅關卡。
-
-**⑤ 線上版本紀錄**（唯一嘅版本紀錄）
-
-原本「實時版本紀錄」＋「本機更新紀錄」已合併成**一個線上來源**：所有紀錄都即時由 `GET /repos/<OWNER>/<REPO>/releases?per_page=30` 讀取（帶 `Cache-Control: no-cache`），**唔快取、唔寫入本機**，裝置上唔再留低任何更新 log。一開設定頁自動載入，亦可撳「重新載入線上紀錄」。
-
-頂部有兩行線上狀態：
-
-- `● 已連線 · GitHub Releases（線上，唔快取）· 共 N 筆`／`● 線上查詢中…`／`● 連線失敗：xxx`（綠／藍／紅）
-- `最後同步 HH:mm · 來源 api.github.com/.../releases`
-
-每筆線上 Release 顯示：
-
-- `tag_name`、Release 名稱、發布時間（GitHub UTC 字串）、`.apk` 檔名同大小
-- 對照本機 `versionName` 標示：`[最新]`、`[目前安裝]`、`[可更新]`、`[較舊]`、`[預覽]`、`[無 APK]`
-- 更新說明第一列；**撳一下展開／收合完整更新說明**，展開後可再撳「→ 開啟 GitHub Release 頁」
-
-`draft` 會被過濾，`prerelease` 保留但標示。冇 Release／API 失敗會顯示線上連線狀態同原因，唔會白畫面。檢查更新、下載、驗簽、安裝嘅結果仍然照樣喺第 ③ 區即時顯示，但**唔再寫入任何本機紀錄**——版本紀錄以線上為準。
-
-> ⚠️ GitHub 未認證 API 係 **每 IP 每小時 60 次**。開一次設定頁打一次，正常用唔會撞；若同一網絡短時間狂開，會見到 `HTTP 403`，等一小時或改用認證 token 即可。要「線上」就唔 cache，呢個係取捨。
-
-**⑥ 關於**：Android 8–17 支援範圍、示範資料提示、永久簽名說明。
-
-### 啟用前要改一處
-
-`app/src/main/java/hk/eta/app/AppConfig.kt`：
-
-```kotlin
-const val OWNER = "你的GitHub帳號"
-const val REPO  = "HKETA-Kotlin"
-```
-
-`REMOTE_JSON_URL`（資料來源）、`RELEASES_API`（檢查更新）、`RELEASES_HISTORY_API`（線上版本紀錄）都由呢兩個值組成，改一次就三邊同步。未改之前撳更新／載入紀錄會提示「尚未設定 GitHub 座標」，唔會打去假網址。
-
-### 點樣出一個用戶收得到嘅更新
-
-1. 改 `app/build.gradle.kts` 嘅 `versionCode` / `versionName`（例如 `2` / `1.1.0`）。
-2. `git tag v1.1.0 && git push origin v1.1.0`。
-3. Workflow 會自動 build、驗簽名，並把 **`HKETA-release.apk`** 貼去該 Release（Release body 亦附憑證指紋）。
-4. 用戶開 App → 設定 → 檢查更新 → 下載 → 驗證 → 安裝，直接覆蓋升級。
-
-> Release 一定要有 `.apk` asset；如果只 push 分支冇打 tag，`/releases/latest` 會 404，App 會顯示「請確認 repo 有 Release」。Workflow 已固定把 release APK 改名 `HKETA-release.apk` 並 attach，就係為咗俾呢個功能認出。
-
-### 權限與相容
-
-- `REQUEST_INSTALL_PACKAGES`：Android 8+ 由 App 內啟動安裝 Intent 必須聲明；用戶仍要喺系統設定畀 HKETA「允許安裝未知來源」，否則會彈提示引導去 GitHub Releases 手動下載。
-- `ApkFileProvider`：純 framework `ContentProvider`，只 serve `cacheDir/updates/` 嘅 APK，`exported=false` + `grantUriPermissions=true`。因為 API 26 起唔可以用 `file://`，而專案刻意唔引 AndroidX，所以自己寫一個而唔用 `androidx.core.content.FileProvider`。
-- 憑證讀取按系統分支：API 26–27 用 `GET_SIGNATURES`、28+ 用 `GET_SIGNING_CERTIFICATES`（`SignatureVerifier` 同時照顧已安裝 APK 同未安裝嘅 archive APK）。
-
----
-
-## 點樣攞到 APK（唔使裝 Android Studio）
-
-1. 先完成上面「永久簽名一致性」嘅 4 個 Secrets，再將呢個資料夾全部檔案 push 上 GitHub（預設分支 `main`）。
-2. 去 **Actions** 頁，等 `Build HKETA APK` 跑完（約 3–6 分鐘）。
-3. 入該次 run 嘅 **Artifacts**，下載 `HKETA-debug.apk`（或 `HKETA-release`），傳去 Android 手機安裝即可。兩個 artifact **共用同一把永久 key**，之後互換版本都可以直接覆蓋升級；Step Summary 會列出憑證指紋。
-
-Workflow 會自己裝 JDK 17、Android 17 SDK（API 37、`build-tools;36.0.0`）、Gradle 9.3.1，由 Secrets 還原永久 keystore，先跑 `json.tool` 同 `scripts/validate.py`（檢查四類路線／收費／班次、XML、`R.id`、簽名與更新設定）再 `assembleDebug` / `assembleRelease`，最後用 `apksigner` 核對兩個 APK 嘅簽名指紋。Repo 入面**冇任何二進位檔**（連 `gradle-wrapper.jar`、`.jks` 都唔使），fork 完直接跑。
-
-想出 Release：push 一個 `v*` tag，例如 `git tag v1.0.0 && git push origin v1.0.0`，APK 會自動貼去 GitHub Release。
-
----
-
-## 本地建置
-
-需要 JDK 17 + Android SDK（`platforms;android-37`、`build-tools;36.0.0`），並用 Android Studio Panda 3（2025.3.3）或更新版本：
-
-```bash
-# 若本機沒有 Gradle，先裝 9.3.1；有則跳過
-gradle wrapper --gradle-version 9.3.1     # 可選：產生 wrapper 方便 Android Studio 開啟
-echo "sdk.dir=$ANDROID_HOME" > local.properties
-gradle assembleDebug
-# 產物：app/build/outputs/apk/debug/app-debug.apk
-```
-
-用 Android Studio 開啟前，先執行上面嘅 `gradle wrapper` 一步，IDE 就認得個 project。
-
-想本機都出「同一簽名」嘅 APK，喺 build 前 export 呢 4 個變數（同 CI 一致）：
-
-```bash
-export HKETA_KEYSTORE_FILE=/path/to/hketa-release.jks
-export HKETA_KEYSTORE_PASSWORD='...'
-export HKETA_KEY_ALIAS=hketa
-export HKETA_KEY_PASSWORD='...'
-export HKETA_SIGNING_CERT_SHA256=$(keytool -list -v -keystore "$HKETA_KEYSTORE_FILE" \
-  -storepass "$HKETA_KEYSTORE_PASSWORD" -alias "$HKETA_KEY_ALIAS" \
-  | grep -m1 'SHA256:' | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-Z' 'a-z' | tr -d '[:space:]')
-gradle assembleRelease
-```
-
-冇 export 就得返未啟用校驗嘅開發版，唔好攞去派發。
-
-技術棧刻意保持最細：
-
-| 項目 | 版本／選擇 |
-|---|---|
-| 語言 | Kotlin（AGP 9 內建，KGP 2.2.10） |
-| AGP / Gradle | 9.1.1 / 9.3.1 |
-| SDK | compile 37、min 26、target 37 |
-| UI | 原生 Android View + XML layout（**不用** Compose／AndroidX） |
-| JSON | Android 內建 `org.json`（**不用** Gson／Moshi／serialization） |
-| APK 更新 | `HttpURLConnection` + `getPackageArchiveInfo` + 自建 `ContentProvider`（**不用** AndroidX FileProvider／OkHttp） |
-| 路線資料更新 | `org.json` 解析 + `RouteDataUpdate.validate()` + `filesDir` 資料快取（**不用** SQLite／Room／第三方 JSON 庫） |
-| 版本紀錄 | GitHub `/releases` 線上即時查詢，唯一來源（**不用** SharedPreferences／Room／DataStore／任何本機 log） |
-
-API 37 必須用 AGP 9.1.1+（官方相容表嘅最低版本），而 AGP 9 已內建 Kotlin，所以唔再套用 `org.jetbrains.kotlin.android`、`kotlinOptions {}` 亦由 `compileOptions` 自動帶出 `jvmTarget`。`dependencies` 係**空嘅**：Kotlin stdlib 由內建 Kotlin 自動提供，Actions 唔會因為下載第三方庫而失敗。
-
-> 排錯：若極少數環境下內建 Kotlin 冇自動帶入 stdlib，喺 `app/build.gradle.kts` 補一行即可（版本對應 AGP 9.1.1 內建嘅 KGP 2.2.10）：
-> `dependencies { implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") }`
-
-本機改完設定，可跑 `python3 scripts/validate.py` 一次過檢查 JSON 參照、XML 資源、`R.id` 對應、workflow 同工具鏈版本是否一致（Python 3；有 PyYAML 會順便校驗 YAML）。
-
----
-
-## JSON 就係資料庫
-
-`app/src/main/assets/hketa.json` 一個檔決定成個 App 嘅內容，改資料唔使改 Kotlin、唔使重新出 APK（如果用 GitHub 託管模式）。
-
-```jsonc
-{
-  "version": "2.0.0",
-  "generatedTimestamp": "2026-11-10T19:00:00+08:00",
-  "demo": true,
-  "note": { "zh": "示範資料，非即時", "en": "Demo data, not live" },
-  "fareDisclaimer": { "zh": "收費只作參考，以營運商公布為準", "en": "Fares are indicative; refer to operators" },
-  "apiDocs": { "kmb_eta_spec": "https://..." },
-  "modes": [
-    { "id": "bus",        "zh": "巴士",     "en": "Bus" },
-    { "id": "minibus",    "zh": "專線小巴", "en": "Minibus" },
-    { "id": "metro",      "zh": "地鐵",     "en": "Metro" },
-    { "id": "light_rail", "zh": "輕鐵",     "en": "Light Rail" }
-  ],
-  "operators": [ { "id": "KMB", "zh": "九巴／龍運", "en": "KMB & LWB" } ],
-  "stops": {
-    "KMB1_O_01": {
-      "name": { "zh": "竹園邨總站", "en": "CHUK YUEN ESTATE BUS TERMINUS" },
-      "lat": 22.3417, "lng": 114.1947
-    }
-  },
-  "routes": [{
-    "id": "KMB_1", "co": "KMB", "mode": "bus", "number": "1",
-    "name": { "zh": "竹園邨 ↔ 尖沙咀碼頭", "en": "Chuk Yuen ↔ Star Ferry" },
-    "bounds": [{
-      "dir": "O",                       // O 去程 / I 回程；港鐵亦可用 UT / DT
-      "label": { "zh": "去程", "en": "Outbound" },
-      "orig":  { "zh": "竹園邨", "en": "CHUK YUEN ESTATE" },
-      "dest":  { "zh": "尖沙咀碼頭", "en": "STAR FERRY" },
-      "stopIds": ["KMB1_O_01", "KMB1_O_02"]
-    }],
-    "fare": {                            // 收費（HKD）
-      "currency": "HKD", "full": 6.7, "child": 3.4, "senior": 2.0,
-      "method": { "zh": "八達通／現金", "en": "Octopus / cash" },
-      "note":   { "zh": "分段收費另計", "en": "Section fares apply" },
-      "sections": [
-        { "from": { "zh": "竹園邨", "en": "Chuk Yuen" },
-          "to":   { "zh": "旺角", "en": "Mong Kok" }, "full": 4.2 }
-      ]
-    },
-    "services": [{                       // 服務班次（可多筆：平日／週末假日）
-      "days":     { "zh": "星期一至五", "en": "Mon–Fri" },
-      "first": "05:30", "last": "00:20",
-      "peakMin": 5, "offPeakMin": 10, "journeyMin": 45,
-      "note": { "zh": "繁忙時間加密", "en": "More frequent at peak" }
-    }]
-  }],
-  "etas": {
-    "KMB1_O_01": {
-      "generatedTimestamp": "2026-11-09T18:40:00+08:00",
-      "etas": [{
-        "seq": 1, "time": "18:46", "minutes": 5,
-        "dest":   { "zh": "尖沙咀碼頭", "en": "STAR FERRY" },
-        "remark": { "zh": "原定班次", "en": "Scheduled Bus" },
-        "platform": "1", "scheduled": true
-      }]
-    }
-  }
-}
-```
-
-幾個欄位習慣沿用返 DATA.GOV.HK：`co`、`dir` = `O`/`I`、`seq`、`eta` 時間、`rmk` 備註，日後轉真實 API 唔使大改 model。冇 ETA 嘅站會顯示「暫無到站資料」。
-
-**`modes`／`fare`／`services` 係線上更新嘅必要欄位**：`RouteDataUpdate.validate()` 會逐條檢查，缺一不可，所以唔會出現「更新完但冇收費／冇班次」嘅半份資料。設定頁嘅「路線資料更新」就直接改呢份 JSON，唔使改 Kotlin、唔使重新出 APK。
-
----
-
-## 改路線資料唔使出新版 APK
-
-1. 改 `app/src/main/java/hk/eta/app/AppConfig.kt` 嘅 `OWNER` / `REPO`（資料來源、APK 檢查更新、線上版本紀錄三邊共用；`EtaRepository` 讀 `AppConfig.REMOTE_JSON_URL`）。
-2. 改 `app/src/main/assets/hketa.json`（四類路線／收費／服務班次）並 push 上 GitHub。
-3. 手機撳首頁「**資料更新**」→ 設定頁「**檢查並更新路線資料**」，驗證通過即套用；之後「重新整理」亦會重新抓。
-
-想即時還原：設定頁「還原內建資料」。讀取／驗證失敗會沿用原有資料，唔會白畫面。改用 gh-pages 亦可，把 `AppConfig.REMOTE_JSON_URL` 改成 `https://<OWNER>.github.io/<REPO>/hketa.json` 就得。
-
----
-
-## 接真實即時 ETA
-
-`Fmt.kt` 入面有 `LiveEtaProvider` 介面，`DemoEtaProvider` 而家讀 JSON。上線只需寫一個新實作（用 `HttpURLConnection` 打 API），再喺 `EtaActivity.rebuild()` 換掉嗰一行。
-
-`apiDocs` 同以下官方文件對應（**請以資料字典最新版本的 endpoint 為準**）：
-
-- DATA.GOV.HK 開放資料入口：https://data.gov.hk/en/
-- 九巴／龍運 ETA API 規範：https://data.etabus.gov.hk/datagovhk/kmb_eta_api_specification.pdf
-- 城巴／嶼巴 Stop-ETA API 規範：https://static.data.gov.hk/opendata/eta/bus-route-list-and-eta-specific-stop-api-specifications.pdf
-- 城巴／嶼巴 Stop-ETA 資料字典：https://static.data.gov.hk/ogcio/datagovhk/opendata/eta/bus-route-list-and-eta-specific-stop-api-data-dictionary.pdf
-- 已整合多營運商嘅開源參考：https://github.com/hkbus/hk-bus-eta
-
-常見回傳欄位：`co`、`route`、`dir`、`seq`、`stop`、`dest_en/tc`、`eta_seq`、`eta`（ISO 8601）、`rmk_en/tc`；港鐵列車另有 `plat`（月台）同 `time`。將 `eta` 轉成 `Eta.time` 並計出 `minutes` 就得，UI 完全唔使改。
-
-**路線／收費／服務班次**亦係同一思路：寫一個 aggregator，把巴士、專線小巴、港鐵（地鐵＋輕鐵）嘅 route-list、fare table、timetable 轉成上面 `hketa.json` 嘅 schema（`modes` / `fare` / `services`），再交畀 `RouteDataUpdate.validate()` 把關，最後由設定頁「路線資料更新」派發。各類資料嘅實際 endpoint 同授權條款請以 **DATA.GOV.HK 及營運商最新公佈為準**；內建 30 條路線同收費全部係示範約值，唔代表官方票價或班次。
+## 技術分工
+
+| 你點名的東西 | 在這個專案裡做的事 |
+| --- | --- |
+| GitHub | `.github/workflows/build-apk.yml`：main push / `v*` tag / 手動觸發 → 裝 SDK 36 → 型別檢查 → **release 簽名打包** → `apksigner verify` + SDK 範圍檢查 → 上傳 Artifact；打 tag 時附加到 Release（同時也是 App 的更新來源） |
+| JavaScript | `native-plugin/hketa-native/www/hketaNative.js`（Cordova JS bridge）、`scripts/build-web.mjs`、`scripts/verify-kotlin.js` |
+| TypeScript | `src/`：型別、6 家 API client、正規化、UI、原生橋接 wrapper、**`update-panel.ts` 設定頁與更新流程** → `www/js/app.js` |
+| Kotlin | `HkEtaNative.kt`：裝置／版本資訊、`geo:` 地圖、Toast、螢幕常亮、**`DownloadManager` 下載 + 安裝 Intent + 未知來源權限** |
+| API | `data.etabus.gov.hk` / `rt.data.gov.hk` / `data.etagmb.gov.hk` 即時到站 JSON，加上 **`api.github.com/repos/{owner}/{repo}/releases/latest`** |
+
+底層 **Cordova CLI 13 + cordova-android 15.1.0（Kotlin 2.1.21）**；Kotlin 以 Cordova plugin 形式由 TS 經 `cordova.exec` 呼叫，`config.xml` 開 `GradlePluginKotlinEnabled` 即自帶 Kotlin Gradle 支援。**裝置支援範圍 Android 8.0–17（API 26–37）**，詳見下節。
 
 ---
 
 ## 目錄
 
 ```
-.github/workflows/build-apk.yml   # push 即出 APK
-README.md                        # 繁體中文說明（本檔）
-README.en.md                     # English README
-app/src/main/assets/hketa.json    # 唯一資料來源
-app/src/main/java/hk/eta/app/
-  Models.kt            # data class + AppState（語系／資料）
-  JsonParser.kt        # org.json → data class
-  EtaRepository.kt     # assets / GitHub raw 兩種來源
-  RouteDataUpdate.kt   # 四類資料驗證、統計、線上更新、快取、還原
-  DataUpdater.kt       # 首頁「重新整理」共用入口（行同一份驗證）
-  Fmt.kt               # 顯示格式（收費／班次）+ LiveEtaProvider 擴充點
-  AppConfig.kt         # GitHub OWNER / REPO（資料來源 + 檢查更新 + 線上版本紀錄共用）
-  MainActivity.kt      # 搜尋、篩選、路線列表、啟動時簽名校驗、設定入口
-  SignatureVerifier.kt # 已安裝／候選 APK 嘅憑證 SHA-256 核對
-  UpdateChecker.kt     # App 版本、Releases 查詢／線上歷史、下載、簽名比對、安裝 Intent
-  ApkFileProvider.kt   # 純 framework content:// provider（API 26+ 安裝用）
-  SettingsActivity.kt  # 設定頁：簽名 / App 版本 / APK 更新 / 路線資料更新 / 線上版本紀錄 / 關於
-  RouteDetailActivity.kt  # 去回程、站位、地圖
-  EtaActivity.kt       # 班次列表、重新整理
-app/src/main/res/
-  layout/ values/ drawable/           # XML layout / colors / styles / chip 背景
-  mipmap-mdpi … mipmap-xxxhdpi/       # ic_launcher.png + round（OEM fallback）
-  drawable-nodpi/                     # adaptive 前景／背景（512×512）
-  mipmap-anydpi-v26/                  # adaptive icon（minSdk 26 起全部裝置都用）
-art/logo_source.png                  # 原始 logo 素材，不進 APK
-art/icon_preview.png                 # logo 預覽，不進 APK
-scripts/gen_icon.py                  # 換圖後重新產生全部 icon 資源
-scripts/gen_keystore.sh              # 一次性產生永久簽名金鑰
-scripts/validate.py                  # 本機一鍵檢查設定／資源一致性
+hketa-apk/
+├── .github/workflows/build-apk.yml    # 只產 signed release APK（也是更新來源）
+├── README.md / README.en.md           # 繁中 / English
+├── config.xml                         # v1.0.0 / min 26 / target 36 / Kotlin 開關
+├── build.json.example                 # 本機簽名設定範本（build.json 不進 git）
+├── package.json / package-lock.json / tsconfig.json / .npmrc
+├── scripts/  build-web.mjs · verify-kotlin.js · generate-icons.py
+├── src/
+│   ├── types / native / ui / main / version
+│   ├── update-panel.ts                # 設定頁 + 線上更新流程
+│   └── api/  http / kmb / ctb / nlb / gmb / mtr / lrt / index / update
+├── www/      index.html · css/app.css · js/app.js · img/app-logo.png
+├── native-plugin/hketa-native/        # JS bridge + Kotlin + plugin.xml
+├── plugins/                           # Cordova 安裝產物（不進 git）
+└── res/android/                       # logo-source.png + icons/{mdpi..xxxhdpi}/ + 預覽
 ```
 
 ---
 
-## App Logo
+## 快速開始
 
-Launcher icon 用你提供嘅彩虹巴士圖（原檔 1080×1080，保留喺 `art/logo_source.png`）：
+### 1. 本機預覽（純瀏覽器）
 
-- **全部支援裝置（API 26+）**：`mipmap-anydpi-v26/` 嘅 adaptive icon。因系統只顯示 108dp 畫布中央嘅 72dp，腳本會把原圖等比縮到 66.7% 先置中做前景，背景用純彩虹漸層填滿；圓形／方圓遮罩落去，機械人頭同車輪都完整保留，亦唔會露白邊。`art/icon_preview.png` 右邊就係模擬效果。
-- **Fallback**：`mipmap-*/ic_launcher.png`（48／72／96／144／192 px 五種密度）同 `ic_launcher_round.png` 保留畀少數唔讀 adaptive XML 嘅 OEM launcher；`AndroidManifest.xml` 已設 `android:roundIcon`。minSdk 26 之下正常唔會用到。
+```bash
+npm install
+npm run typecheck
+npm run build
+npm run dev
+```
 
-想換圖：把新圖（正方形）覆蓋 `art/logo_source.png`，喺 repo 根目錄執行 `python3 scripts/gen_icon.py`（需要 Pillow），就會自動重建全部尺寸同 adaptive 資源，`art/icon_preview.png` 可即刻睇效果。改完 push，Actions 出嚟嘅 APK 就會用新 logo。
+瀏覽器模式用 fallback native bridge：地圖按鈕退化為 console 提示，檢查更新可正常打 GitHub API，但**下載／安裝會提示需要 Android 版**並改開下載頁。
+
+### 2. 本機出 APK（需要 JDK 17 + Node 22 + Android SDK 36 + Build Tools 36.0.0）
+
+```bash
+npm run android:add   # 加 platform + 明確安裝 ./native-plugin/hketa-native
+npm run apk
+# 產物：platforms/android/app/build/outputs/apk/release/app-release.apk
+```
+
+> 本機 Kotlin plugin 刻意不寫進 `config.xml` 的 `<plugin>`，避免 Cordova 的 restore 機制把它寫回 `package.json` 的 devDependencies；由 `cordova plugin add ./native-plugin/hketa-native` 明確安裝最穩。
+>
+> 用 cordova-android 15.1.0 自帶的 AGP 8.10.1 / Gradle 8.14.2 / Kotlin 2.1.21 即可，不需要任何工具鏈覆寫。
+
+### 3. 交給 GitHub 自動出 APK（推薦）
+
+```bash
+git init && git add . && git commit -m "HKETA v1.0.0 release"
+git remote add origin https://github.com/<你>/hketa-apk.git
+git push -u origin main
+```
+
+到 **Actions → Build HKETA signed release APK → 最新 run → Artifacts** 下載 `HKETA-release.apk`。
+打 `v1.0.0` tag 會自動把同一個 APK 掛到 GitHub Release —— **這一步同時建立了 App 的更新來源**。
+
+### 4. 設定正式版簽名
+
+```bash
+keytool -genkeypair -v \
+  -keystore release.keystore -alias hketa \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storetype PKCS12
+```
+
+Repo → **Settings → Secrets and variables → Actions**：
+
+| Secret | 內容 |
+| --- | --- |
+| `HKETA_KEYSTORE_BASE64` | `base64 -w0 release.keystore`（macOS：`base64 -i release.keystore | tr -d '\n'`） |
+| `HKETA_KEYSTORE_PASSWORD` | keystore 密碼 |
+| `HKETA_KEY_ALIAS` | `hketa` |
+| `HKETA_KEY_PASSWORD` | key 密碼 |
+| `HKETA_KEYSTORE_TYPE` | 選填，預設 `PKCS12` |
+
+少任何必填值，workflow 直接報錯並列出缺哪個，不會默默產出未簽名檔。本機版：`cp build.json.example build.json` 後填真實值（已 gitignore）。
 
 ---
 
-## 鳴謝與授權
+## 正式版做了什麼
 
-- 功能參照 [shamough1792/HKETA](https://github.com/shamough1792/HKETA)（MIT）
-- 資料格式概念參考 [hkbus/hk-bus-eta](https://github.com/hkbus/hk-bus-eta) 及 DATA.GOV.HK 資料字典
-- 本專案 MIT，見 `LICENSE`
+- `version="1.0.0"` + `android-versionCode="1"`
+- `cordova build android --release --buildConfig=build.json`（`debuggable=false`）
+- workflow 用 `apksigner verify --verbose` 驗章，沒簽成功就 fail
+- 移除所有 `--debug`、`app-debug.apk`、debug artifact 與 PR 觸發
+- 產出統一命名 `HKETA-release.apk`
 
-即時交通資料版權屬運輸署、各營運商及港鐵公司；示範 JSON 內嘅路線、站位、班次、座標僅供介面演示，不應作乘車依據。
+---
+
+## 支援範圍：Android 8.0 – 17
+
+**這句話指的是「裝置」：APK 可安裝並執行於 Android 8.0 到 Android 17 的裝置。** 它不等於 `targetSdkVersion=37`，兩者差別見下。
+
+| 項目 | 值 | 對應 |
+| --- | --- | --- |
+| `android-minSdkVersion` | **26** | Android 8.0 Oreo（最低可安裝） |
+| `android-targetSdkVersion` | **36** | Android 16 Baklava（cordova-android 15 官方驗證上限） |
+| `android-compileSdkVersion` | **36** | 用 API 36 編譯 |
+| `android-maxSdkVersion` | **不設** | 見下 |
+
+Android 版本對 API：8.0 = 26、8.1 = 27、9 = 28、10 = 29、11 = 30、12 = 31/32、13 = 33、14 = 34、15 = 35、16 = 36、17 = 37（[uses-sdk 對照表](https://developer.android.com/guide/topics/manifest/uses-sdk-element)、[AOSP 代號表](https://source.android.com/docs/setup/about/build-numbers)）。
+
+**為什麼不設 maxSdk=37？** 官方明確不建議 `maxSdkVersion`：Android 設計上向前相容，硬設上限會讓使用者日後升級到 Android 18 時被系統移除 App，Play 也拿它當過濾條件（[官方 `<uses-sdk>` 說明](https://developer.android.com/guide/topics/manifest/uses-sdk-element#maxsdk)）。所以做法是 **min 26 擋掉 Android 7 及更早、不設上限**；Android 17（API 37）與之後的版本都能裝。設定頁在 `SDK > 37` 時顯示「超出已驗證範圍」提示，但不阻擋執行。
+
+### 為什麼 target 停在 36，而不是 37
+
+`targetSdk` 決定要啟用哪一版的行為變更；Android 17 裝置**向後相容**，target 36 的 App 照樣能裝能跑，只是不啟用 API 37 的新行為。這符合 Google Play 現行規定（2026-08-31 起新 App／更新需 target ≥ 36；API 37 要到 2027-08 才強制）。
+
+硬上 37 目前會卡在工具鏈，不是改一行數字就好：
+
+- [Cordova Android Platform Guide](https://cordova.apache.org/docs/en/latest/guide/platforms/android/index.html) 標示 **cordova-android 15.x 官方支援 API 24–36**；[issue #1982](https://github.com/apache/cordova-android/issues/1982) 裡維護者說 37.x「可編但沒完整驗證」。
+- **AGP 8.13 官方標明最高只支援到 API 36.1**（[AGP 8.13 release notes](https://developer.android.com/studio/releases/gradle-plugin#8-13-0)）。要 compileSdk 37 得往 AGP 9.x + Gradle 9.x + JDK 21 走，而 cordova-android 15 的基準是 AGP 8.10.1 / Gradle 8.14.2 / JDK 17，整套換掉風險很高。
+- API 37 的 SDK 套件名是 `platforms;android-37.0`（帶 minor），Cordova 的 `check_android_target` 找的是 `android-37`，[issue #1982](https://github.com/apache/cordova-android/issues/1982) 正是這個 `37.0` vs `37` 的檢查失敗。
+
+所以這個版本**保持在官方可編過的 36**，並把 API 37 視為「裝置可跑、尚未 target」。等 cordova-android 出支援 37 的版本再升，改法是：`config.xml` 的 target/compile 改 37、workflow 改裝 `platforms;android-37.0` + `build-tools;37.0.0`、同步 `scripts/verify-kotlin.js` 與 aapt2 檢查值，並實測 Android 17 的行為變更（大螢幕強制可調整大小、Certificate Transparency、`ACCESS_LOCAL_NETWORK` 等）。
+
+> 想實驗可自行加回 `AndroidGradlePluginVersion` / `GradleVersion` / `android-buildToolsVersion` 覆寫，但**不保證 CI 編得過**，這裡不預設啟用。
+
+### 各版本的相容性處理
+
+| API | Android | 專案裡的對應處理 |
+| --- | --- | --- |
+| 26 | 8.0 | `minSdk`；`canRequestPackageInstalls()` + `REQUEST_INSTALL_PACKAGES` 才准應用內安裝 |
+| 28 | 9 | `PackageInfo.longVersionCode`，舊版退回 `versionCode` |
+| 29 | 10 | `DownloadManager` 寫入 Downloads（系統服務不受 Scoped Storage 限制） |
+| 30 | 11 | `plugin.xml` 加 `<queries>`（geo / https / APK mime）；Kotlin 隱式 Intent 直接啟動並 catch `ActivityNotFoundException`，避免 `resolveActivity()` 被包可見性過濾 |
+| 33 | 13 | `PackageManager.PackageInfoFlags`；下載通知由系統 DownloadManager 自管，不需 `POST_NOTIFICATIONS` |
+| 34 | 14 | 安裝 Intent 帶 `FLAG_GRANT_READ_URI_PERMISSION`，用 content URI 而非 file URI |
+| 35 | 15 | Edge-to-edge：`viewport-fit=cover` + 響應式 CSS |
+| 36 | 16 | `targetSdk` / `compileSdk`，cordova-android 15 官方驗證上限 |
+| 37 | 17 | 裝置端向後相容執行；設定頁顯示於「支援範圍」 |
+
+**雙重把關**
+
+- `scripts/verify-kotlin.js`（`before_build` hook）讀 `cdv-gradle-config.json`，`MIN_SDK_VERSION=26`、`SDK_VERSION/COMPILE_SDK_VERSION=36`、且**不得設 maxSdk**，不符就讓 build 失敗
+- workflow 用 `aapt2 dump badging` 檢查實際 APK 的 `sdkVersion:'26'`、`targetSdkVersion:'36'`，並確認沒有 `maxSdkVersion`
+
+---
+
+## App 圖示
+
+你提供的彩虹巴士圖已做成 launcher icon，來源存於 `res/android/logo-source.png`（1080×1080）。
+
+| 層 | 內容 | 尺寸 |
+| --- | --- | --- |
+| `ic_launcher_background` | 重建的乾淨彩虹漸層（移除主體） | 108dp × 5 種密度 |
+| `ic_launcher_foreground` | 去背的巴士＋司機，透明底，置中於 78% 高度 | 同上 |
+| `ic_launcher_monochrome` | 白色剪影，Android 13+ 主題圖示跟隨系統配色 | 同上 |
+| `ic_launcher` | legacy 方形 fallback | 48 / 72 / 96 / 144 / 192 px |
+
+`config.xml` 的 `<platform name="android">` 已宣告 `mdpi`～`xxxhdpi` 五組 `src` / `background` / `foreground` / `monochrome`；cordova-android 15 會自動產生 `mipmap-*-v26/ic_launcher.xml`，**不用改 Gradle 或 AndroidManifest**。因為 `minSdk=26`，所有支援裝置都拿 adaptive 版本，各種 OEM 遮罩（圓形、圓角方、squircle）都能正確裁切。
+
+另外附上 `logo-playstore-512.png`（商店圖）、`www/img/app-logo.png`（頁首與設定頁），以及 **`res/android/logo-preview.png`** —— 四種外觀的預覽，可直接看效果。
+
+換圖或調大小：`scripts/generate-icons.py`（需 Pillow / numpy / opencv-python，資產已隨專案附上，一般 build 不用 Python）。細節見 `res/android/README.md`。
+
+> ⚠️ 圖片由你提供並指定作為圖示；專案程式碼是 MIT，**不代表圖片的授權**。公開或上架前請確認你擁有使用／改作權利。
+
+---
+
+## 線上應用更新（設定頁）
+
+App 頂部有 **到站預報 / 設定** 兩個分頁。設定頁包含：
+
+| 區塊 | 內容 |
+| --- | --- |
+| 應用程式 | 目前版本（`PackageInfo.versionName` + build）、介面語言、螢幕常亮、裝置資訊 |
+| 線上更新 | GitHub owner / repo、啟動時自動檢查、檢查更新、Release 資訊卡、下載進度條、下載並安裝、允許安裝、開啟下載頁 |
+
+**流程**
+
+1. `GET https://api.github.com/repos/{owner}/{repo}/releases/latest`
+2. 取 `tag_name` 去掉 `v` 後與本機版本做三段數字比對
+3. 找 `HKETA-release.apk` 附件（找不到就取第一個 `.apk`；都沒有就只給「開啟下載頁」）
+4. TS 呼叫 Kotlin `downloadApk()` → 系統 `DownloadManager` 下載到 Downloads，通知列可見
+5. TS 每 900ms 輪詢 `downloadProgress()`，更新進度條；Kotlin 回傳語意化 `state`（`running` / `success` / `failed`），不用在 JS 硬編碼 Android 常數
+6. 完成後檢查 `canInstallUnknown()`；Android 8+ 未授權就開 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`，使用者授權回到 App 會自動繼續
+7. `installApk()` 用 `DownloadManager.getUriForDownloadedFile()` 的 content URI 發 `ACTION_VIEW` 安裝 Intent；失敗自動 fallback 開瀏覽器到 Release 頁
+
+有新版本時「設定」分頁會亮一個小綠點；偏好（repo、自動檢查、語言、螢幕常亮）存 `localStorage`。
+
+**第一次啟用前改這三處**
+
+- `src/version.ts`：`DEFAULT_OWNER` / `DEFAULT_REPO`（預設 `yourname/hketa-apk`）
+- `config.xml`：`<author href="https://github.com/yourname/hketa-apk">`
+- 或直接不改程式，在 App「設定」頁輸入 owner / repo 後按「儲存設定」
+
+> API 未認證每小時限 60 次；自動檢查只在啟動時跑一次。
+
+**兩個硬限制**
+
+- 🔑 **新 APK 必須用同一把 keystore 簽名**，否則 Android 會以 signature mismatch 拒絕安裝 —— 這也是為什麼 Secrets 要長期保存。
+- 📱 `REQUEST_INSTALL_PACKAGES` 讓側載／自架發布可用；**Google Play 對此權限有政策限制**，上架 Play 請改用 Play In-App Updates 並移除應用內安裝（改走 `openUrl` 到商店頁）。
+
+---
+
+## 發布新版本（讓舊 App 查得到）
+
+1. 改 `config.xml`：`version="1.1.0"`、`android-versionCode="2"`（**versionCode 一定要遞增**）
+2. 改 `package.json` 與 `src/version.ts` 的 `FALLBACK_APP_VERSION` 為 `1.1.0`
+3. 更新 `www/index.html` 若有版本相關文案
+4. `git commit` → `git tag v1.1.0` → `git push origin main --tags`
+5. workflow 自動產生 Release + `HKETA-release.apk`
+6. 舊版 App 到「設定 → 檢查更新」就會看到 `v1.1.0` 並可下載安裝
+
+> `tag_name` 建議用 `v1.1.0`；比對時會自動去掉前導 `v`。
+
+---
+
+## API 對照
+
+| 營辦商 | ETA 端點 | 主要參數 |
+| --- | --- | --- |
+| KMB / LWB | `https://data.etabus.gov.hk/v1/transport/kmb/eta/{stop_id}/{route}/{service_type}` | 正線 `service_type=1`；另用 `/stop-eta/{stop_id}`、`/route/`、`/stop/{stop_id}` |
+| Citybus | `https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/{stop_id}/{route}` | `company_id` 固定大寫 `CTB`（新巴路線已併入） |
+| NLB | `https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estimatedArrivals` | `routeId`、`stopId`、`language=zh` |
+| GMB | `https://data.etagmb.gov.hk/eta/route-stop/{route_id}/{stop_id}` | 亦可用 `/eta/stop/{stop_id}`；回 `timestamp` / `diff` / `remarks_tc` |
+| MTR | `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=&sta=&lang=` | `lang=TC`／`EN`；回 `UP` / `DOWN` |
+| Light Rail | `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=&with_special=1` | 回 `platform_list[].route_list[]` |
+| 更新 | `https://api.github.com/repos/{owner}/{repo}/releases/latest` | 未認證 60 req/hr |
+
+官方規格：[KMB/LWB](https://data.etabus.gov.hk/datagovhk/kmb_eta_api_specification.pdf) · [NLB](https://www.nlb.com.hk/datagovhk/BusServiceOpenAPIDocumentation2.0.pdf) · [GMB](https://data.etagmb.gov.hk/static/GMB_ETA_API_Specification.pdf) · [MTR](https://opendata.mtr.com.hk/doc/Next_Train_API_Spec_v1.7.pdf) · [輕鐵](https://opendata.mtr.com.hk/doc/LR_Next_Train_API_Spec_v1.1.pdf) · Citybus v2.01 由 DATA.GOV.HK 資料集頁面提供。
+
+所有 client 正規化成同一個 `EtaItem`，UI 只認這個型別。
+
+---
+
+## 試一組會動的參數
+
+App 預填：`KMB` / `40` / `647AB0AD358F10DF` / `1`（美孚）。
+其他：MTR `TML`+`ADM`+`TC`｜輕鐵 路線留空 + `600` + `1`｜城巴 `11`+`001145`+`O`。
+
+---
+
+## 驗證狀態
+
+本回合已跑過：`tsc --noEmit` ✅、esbuild 打包 ✅、`config.xml` / `plugin.xml` XML ✅、`package.json` / `tsconfig.json` / `package-lock.json` / `build.json.example` JSON ✅、workflow YAML ✅、plugin `source-file` 路徑與 `.kt` 存在 ✅、`<queries>` 宣告 ✅、i18n 字典一致 ✅、`config.xml` 的 min/target/compile = 26/36/36 且無 maxSdk ✅、`verify-kotlin.js` 與 aapt2 檢查值同步 ✅、5 組 icon 宣告與 20 張 PNG 路徑／尺寸／透明度 ✅、四種遮罩預覽目視檢查 ✅、無 debug 殘留 ✅。
+
+**未做**：沙盒無 Android SDK／Gradle、也無你的 keystore，因此沒有編出實體 APK，也無法在真機驗證 `DownloadManager` + 安裝 Intent（部分 OEM 對 `content://downloads/...` 的 installer 支援不一，已做瀏覽器 fallback）。簽名與打包交給上面的 GitHub Actions。
+
+---
+
+## 已知限制
+
+- 目前以官方 `route` / `stop ID` 直接查詢；站名搜尋、完整站點列表、去回程切換、書籤尚待補。
+- 資料直接打官方 API，無離線快取；`429`、夜間無班次會顯示錯誤或空列表。
+- 「預定班次 / Scheduled Bus」與 GPS 即時到站是兩件事，卡片會以備註標示。
+- MTR／LRT 用官方線路與車站代碼，非中文站名；`src/api/mtr.ts` 附常用代碼。
+- 有 launcher icon，但**尚未做 splash screen**（Android 12+ 會用系統預設啟動畫面）；需要時可在 `config.xml` 補 `<splash>`。
+- `targetSdkVersion=36`（Android 16），**不是 37**；Android 17 裝置靠平台向後相容執行。Google Play 現行要求 target ≥ 36（2026-08-31 起），已符合；API 37 預計 2027-08 才強制，上架前請確認當下規定（[Play 目標 API 規定](https://support.google.com/googleplay/android-developer/answer/11926878)）。
+- **API 37 尚未 target**：見上節工具鏈限制，等 cordova-android 官方支援再升。
+- `minSdk=26` 會排除 Android 7.x 及更早裝置；這正是「只支援 8–17」的代價。
+- Android 17 對 target 37 才啟用的行為（大螢幕強制可調整大小、CT、`ACCESS_LOCAL_NETWORK` 等）尚未驗證，因為本版本不 target 37。
+- 應用內安裝需 `REQUEST_INSTALL_PACKAGES` 與使用者授權，且不適用 Play 上架情境（見上節）。
+
+---
+
+## 授權與資料來源
+
+- 程式碼：MIT（見 `LICENSE`）。
+- 功能參考：[shamough1792/HKETA](https://github.com/shamough1792/HKETA)（Cordova / JavaScript / MIT）。
+- 概念參考：[DATA.GOV.HK — HKETA](https://data.gov.hk/tc/application/hketa)。
+- 即時資料：香港運輸署／DATA.GOV.HK／各營辦商開放資料，請遵守各自使用條款與標註要求。
+- 更新來源：[GitHub Releases API](https://docs.github.com/en/rest/releases/releases)。
