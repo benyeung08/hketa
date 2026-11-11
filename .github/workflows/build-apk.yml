@@ -1,199 +1,131 @@
-name: Build HKETA APK
+name: Build HKETA signed release APK
 
+# 正式版只在 main push / v* tag / 手動觸發時出；PR 不跑（避免 fork PR 拿不到簽名 secrets）。
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # android-actions/setup-android@v3 喺 2026 年新版 ubuntu-latest runner 上
-      # 內部呼叫已被 cmdline-tools 移除嘅舊 sdkmanager tools 包，會直接令 job 失敗
-      # （本 repo 最近一次 run 正正死喺呢一步）。改用 runner 預裝嘅 Android SDK。
-      - name: Verify Android SDK
+      - uses: android-actions/setup-android@v3
+      # cordova-android 15.1.0 official ceiling = API 36 (Android 16).
+      # The produced APK still installs on Android 17 (API 37) devices — no maxSdk is set.
+      - name: Accept licenses and install Android SDK (API 36)
         run: |
-          SDK=$(command -v sdkmanager || true)
-          if [ -z "$SDK" ] && [ -x "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          fi
-          if [ -z "$SDK" ]; then
-            echo "::error::sdkmanager not found; install Android cmdline-tools on the runner"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          sdkmanager --list_installed | grep -E "android-36|36\.0\.0" || true
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Typecheck TypeScript
+        run: npm run typecheck
+
+      - name: Bundle TypeScript into www/js/app.js
+        run: npm run build
+
+      - name: Add Android platform (Cordova Android 15.1.0)
+        run: npx cordova platform add android@15.1.0
+
+      - name: Add local Kotlin Cordova plugin
+        run: npx cordova plugin add ./native-plugin/hketa-native
+
+      - name: Verify local Kotlin plugin is installed
+        run: npx cordova plugin ls
+
+      - name: Verify release signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
+          STORE_PW: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.HKETA_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [ -z "$KEYSTORE_B64" ] && missing+=(HKETA_KEYSTORE_BASE64)
+          [ -z "$STORE_PW" ] && missing+=(HKETA_KEYSTORE_PASSWORD)
+          [ -z "$KEY_ALIAS" ] && missing+=(HKETA_KEY_ALIAS)
+          [ -z "$KEY_PW" ] && missing+=(HKETA_KEY_PASSWORD)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing signing secrets: ${missing[*]}"
+            echo "::error::See README → Release signing, then add them under Settings → Secrets and variables → Actions."
             exit 1
           fi
-          echo "SDKMANAGER=$SDK" >> "$GITHUB_ENV"
-          echo "Using sdkmanager: $SDK"
+          echo "Signing secrets present"
 
-      - name: Accept SDK licenses
-        run: yes | "$SDKMANAGER" --licenses > /dev/null || true
-
-      # 支援範圍 Android 8 (API 26) – 17 (API 37)，所以 compile 用 android-37。
-      # AGP 9.1.1 預設 build-tools 為 36.0.0；平台在不同 channel 可能叫
-      # android-37 或 android-37.0，兩者都試，再用 --list 動態兜底。
-      - name: Install SDK packages
-        run: |
-          "$SDKMANAGER" "platform-tools" "build-tools;36.0.0" > /dev/null
-          "$SDKMANAGER" --list > "$RUNNER_TEMP/sdk-list.txt" || true
-          # Android 17 / API 37 屬 Preview，sdkmanager 包名通常係 platforms;android-37.0，
-          # 所以先試 .0，再試無後綴，最後先由 --list 動態兜底。
-          INSTALLED=""
-          for P in "platforms;android-37.0" "platforms;android-37"; do
-            if "$SDKMANAGER" "$P" > /dev/null 2>&1; then INSTALLED="$P"; break; fi
-          done
-          if [ -z "$INSTALLED" ]; then
-            P=$(grep -oE 'platforms;android-37(\.[0-9]+)?' "$RUNNER_TEMP/sdk-list.txt" | head -1 || true)
-            if [ -z "$P" ]; then
-              echo "::error::No Android 37 platform package available on this runner"
-              exit 1
-            fi
-            "$SDKMANAGER" "$P" > /dev/null
-            INSTALLED="$P"
-          fi
-          echo "Installed platform: $INSTALLED"
-          ls -1 "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platforms"
-
-      - name: Point Gradle to Android SDK
-        run: echo "sdk.dir=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" > local.properties
-
-      # 不把 gradle-wrapper.jar（二進位檔）放進 repo，改為在 runner 上裝 Gradle 9.3.1。
-      - name: Install Gradle 9.3.1
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/gradle.zip" https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
-          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP/gradle-dist"
-          chmod +x "$RUNNER_TEMP/gradle-dist/gradle-9.3.1/bin/gradle"
-          echo "$RUNNER_TEMP/gradle-dist/gradle-9.3.1/bin" >> "$GITHUB_PATH"
-
-      # ── 永久簽名：所有產出共用同一把 key ──────────────────────────
-      # keystore 本體以 base64 存在 GitHub Secret，永遠唔入 repo。
-      - name: Verify signing secrets
+      # build.json 由 secrets 動態產生，不進 git；密碼用 node 寫入以避免特殊字元破壞 JSON。
+      - name: Build signed release APK
         env:
-          KS_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
-          KS_PWD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          KS_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
-          KEY_PWD: ${{ secrets.HKETA_KEY_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
+          STORE_PW: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.HKETA_KEY_PASSWORD }}
+          KEYSTORE_TYPE: ${{ secrets.HKETA_KEYSTORE_TYPE }}
         run: |
-          MISSING=""
-          if [ -z "$KS_B64" ];   then MISSING="$MISSING HKETA_KEYSTORE_BASE64"; fi
-          if [ -z "$KS_PWD" ];   then MISSING="$MISSING HKETA_KEYSTORE_PASSWORD"; fi
-          if [ -z "$KS_ALIAS" ]; then MISSING="$MISSING HKETA_KEY_ALIAS"; fi
-          if [ -z "$KEY_PWD" ];  then MISSING="$MISSING HKETA_KEY_PASSWORD"; fi
-          if [ -n "$MISSING" ]; then
-            echo "::error::Missing signing secrets:$MISSING"
-            echo "請依 README「永久簽名一致性」建立 keystore 並填入 4 個 Repository Secrets。"
-            exit 1
-          fi
+          echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          node -e "
+            const fs = require('fs');
+            const cfg = { android: { release: {
+              keystore: 'release.keystore',
+              storePassword: process.env.STORE_PW,
+              alias: process.env.KEY_ALIAS,
+              password: process.env.KEY_PW,
+              keystoreType: process.env.KEYSTORE_TYPE || 'PKCS12'
+            }}};
+            fs.writeFileSync('build.json', JSON.stringify(cfg, null, 2));
+          "
+          npx cordova build android --release --buildConfig=build.json
+          rm -f build.json release.keystore
 
-      - name: Restore permanent signing key
-        env:
-          KS_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
-          KS_PWD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          KS_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+      - name: Verify the APK is signed
         run: |
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/hketa.jks"
-          chmod 600 "$RUNNER_TEMP/hketa.jks"
-          CERT=$(keytool -list -v -keystore "$RUNNER_TEMP/hketa.jks" \
-                   -storepass "$KS_PWD" -alias "$KS_ALIAS" 2>/dev/null \
-                 | grep -m1 'SHA256:' | sed 's/.*SHA256: //' \
-                 | tr -d ':' | tr 'A-Z' 'a-z' | tr -d '[:space:]' || true)
-          if [ -z "$CERT" ]; then
-            echo "::error::Cannot derive certificate SHA-256 from keystore (check alias / passwords)"
-            exit 1
-          fi
-          echo "HKETA_KEYSTORE_FILE=$RUNNER_TEMP/hketa.jks" >> "$GITHUB_ENV"
-          echo "HKETA_SIGNING_CERT_SHA256=$CERT" >> "$GITHUB_ENV"
-          echo "Permanent signing cert SHA-256: \`$CERT\`" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Validate hketa.json
-        run: |
-          test -f app/src/main/assets/hketa.json || { echo "::error::missing app/src/main/assets/hketa.json"; exit 1; }
-          python3 -m json.tool app/src/main/assets/hketa.json > /dev/null
-
-      # 檢查四類路線資料、收費／服務班次覆蓋、XML/R.id、簽名與更新設定一致性
-      - name: Validate project consistency
-        run: python3 scripts/validate.py
-
-      - name: Assemble debug APK
-        env:
-          HKETA_KEYSTORE_FILE: ${{ runner.temp }}/hketa.jks
-          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
-          HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
-        run: gradle assembleDebug --stacktrace --no-daemon
-
-      - name: Copy debug APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk HKETA-debug.apk
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: HKETA-debug
-          path: HKETA-debug.apk
-          if-no-files-found: error
-
-      - name: Assemble release APK
-        env:
-          HKETA_KEYSTORE_FILE: ${{ runner.temp }}/hketa.jks
-          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
-          HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
-        run: gradle assembleRelease --stacktrace --no-daemon
-
-      # 固定檔名方便「設定 → 檢查更新」由 Release assets 認出 APK
-      - name: Copy release APK
-        run: |
-          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          APK=$(find platforms/android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          test -n "$APK" || { echo "::error::No release APK produced"; exit 1; }
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose "$APK"
+          # Assert the shipped APK declares min 26 (Android 8.0) / target 36.
+          # No maxSdk is emitted, so Android 17 (API 37) and newer stay installable.
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
+          BADGE=$("$AAPT2" dump badging "$APK")
+          echo "$BADGE" | grep -q "sdkVersion:'26'" || {
+            echo "::error::minSdkVersion is not 26 (Android 8.0)"; exit 1; }
+          echo "$BADGE" | grep -q "targetSdkVersion:'36'" || {
+            echo "::error::targetSdkVersion is not 36 (Android 16)"; exit 1; }
+          echo "$BADGE" | grep -E "sdkVersion:|targetSdkVersion:"
+          echo "$BADGE" | grep -q "maxSdkVersion" && {
+            echo "::error::maxSdkVersion must not be set"; exit 1; } || true
           cp "$APK" HKETA-release.apk
+          ls -lh HKETA-release.apk
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: HKETA-release
+          name: HKETA-release-signed-apk
           path: HKETA-release.apk
           if-no-files-found: error
 
-      # 用 apksigner 反讀兩個 APK 嘅憑證指紋，同 keystore 抽出嘅值比對，
-      # 確認唔論 debug / release 都係同一把永久 key。
-      - name: Verify signature consistency
-        run: |
-          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          for APK in HKETA-debug.apk HKETA-release.apk; do
-            FP=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
-                 | grep -m1 'SHA-256 digest' | sed 's/.*: //' \
-                 | tr -d ':' | tr 'A-Z' 'a-z' | tr -d '[:space:]' || true)
-            echo "$APK -> $FP"
-            if [ "$FP" != "$HKETA_SIGNING_CERT_SHA256" ]; then
-              echo "::error::Signature mismatch on $APK (expected $HKETA_SIGNING_CERT_SHA256)"
-              exit 1
-            fi
-          done
-          echo "✅ debug + release 均使用同一永久憑證：\`$HKETA_SIGNING_CERT_SHA256\`" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Attach APK to GitHub Release
+      - name: Attach signed APK to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            HKETA-release.apk
-          body: |
-            由 GitHub Actions 自動建置的 HKETA Kotlin 版 APK。
-            此 `.apk` 供 App 內「設定 → 檢查更新」直接使用。
-            支援 Android 8.0 (API 26) – Android 17 (API 37)。
-            所有版本共用同一把永久簽名金鑰，可直接覆蓋升級。
-            簽名憑證 SHA-256：${{ env.HKETA_SIGNING_CERT_SHA256 }}
-            內建 assets/hketa.json 為示範資料，並非即時到站時間。
+          files: HKETA-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
