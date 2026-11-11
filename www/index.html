@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' gap: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://data.etabus.gov.hk https://rt.data.gov.hk https://data.etagmb.gov.hk https://opendata.mtr.com.hk https://static.data.gov.hk https://api.github.com https://github.com; img-src 'self' data:;">
+  <title>HKETA · 香港到站預報</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div class="hero-row">
+        <img class="app-logo" src="img/app-logo.png" alt="HKETA logo">
+        <div class="hero-text">
+          <h1>HKETA</h1>
+          <p class="sub" data-tc="香港公共交通即時到站" data-en="Hong Kong live ETA">香港公共交通即時到站</p>
+        </div>
+        <button id="lang-toggle" class="ghost" type="button">EN</button>
+      </div>
+      <p id="device-line" class="device">初始化中…</p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button id="tab-eta" class="tab active" type="button" role="tab"
+              data-tc="到站預報" data-en="ETA">到站預報</button>
+      <button id="tab-settings" class="tab" type="button" role="tab"
+              data-tc="設定" data-en="Settings">設定<span id="update-dot" class="dot" hidden></span></button>
+    </nav>
+
+    <!-- ============ ETA view ============ -->
+    <section id="view-eta">
+      <div class="panel">
+        <div id="op-chips" class="chips" aria-label="Operator">
+          <button class="chip active" type="button" data-op="KMB">KMB</button>
+          <button class="chip" type="button" data-op="CTB">CTB</button>
+          <button class="chip" type="button" data-op="NLB">NLB</button>
+          <button class="chip" type="button" data-op="GMB">GMB</button>
+          <button class="chip" type="button" data-op="MTR">MTR</button>
+          <button class="chip" type="button" data-op="LRT">LRT</button>
+        </div>
+
+        <form id="eta-form" class="form">
+          <label>
+            <span data-tc="路線 / 線路 / routeId" data-en="Route / line / routeId">路線 / 線路 / routeId</span>
+            <input id="route-input" type="text" value="40" autocomplete="off" spellcheck="false" required>
+          </label>
+          <label>
+            <span data-tc="站號 / 車站代碼" data-en="Stop ID / station code">站號 / 車站代碼</span>
+            <input id="stop-input" type="text" value="647AB0AD358F10DF" autocomplete="off" spellcheck="false" required>
+          </label>
+          <label>
+            <span id="extra-label" data-tc="服務類型" data-en="Service type">服務類型</span>
+            <input id="extra-input" type="text" value="1" autocomplete="off" spellcheck="false">
+          </label>
+          <p id="hint" class="hint"></p>
+          <div class="actions">
+            <button id="search-btn" class="primary" type="submit" data-tc="查到站時間" data-en="Search ETA">查到站時間</button>
+            <button id="refresh-btn" class="ghost" type="button" data-tc="重新整理" data-en="Refresh">重新整理</button>
+            <button id="map-btn" class="ghost" type="button" data-tc="地圖" data-en="Map">地圖</button>
+          </div>
+        </form>
+      </div>
+
+      <p id="status" class="status" data-tc="輸入參數後按「查到站時間」" data-en="Enter a route and stop, then search">輸入參數後按「查到站時間」</p>
+      <section id="results" class="results"></section>
+    </section>
+
+    <!-- ============ Settings view ============ -->
+    <section id="view-settings" hidden>
+      <div class="panel">
+        <div class="about-head">
+          <img class="app-logo small" src="img/app-logo.png" alt="">
+          <h2 class="panel-title" data-i18n="appSection">應用程式</h2>
+        </div>
+
+        <div class="setting-row">
+          <span data-i18n="currentVersion">目前版本</span>
+          <strong id="app-version">—</strong>
+        </div>
+        <div class="setting-row">
+          <span data-i18n="supportRange">支援範圍</span>
+          <strong>Android 8.0 – 17</strong>
+        </div>
+        <div class="setting-row">
+          <span data-i18n="targetSdk">編譯目標</span>
+          <strong>API 36</strong>
+        </div>
+        <p id="support-note" class="hint"></p>
+        <div class="setting-row">
+          <span data-i18n="language">介面語言</span>
+          <select id="lang-select" class="mini-select">
+            <option value="tc">繁體中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <label class="switch-row compact">
+          <input id="keep-awake" type="checkbox">
+          <span data-i18n="keepAwake">螢幕常亮（Kotlin 原生）</span>
+        </label>
+        <p class="hint" id="settings-device">—</p>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title" data-i18n="updateSection">線上應用更新</h2>
+
+        <div class="form compact-form">
+          <label>
+            <span data-i18n="repoOwner">GitHub 擁有者</span>
+            <input id="repo-owner" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <label>
+            <span data-i18n="repoName">Repository 名稱</span>
+            <input id="repo-name" type="text" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <label class="switch-row compact">
+          <input id="auto-check" type="checkbox">
+          <span data-i18n="autoCheck">啟動時自動檢查更新</span>
+        </label>
+
+        <div class="actions tight">
+          <button id="save-repo" class="ghost" type="button" data-i18n="save">儲存設定</button>
+          <button id="check-update" class="primary" type="button" data-i18n="checkUpdate">檢查更新</button>
+        </div>
+
+        <p id="update-status" class="status tight-status" data-i18n="updateIdle">尚未檢查更新</p>
+
+        <div id="update-progress-wrap" class="progress-wrap" hidden>
+          <div class="bar"><div id="update-bar" class="bar-fill"></div></div>
+          <p id="update-progress-text" class="hint">0%</p>
+        </div>
+
+        <article id="release-card" class="release-card" hidden>
+          <div class="release-top">
+            <span id="release-badge" class="badge">—</span>
+            <strong id="release-version">—</strong>
+            <span id="release-size" class="release-size"></span>
+          </div>
+          <p id="release-name" class="release-name"></p>
+          <p id="release-date" class="hint"></p>
+          <pre id="release-notes" class="release-notes"></pre>
+        </article>
+
+        <div class="actions tight">
+          <button id="download-update" class="primary" type="button" data-i18n="downloadUpdate" disabled>下載並安裝</button>
+          <button id="grant-install" class="ghost" type="button" data-i18n="grantInstall" disabled>允許安裝</button>
+          <button id="open-release" class="ghost" type="button" data-i18n="openRelease" disabled>開啟下載頁</button>
+        </div>
+
+        <p class="hint warn" data-i18n="signingNote">新 APK 必須用同一把 keystore 簽名，否則系統會拒絕安裝。此功能適用於側載／自架發布；上架 Google Play 請改用 Play In-App Updates。</p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span data-tc="資料：DATA.GOV.HK / 運輸署 / 各營辦商" data-en="Data: DATA.GOV.HK / TD / operators">資料：DATA.GOV.HK / 運輸署 / 各營辦商</span>
+    </footer>
+  </main>
+
+  <script src="cordova.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
