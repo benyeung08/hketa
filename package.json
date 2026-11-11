@@ -1,20 +1,11 @@
 {
-  "name": "hketa-apk",
+  "name": "hketa-native",
   "version": "1.0.0",
-  "private": true,
-  "description": "HKETA Hong Kong public transport ETA — signed release Android APK (Cordova + TypeScript + Kotlin), Android 8–17",
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "node scripts/build-web.mjs",
-    "dev": "npm run build && npx --yes serve www",
-    "android:add": "cordova platform add android@15.1.0 && cordova plugin add ./native-plugin/hketa-native",
-    "android:build": "npm run build && cordova build android --release --buildConfig=build.json",
-    "apk": "npm run android:build"
+  "description": "Kotlin native bridge for the HKETA Cordova app",
+  "license": "MIT",
+  "cordova": {
+    "id": "hketa-native",
+    "platforms": ["android"]
   },
-  "devDependencies": {
-    "cordova": "13.0.0",
-    "cordova-android": "15.1.0",
-    "esbuild": "0.24.2",
-    "typescript": "5.7.3"
-  }
+  "keywords": ["ecosystem:cordova", "cordova-android", "kotlin", "hketa"]
 }
