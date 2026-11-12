@@ -5,20 +5,15 @@ on:
     branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # 手動觸發
-
-permissions:
-  contents: write
-  actions: read
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -28,174 +23,106 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ============================================================
-      #  Install Android SDK
-      #  ============================================================
-      - name: Install Android SDK
+      - name: Show pre-installed Android SDK
         run: |
-          set -eux
-          
-          SDK_DIR="$HOME/android-sdk"
-          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
-          echo "ANDROID_SDK_PLATFORM_VERSION=android-38" >> $GITHUB_ENV
-          echo "ANDROID_BUILD_TOOLS_VERSION=38.0.0" >> $GITHUB_ENV
-          
-          mkdir -p "$SDK_DIR"
-          
-          # ----------------------------------------------------------
-          #  策略：手動下載 platform-tools 和 platform SDK
-          #  繞過 sdkmanager 索引不含 API 38 的問題
-          #  ----------------------------------------------------------
-          
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls $ANDROID_HOME/platforms/ 2>/dev/null || echo "no platforms dir"
+          ls $ANDROID_HOME/build-tools/ 2>/dev/null || echo "no build-tools dir"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --version 2>/dev/null || echo "no sdkmanager in cmdline-tools/latest"
+          # 嘗試其他路徑
+          find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -5
+
+      - name: Install Android SDK Platform API 37
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          # 如果找不到 sdkmanager，嘗試其他路徑
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "cmdline-tools/latest not found, searching..."
+            SDKMANAGER=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
+            echo "Found sdkmanager at: $SDKMANAGER"
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
+            echo "❌ sdkmanager not found, downloading cmdline-tools..."
+            mkdir -p $ANDROID_HOME/cmdline-tools
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -O /tmp/cmdtools.zip
+            unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
+            mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          echo "✅ Using sdkmanager: $SDKMANAGER"
+
+          # 接受 licenses
+          yes | $SDKMANAGER --sdk_root=$ANDROID_HOME --licenses > /dev/null 2>&1
+
+          # 更新 repository 索引
+          $SDKMANAGER --sdk_root=$ANDROID_HOME --update 2>&1 | tail -3 || true
+
+          # 列出可用的 API 37 相關包
+          echo "=== 搜尋 API 37 相關包 ==="
+          $SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -i "android-37\|37.0.0" | head -20
+
+          # 安裝 platform-tools（一定存在）
           echo "📦 安裝 platform-tools..."
-          # 下載 platform-tools
-          curl -sL -o /tmp/platform-tools.zip \
-            "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
-          unzip -q /tmp/platform-tools.zip -d "$SDK_DIR/"
-          echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
-          
-          echo "📦 安裝 build-tools..."
-          # 直接下載 build-tools 壓縮包
-          mkdir -p "$SDK_DIR/build-tools/38.0.0"
-          curl -sL -o /tmp/build-tools.zip \
-            "https://dl.google.com/android/repository/build-tools_r38.0.0-linux.zip"
-          # build-tools 可能有不同 URL 格式，嘗試多種
-          if ! unzip -q -o /tmp/build-tools.zip -d "$SDK_DIR/build-tools/38.0.0/" 2>/dev/null; then
-            echo "⚠️  build-tools 直接下載失敗，稍後用 sdkmanager 處理"
-          fi
-          
-          echo "✅ Android SDK 基本元件已下載"
+          $SDKMANAGER --sdk_root=$ANDROID_HOME "platform-tools" || true
 
-      - name: Install platforms via cmdline-tools
-        run: |
-          set -eux
-          
-          SDK_DIR="$HOME/android-sdk"
-          
-          # 安裝 cmdline-tools（用最新版）
-          mkdir -p "$SDK_DIR/cmdline-tools"
-          cd /tmp
-          
-          echo "📦 下載 command-line tools (latest)..."
-          # 嘗試多個版本的 cmdline-tools
-          for URL in \
-            "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" \
-            "https://dl.google.com/android/repository/commandlinetools-linux-12664580_latest.zip" \
-            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"; do
-            echo "  嘗試: $URL"
-            if curl -sL --fail -o cmdtools.zip "$URL"; then
-              echo "✅ 下載成功"
-              break
-            fi
-          done
-          
-          unzip -q cmdtools.zip -d "$SDK_DIR/cmdline-tools"
-          mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
-          
-          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
-          echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          
-          # 接受授權
-          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          
-          # 更新
-          "$SDKMANAGER" --update || true
-          
-          # 列出可用 platforms
-          echo "=== 檢查可用 platforms ==="
-          "$SDKMANAGER" --list 2>/dev/null | grep -i "platforms;android-3[5-9]" || echo "沒有找到 API 35+ 的 platforms"
-          
-          # 嘗試安裝 platform-tools 和 platform-38
-          echo "=== 嘗試安裝 platforms;android-38 ==="
-          if "$SDKMANAGER" "platforms;android-38" 2>&1; then
-            echo "✅ platforms;android-38 安裝成功"
+          # 嘗試安裝 API 37 platform
+          echo "📦 嘗試安裝 platforms;android-37..."
+          if $SDKMANAGER --sdk_root=$ANDROID_HOME "platforms;android-37" 2>&1; then
+            echo "✅ platforms;android-37 安裝成功"
+            PLATFORM_VER="37"
           else
-            echo "⚠️  sdkmanager 無法安裝 platforms;android-38，改用手動方式"
+            echo "⚠️ platforms;android-37 不可用，嘗試其他版本..."
+            # 嘗試列出所有可用 platforms
+            AVAILABLE=$($SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -oP 'platforms;android-\K[0-9]+' | sort -n | tail -5)
+            echo "可用的 platforms: $AVAILABLE"
+            # 使用最高的可用版本
+            PLATFORM_VER=$(echo "$AVAILABLE" | tail -1)
+            echo "選擇 platforms;android-$PLATFORM_VER"
+            $SDKMANAGER --sdk_root=$ANDROID_HOME "platforms;android-$PLATFORM_VER" || true
           fi
-          
-          echo "=== 嘗試安裝 build-tools;38.0.0 ==="
-          "$SDKMANAGER" "build-tools;38.0.0" 2>&1 || echo "⚠️  build-tools 安裝失敗，稍後手動處理"
 
-      - name: Manually install API 38 platform if missing
-        run: |
-          set -eux
-          
-          SDK_DIR="$HOME/android-sdk"
-          
-          # 檢查 platforms;android-38 是否已安裝
-          if [ -d "$SDK_DIR/platforms/android-38" ]; then
-            echo "✅ platforms;android-38 已存在，跳過手動安裝"
-            ls "$SDK_DIR/platforms/android-38/"
+          # 安裝對應的 build-tools
+          echo "📦 嘗試安裝 build-tools;37.0.0..."
+          if $SDKMANAGER --sdk_root=$ANDROID_HOME "build-tools;37.0.0" 2>&1; then
+            echo "✅ build-tools;37.0.0 安裝成功"
+            BT_VER="37.0.0"
           else
-            echo "📦 手動下載 platforms;android-38..."
-            
-            # 方法：從 Google 的 Maven 倉庫直接下載 platform SDK
-            # Android SDK platform 的 maven artifact
-            mkdir -p "$SDK_DIR/platforms/android-38"
-            
-            # 嘗試從多個來源下載
-            for URL in \
-              "https://dl.google.com/android/repository/platform-38_r02.zip" \
-              "https://dl.google.com/android/repository/android-38.zip"; do
-              echo "  嘗試: $URL"
-              if curl -sL --fail -o /tmp/platform-38.zip "$URL"; then
-                unzip -q -o /tmp/platform-38.zip -d "$SDK_DIR/platforms/android-38/"
-                echo "✅ 手動下載成功"
-                break
-              fi
-            done
-            
-            # 如果上面的 URL 都不行，就用最終方案：
-            # 用 compileSdk 34 代替 38，確保能建置
-            if [ ! -d "$SDK_DIR/platforms/android-38" ] || [ -z "$(ls -A "$SDK_DIR/platforms/android-38" 2>/dev/null)" ]; then
-              echo "⚠️  API 38 無法手動下載，回退到 API 34"
-              echo "ANDROID_SDK_PLATFORM_VERSION=android-34" >> $GITHUB_ENV
-              "$SDKMANAGER" "platforms;android-34" 2>&1 || true
-            fi
+            echo "⚠️ build-tools;37.0.0 不可用，嘗試其他版本..."
+            AVAILABLE_BT=$($SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -oP 'build-tools;\K[0-9.]+' | sort -V | tail -5)
+            echo "可用的 build-tools: $AVAILABLE_BT"
+            BT_VER=$(echo "$AVAILABLE_BT" | tail -1)
+            echo "選擇 build-tools;$BT_VER"
+            $SDKMANAGER --sdk_root=$ANDROID_HOME "build-tools;$BT_VER" || true
           fi
 
-      - name: Verify SDK Installation
-        run: |
-          SDK_DIR="$HOME/android-sdk"
-          echo "📂 SDK 目錄："
-          ls "$SDK_DIR/"
-          echo ""
-          echo "📂 Platforms："
-          ls "$SDK_DIR/platforms/" 2>/dev/null || echo "❌ platforms 目錄不存在"
-          echo ""
-          echo "📂 Build-tools："
-          ls "$SDK_DIR/build-tools/" 2>/dev/null || echo "❌ build-tools 目錄不存在"
-          echo ""
-          echo "📂 Platform-tools："
-          ls "$SDK_DIR/platform-tools/" 2>/dev/null | head -5 || echo "❌ platform-tools 未安裝"
+          echo "PLATFORM_VER=$PLATFORM_VER" >> $GITHUB_ENV
+          echo "BT_VER=$BT_VER" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
 
-      - name: Patch build.gradle for available SDK
+          echo "=== 最終 SDK 狀態 ==="
+          echo "Platform API: $PLATFORM_VER"
+          echo "Build Tools: $BT_VER"
+          ls $ANDROID_HOME/platforms/
+          ls $ANDROID_HOME/build-tools/
+
+      - name: Update compileSdk in build.gradle.kts
         run: |
-          set -eux
-          
-          SDK_DIR="$HOME/android-sdk"
-          
-          # 檢查哪個 platform 版本可用
-          if [ -d "$SDK_DIR/platforms/android-38" ] && [ -n "$(ls -A "$SDK_DIR/platforms/android-38" 2>/dev/null)" ]; then
-            echo "🎯 使用 compileSdk 38"
-            echo "COMPILE_SDK=38" >> $GITHUB_ENV
-          elif [ -d "$SDK_DIR/platforms/android-34" ] && [ -n "$(ls -A "$SDK_DIR/platforms/android-34" 2>/dev/null)" ]; then
-            echo "🎯 使用 compileSdk 34"
-            echo "COMPILE_SDK=34" >> $GITHUB_ENV
-          else
-            # 找任何可用的 platform
-            AVAILABLE=$(ls "$SDK_DIR/platforms/" 2>/dev/null | grep "android-" | sort -t'-' -k2 -n | tail -1 | sed 's/android-//')
-            if [ -n "$AVAILABLE" ]; then
-              echo "🎯 使用 compileSdk $AVAILABLE"
-              echo "COMPILE_SDK=$AVAILABLE" >> $GITHUB_ENV
-            else
-              echo "❌ 沒有可用的 platform SDK！"
-              exit 1
-            fi
-          fi
-          
-          echo "COMPILE_SDK=$COMPILE_SDK" >> $GITHUB_ENV
+          PLATFORM_VER="${{ env.PLATFORM_VER || '37' }}"
+          echo "🔧 設定 compileSdk = $PLATFORM_VER"
+          # 動態修改 compileSdk 為實際安裝的版本
+          sed -i "s/compileSdk = 37/compileSdk = $PLATFORM_VER/" androidApp/build.gradle.kts
+          sed -i "s/targetSdk = 37/targetSdk = $PLATFORM_VER/" androidApp/build.gradle.kts
+          grep "compileSdk\|targetSdk" androidApp/build.gradle.kts
+
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > androidApp/local.properties
+          cat androidApp/local.properties
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -203,113 +130,52 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-${{ runner.os }}-
+            ${{ runner.os }}-gradle-
 
-      # ============================================================
-      #  簽名金鑰
-      #  ============================================================
-      - name: Setup signing keystore
-        id: keystore
+      - name: Build APK
+        working-directory: androidApp
         run: |
-          mkdir -p androidApp/signing
-          
-          if [ -n "${{ secrets.SIGNING_KEYSTORE }}" ]; then
-            echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 -d > androidApp/signing/release-key.jks
-            echo "has_keystore=true" >> $GITHUB_OUTPUT
-            echo "🔑 使用已儲存的簽名金鑰"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Verify APK
+        run: |
+          if [ -f "androidApp/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "✅ APK 建置成功"
+            ls -lh androidApp/app/build/outputs/apk/debug/app-debug.apk
           else
-            echo "🔑 生成新的長期簽名金鑰..."
-            STORE_PASS="hketa-$(date +%s)-$(echo $RANDOM | md5sum | cut -c1-8)"
-            KEY_ALIAS="hketa"
-            
-            keytool -genkeypair \
-              -v \
-              -keystore androidApp/signing/release-key.jks \
-              -storepass "$STORE_PASS" \
-              -keypass "$STORE_PASS" \
-              -alias "$KEY_ALIAS" \
-              -keyalg RSA \
-              -keysize 4096 \
-              -validity 10950 \
-              -dname "CN=HK ETA App, OU=Open Source, O=HK ETA, L=Hong Kong, S=HK, C=HK"
-            
-            echo "has_keystore=true" >> $GITHUB_OUTPUT
-            echo "STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
-            echo "KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
-            echo "KEY_PASS=$STORE_PASS" >> $GITHUB_ENV
-            echo "✅ 新簽名金鑰已生成"
+            echo "❌ APK 未找到"
+            echo "=== 嘗試查找所有 APK ==="
+            find androidApp -name "*.apk" -type f 2>/dev/null
+            echo "=== build 目錄內容 ==="
+            ls -la androidApp/app/build/ 2>/dev/null || echo "no build dir"
+            exit 1
           fi
 
-      - name: Upload keystore backup
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: signing-keystore-backup
-          path: androidApp/signing/release-key.jks
-          retention-days: 90
-
-      # ============================================================
-      #  建置 APK
-      #  ============================================================
-      - name: Build Release APK
-        working-directory: androidApp
-        env:
-          CI_COMPILE_SDK: ${{ env.COMPILE_SDK || 34 }}
-        run: |
-          set -eux
-          chmod +x gradlew
-          
-          echo "📋 使用 compileSdk=$CI_COMPILE_SDK 建置"
-          
-          ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=$(pwd)/signing/release-key.jks \
-            -Pandroid.injected.signing.store.password="$STORE_PASS" \
-            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-            -Pandroid.injected.signing.key.password="$KEY_PASS" \
-            --no-daemon --stacktrace
-
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: hketa-release-apk
-          path: androidApp/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    permissions:
-      contents: write
-    steps:
-      - name: Download APK
-        uses: actions/download-artifact@v4
-        with:
-          name: hketa-release-apk
-
-      - name: Get version
-        id: version
-        run: echo "count=$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+          name: hketa-app-debug
+          path: androidApp/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
 
       - name: Create Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.count }}
-          name: HK ETA v${{ steps.version.outputs.count }}
+          tag_name: v${{ github.run_number }}
+          name: HK ETA v${{ github.run_number }}
+          files: androidApp/app/build/outputs/apk/debug/app-debug.apk
           body: |
-            ## HK ETA 自動建置
-
-            由 GitHub Actions 自動產生的已簽名 APK 檔案。
-
-            ### 建置資訊
-            - 提交：`${{ github.sha }}`
-            - 版本碼：${{ steps.version.outputs.count }}
-
-            > 🔐 使用長期一致簽名金鑰，可直接覆蓋安裝舊版本。
-          files: |
-            *.apk
+            HK ETA App 自動建置版本
+            - 建置編號: ${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - 平台 API: ${{ env.PLATFORM_VER }}
+            - 建置時間: ${{ github.event.head_commit.timestamp }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
