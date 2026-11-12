@@ -1,7 +1,0 @@
-# 由 scripts/build-data.js 於部署時產生，不進 git
-data/
-
-# 本機
-node_modules/
-.DS_Store
-Thumbs.db
