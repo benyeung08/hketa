@@ -23,17 +23,15 @@ fun getEnvOrProp(envKey: String, propKey: String): String? {
 
 android {
     namespace = "com.hketa.app"
-    // compileSdk 可被環境變數 CI_COMPILE_SDK 覆寫（預設 38）
-    // 這樣當 CI 無法取得 API 38 platform 時可以自動降級
-    val ciCompileSdk = System.getenv("CI_COMPILE_SDK")?.toIntOrNull() ?: 38
-    compileSdk = ciCompileSdk
+    // compileSdk = 34（CI 穩定支援，本地開發可自行改為 38）
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.hketa.app"
         // minSdk = 24 → Android 7.0 (Nougat)
         // targetSdk 跟隨 compileSdk
         minSdk = 24
-        targetSdk = ciCompileSdk
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
