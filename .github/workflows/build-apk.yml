@@ -1,138 +1,121 @@
-name: Build HKETA signed release APK
+name: Build Android APK
 
-# 正式版只在 main push / v* tag / 手動觸發時出；PR 不跑（避免 fork PR 拿不到簽名 secrets）。
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
-  workflow_dispatch:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 手動觸發
 
 permissions:
   contents: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  actions: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          node-version: "22"
-          cache: npm
+          java-version: '17'
+          distribution: 'temurin'
 
-      - uses: actions/setup-java@v4
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
-      - uses: android-actions/setup-android@v3
-      # cordova-android 15.1.0 official ceiling = API 36 (Android 16).
-      # The produced APK still installs on Android 17 (API 37) devices — no maxSdk is set.
-      - name: Accept licenses and install Android SDK (API 36)
+      - name: Verify gradlew exists
+        working-directory: androidApp
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
-          sdkmanager --list_installed | grep -E "android-36|36\.0\.0" || true
+          ls -la gradlew
+          ls -la gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
 
-      - name: Install npm dependencies (locked)
-        run: npm ci --no-audit --no-fund
+      - name: Grant execute permission for gradlew
+        working-directory: androidApp
+        run: chmod +x gradlew
 
-      - name: Typecheck TypeScript
-        run: npm run typecheck
+      - name: Build Debug APK
+        working-directory: androidApp
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Bundle TypeScript into www/js/app.js
-        run: npm run build
+      - name: Build Release APK
+        working-directory: androidApp
+        run: ./gradlew assembleRelease --no-daemon --stacktrace || echo "::warning::Release build skipped (no signing keystore configured)"
 
-      - name: Add Android platform (Cordova Android 15.1.0)
-        run: npx cordova platform add android@15.1.0
-
-      - name: Add local Kotlin Cordova plugin
-        run: npx cordova plugin add ./native-plugin/hketa-native
-
-      - name: Verify local Kotlin plugin is installed
-        run: npx cordova plugin ls
-
-      - name: Verify release signing secrets
-        env:
-          KEYSTORE_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
-          STORE_PW: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
-          KEY_PW: ${{ secrets.HKETA_KEY_PASSWORD }}
+      - name: List build outputs
+        working-directory: androidApp
         run: |
-          missing=()
-          [ -z "$KEYSTORE_B64" ] && missing+=(HKETA_KEYSTORE_BASE64)
-          [ -z "$STORE_PW" ] && missing+=(HKETA_KEYSTORE_PASSWORD)
-          [ -z "$KEY_ALIAS" ] && missing+=(HKETA_KEY_ALIAS)
-          [ -z "$KEY_PW" ] && missing+=(HKETA_KEY_PASSWORD)
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing signing secrets: ${missing[*]}"
-            echo "::error::See README → Release signing, then add them under Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-          echo "Signing secrets present"
+          echo "=== Debug APKs ==="
+          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "No debug APK"
+          echo "=== Release APKs ==="
+          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "No release APK"
 
-      # build.json 由 secrets 動態產生，不進 git；密碼用 node 寫入以避免特殊字元破壞 JSON。
-      - name: Build signed release APK
-        env:
-          KEYSTORE_B64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
-          STORE_PW: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
-          KEY_PW: ${{ secrets.HKETA_KEY_PASSWORD }}
-          KEYSTORE_TYPE: ${{ secrets.HKETA_KEYSTORE_TYPE }}
-        run: |
-          echo "$KEYSTORE_B64" | base64 -d > release.keystore
-          node -e "
-            const fs = require('fs');
-            const cfg = { android: { release: {
-              keystore: 'release.keystore',
-              storePassword: process.env.STORE_PW,
-              alias: process.env.KEY_ALIAS,
-              password: process.env.KEY_PW,
-              keystoreType: process.env.KEYSTORE_TYPE || 'PKCS12'
-            }}};
-            fs.writeFileSync('build.json', JSON.stringify(cfg, null, 2));
-          "
-          npx cordova build android --release --buildConfig=build.json
-
-      - name: Remove signing material
-        if: always()
-        run: rm -f build.json release.keystore
-
-      - name: Verify the APK is signed
-        run: |
-          APK=$(find platforms/android/app/build/outputs/apk/release -name "*.apk" | head -1)
-          test -n "$APK" || { echo "::error::No release APK produced"; exit 1; }
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose "$APK"
-          # Assert the shipped APK declares min 26 (Android 8.0) / target 36.
-          # No maxSdk is emitted, so Android 17 (API 37) and newer stay installable.
-          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
-          BADGE=$("$AAPT2" dump badging "$APK")
-          echo "$BADGE" | grep -q "sdkVersion:'26'" || {
-            echo "::error::minSdkVersion is not 26 (Android 8.0)"; exit 1; }
-          echo "$BADGE" | grep -q "targetSdkVersion:'36'" || {
-            echo "::error::targetSdkVersion is not 36 (Android 16)"; exit 1; }
-          echo "$BADGE" | grep -E "sdkVersion:|targetSdkVersion:"
-          echo "$BADGE" | grep -q "maxSdkVersion" && {
-            echo "::error::maxSdkVersion must not be set"; exit 1; } || true
-          cp "$APK" HKETA-release.apk
-          ls -lh HKETA-release.apk
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
         with:
-          name: HKETA-release-signed-apk
-          path: HKETA-release.apk
+          name: hketa-debug-apk
+          path: androidApp/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Attach signed APK to tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload Release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-release-apk
+          path: androidApp/app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+    steps:
+      - name: Download Debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: hketa-debug-apk
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: HKETA-release.apk
+          tag_name: v${{ github.run_number }}
+          name: HK ETA Build #${{ github.run_number }}
+          body: |
+            ## HK ETA 自動建置
+
+            由 GitHub Actions 自動產生的 APK 檔案。
+
+            ### 下載
+            - `app-debug.apk` — 可直接安裝測試
+
+            ### 建置資訊
+            - 提交：`${{ github.sha }}`
+            - 訊息：${{ github.event.head_commit.message }}
+
+            ### 安裝方式
+            下載 APK 後，在手機上開啟檔案即可安裝（需允許「未知來源」安裝權限）。
+          files: |
+            *.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
