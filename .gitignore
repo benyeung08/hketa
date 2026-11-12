@@ -1,19 +1,7 @@
+# 由 scripts/build-data.js 於部署時產生，不進 git
+data/
+
+# 本機
 node_modules/
-platforms/
-plugins/
-www/js/app.js
-
-# 正式版簽名素材（絕對不要進 git）
-build.json
-*.keystore
-*.jks
-*.p12
-release-signing.properties
-debug-signing.properties
-
-# 產物
-*.apk
-*.aab
-HKETA-release.apk
 .DS_Store
-npm-debug.log*
+Thumbs.db
