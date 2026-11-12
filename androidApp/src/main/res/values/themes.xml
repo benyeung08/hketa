@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        Base theme: MaterialComponents.DayNight.DarkActionBar is fully
+        compatible with minSdk = 24 (Android 7.0+).
+    -->
+    <style name="Theme.HkEta" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!--
+            Status bar colour is set programmatically on API 21+;
+            colorPrimary is referenced by the AppCompat theme.
+        -->
+        <item name="colorPrimary">#1976D2</item>
+        <item name="colorPrimaryDark">#1565C0</item>
+        <item name="colorAccent">#FF6F00</item>
+    </style>
+
+</resources>
