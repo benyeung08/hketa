@@ -14,9 +14,15 @@
     <string name="empty_routes">暫無路線資料</string>
     <string name="empty_stops">此路線暫無車站資料</string>
 
+    <!-- Android 17 (API 37) 前台服務通知字串 -->
+    <string name="update_channel_name">資料更新</string>
+    <string name="update_channel_desc">背景同步 HK ETA 交通路線資料</string>
+    <string name="update_notification_title">正在更新路線資料</string>
+    <string name="update_notification_text">HK ETA 交通正在背景同步最新資料…</string>
+
     <!--
         Android 7.0+ (API 24+) support notice shown on the main screen.
         Harmless on newer devices; useful for legacy-device diagnostics.
     -->
-    <string name="notice_min_sdk">支援 Android 7.0 及以上版本</string>
+    <string name="notice_min_sdk">支援 Android 7.0 至 Android 17</string>
 </resources>
