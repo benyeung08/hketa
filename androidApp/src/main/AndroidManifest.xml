@@ -11,7 +11,7 @@
 
     <!--
         minSdkVersion="24" → supports Android 7.0 (Nougat) and above.
-        targetSdkVersion="37" → Android 17 (latest stable)
+        targetSdkVersion="36" → Android 16 (latest stable)
         The networkSecurityConfig below is required on Android 9+ (API 28+)
         to allow cleartext HTTP traffic to the local TypeScript API server.
     -->
