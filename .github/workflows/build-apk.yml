@@ -2,180 +2,140 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: 17
 
-      - name: Show pre-installed Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Detect and Install API 37/36 SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls $ANDROID_HOME/platforms/ 2>/dev/null || echo "no platforms dir"
-          ls $ANDROID_HOME/build-tools/ 2>/dev/null || echo "no build-tools dir"
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --version 2>/dev/null || echo "no sdkmanager in cmdline-tools/latest"
-          # 嘗試其他路徑
-          find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -5
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-      - name: Install Android SDK Platform API 37
+          echo "=== Available platforms ==="
+          sdkmanager --list 2>/dev/null | grep "platforms;android-3[6-9]\|platforms;android-4" || true
+
+          # Try API 37 first, fallback to API 36
+          API_VER=""
+          for ver in 37 36; do
+            echo "=== Trying API $ver ==="
+            if sdkmanager "platform-tools" "platforms;android-$ver" "build-tools;$ver.0.0" 2>&1 | grep -q "done"; then
+              API_VER=$ver
+              echo "✅ API $ver installed successfully"
+              break
+            else
+              echo "⚠️ API $ver not available, trying next..."
+            fi
+          done
+
+          if [ -z "$API_VER" ]; then
+            echo "❌ Neither API 37 nor API 36 available"
+            echo "=== Fallback: list all available platforms ==="
+            sdkmanager --list 2>/dev/null | grep "^  platforms;android" || true
+            # Find highest available
+            HIGHEST=$(sdkmanager --list 2>/dev/null | grep -oP "platforms;android-\K[0-9]+" | sort -n | tail -1)
+            echo "Highest available: $HIGHEST"
+            API_VER=$HIGHEST
+            sdkmanager "platform-tools" "platforms;android-$API_VER" "build-tools;$API_VER.0.0" || {
+              echo "FATAL: Cannot install any Android platform SDK"
+              exit 1
+            }
+          fi
+
+          echo "=== Final API_VER=$API_VER ==="
+          echo "API_VER=$API_VER" >> $GITHUB_ENV
+          echo "$API_VER" > /tmp/api_ver.txt
+
+          echo "=== Installed platforms ==="
+          ls $ANDROID_HOME/platforms/ 2>/dev/null || true
+          echo "=== Installed build-tools ==="
+          ls $ANDROID_HOME/build-tools/ 2>/dev/null || true
+
+      - name: Update build.gradle.kts API levels
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          cd androidApp
+          API_VER=$(cat /tmp/api_ver.txt)
+          echo "Setting compileSdk/targetSdk to $API_VER"
 
-          # 如果找不到 sdkmanager，嘗試其他路徑
-          if [ ! -f "$SDKMANAGER" ]; then
-            echo "cmdline-tools/latest not found, searching..."
-            SDKMANAGER=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
-            echo "Found sdkmanager at: $SDKMANAGER"
-          fi
+          # Update compileSdk and targetSdk to detected API level
+          sed -i "s/compileSdk = [0-9]*/compileSdk = $API_VER/" build.gradle.kts
+          sed -i "s/targetSdk = [0-9]*/targetSdk = $API_VER/" build.gradle.kts
 
-          if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
-            echo "❌ sdkmanager not found, downloading cmdline-tools..."
-            mkdir -p $ANDROID_HOME/cmdline-tools
-            wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -O /tmp/cmdtools.zip
-            unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
-            mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          fi
-
-          echo "✅ Using sdkmanager: $SDKMANAGER"
-
-          # 接受 licenses
-          yes | $SDKMANAGER --sdk_root=$ANDROID_HOME --licenses > /dev/null 2>&1
-
-          # 更新 repository 索引
-          $SDKMANAGER --sdk_root=$ANDROID_HOME --update 2>&1 | tail -3 || true
-
-          # 列出可用的 API 37 相關包
-          echo "=== 搜尋 API 37 相關包 ==="
-          $SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -i "android-37\|37.0.0" | head -20
-
-          # 安裝 platform-tools（一定存在）
-          echo "📦 安裝 platform-tools..."
-          $SDKMANAGER --sdk_root=$ANDROID_HOME "platform-tools" || true
-
-          # 嘗試安裝 API 37 platform
-          echo "📦 嘗試安裝 platforms;android-37..."
-          if $SDKMANAGER --sdk_root=$ANDROID_HOME "platforms;android-37" 2>&1; then
-            echo "✅ platforms;android-37 安裝成功"
-            PLATFORM_VER="37"
-          else
-            echo "⚠️ platforms;android-37 不可用，嘗試其他版本..."
-            # 嘗試列出所有可用 platforms
-            AVAILABLE=$($SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -oP 'platforms;android-\K[0-9]+' | sort -n | tail -5)
-            echo "可用的 platforms: $AVAILABLE"
-            # 使用最高的可用版本
-            PLATFORM_VER=$(echo "$AVAILABLE" | tail -1)
-            echo "選擇 platforms;android-$PLATFORM_VER"
-            $SDKMANAGER --sdk_root=$ANDROID_HOME "platforms;android-$PLATFORM_VER" || true
-          fi
-
-          # 安裝對應的 build-tools
-          echo "📦 嘗試安裝 build-tools;37.0.0..."
-          if $SDKMANAGER --sdk_root=$ANDROID_HOME "build-tools;37.0.0" 2>&1; then
-            echo "✅ build-tools;37.0.0 安裝成功"
-            BT_VER="37.0.0"
-          else
-            echo "⚠️ build-tools;37.0.0 不可用，嘗試其他版本..."
-            AVAILABLE_BT=$($SDKMANAGER --sdk_root=$ANDROID_HOME --list 2>/dev/null | grep -oP 'build-tools;\K[0-9.]+' | sort -V | tail -5)
-            echo "可用的 build-tools: $AVAILABLE_BT"
-            BT_VER=$(echo "$AVAILABLE_BT" | tail -1)
-            echo "選擇 build-tools;$BT_VER"
-            $SDKMANAGER --sdk_root=$ANDROID_HOME "build-tools;$BT_VER" || true
-          fi
-
-          echo "PLATFORM_VER=$PLATFORM_VER" >> $GITHUB_ENV
-          echo "BT_VER=$BT_VER" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-
-          echo "=== 最終 SDK 狀態 ==="
-          echo "Platform API: $PLATFORM_VER"
-          echo "Build Tools: $BT_VER"
-          ls $ANDROID_HOME/platforms/
-          ls $ANDROID_HOME/build-tools/
-
-      - name: Update compileSdk in build.gradle.kts
-        run: |
-          PLATFORM_VER="${{ env.PLATFORM_VER || '37' }}"
-          echo "🔧 設定 compileSdk = $PLATFORM_VER"
-          # 動態修改 compileSdk 為實際安裝的版本
-          sed -i "s/compileSdk = 37/compileSdk = $PLATFORM_VER/" androidApp/build.gradle.kts
-          sed -i "s/targetSdk = 37/targetSdk = $PLATFORM_VER/" androidApp/build.gradle.kts
-          grep "compileSdk\|targetSdk" androidApp/build.gradle.kts
+          echo "=== Updated build.gradle.kts ==="
+          grep -n "compileSdk\|targetSdk" build.gradle.kts
 
       - name: Create local.properties
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > androidApp/local.properties
-          cat androidApp/local.properties
+          cd androidApp
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "✅ local.properties created:"
+          cat local.properties
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          gradle-version: "8.14.2"
+          cache-disabled: false
 
       - name: Build APK
-        working-directory: androidApp
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          cd androidApp
+          API_VER=$(cat /tmp/api_ver.txt)
+          echo "Building with COMPILE_SDK_VERSION=$API_VER"
+          gradle assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          COMPILE_SDK_VERSION: ${{ env.API_VER }}
 
       - name: Verify APK
         run: |
-          if [ -f "androidApp/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "✅ APK 建置成功"
-            ls -lh androidApp/app/build/outputs/apk/debug/app-debug.apk
+          cd androidApp
+          APK_PATH="build/outputs/apk/debug/androidApp-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "✅ Found APK: $APK_PATH"
+            ls -la "$APK_PATH"
           else
-            echo "❌ APK 未找到"
-            echo "=== 嘗試查找所有 APK ==="
-            find androidApp -name "*.apk" -type f 2>/dev/null
-            echo "=== build 目錄內容 ==="
-            ls -la androidApp/app/build/ 2>/dev/null || echo "no build dir"
-            exit 1
+            echo "APK not at expected path, searching..."
+            find . -name "*.apk" -type f
           fi
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hketa-app-debug
-          path: androidApp/app/build/outputs/apk/debug/app-debug.apk
+          path: androidApp/build/outputs/apk/debug/*.apk
           retention-days: 30
 
       - name: Create Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: HK ETA v${{ github.run_number }}
-          files: androidApp/app/build/outputs/apk/debug/app-debug.apk
+          name: HK ETA App v${{ github.run_number }} (API ${{ env.API_VER }})
+          files: androidApp/build/outputs/apk/debug/*.apk
           body: |
-            HK ETA App 自動建置版本
-            - 建置編號: ${{ github.run_number }}
-            - Commit: ${{ github.sha }}
-            - 平台 API: ${{ env.PLATFORM_VER }}
-            - 建置時間: ${{ github.event.head_commit.timestamp }}
+            Automated build #${{ github.run_number }}
+            Target API: ${{ env.API_VER }}
+            Commit: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
