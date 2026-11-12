@@ -187,8 +187,8 @@ All data is fetched from publicly available open-data sources:
 | **Node.js** | ≥ 18.x |
 | **npm** | ≥ 9.x |
 | **JDK** | 17 (Temurin / OpenJDK recommended) |
-| **Android SDK** | API 34 platform installed |
-| **Gradle** | 8.4 (wrapper included) |
+| **Android SDK** | API 37 platform installed |
+| **Gradle** | 9.8.0 (wrapper included) |
 
 ### Step 1 — Run the TypeScript API
 
@@ -315,13 +315,24 @@ The **Settings** screen (`SettingsActivity`) is the central hub for keeping rout
 
 ## Android Version Support
 
-This app supports **Android 7.0 (Nougat, API 24) and above**, covering the vast majority of Android devices in use since 2016.
+This app supports **Android 7.0 (Nougat, API 24) through Android 17 (API 37)**, covering the vast majority of Android devices in use since 2016.
 
 | Item | Version |
 |---|---|
 | Minimum | Android 7.0 (API 24) |
-| Target | Android 14 (API 34) |
-| Tested Range | Android 7.0 – 14 |
+| Target | **Android 17 (API 37)** |
+| Tested Range | Android 7.0 – 17 |
+
+### Tech Version Matrix
+
+| Component | Version |
+|---|---|
+| Android Gradle Plugin (AGP) | 9.5.1 |
+| Gradle | 9.8.0 |
+| Kotlin | 2.4.21 |
+| compileSdk / targetSdk | API 37 (Android 17) |
+| minSdk | API 24 (Android 7.0) |
+| JDK | 17 |
 
 ### Compatibility measures for Android 7
 
@@ -330,6 +341,13 @@ This app supports **Android 7.0 (Nougat, API 24) and above**, covering the vast 
 - **Date parsing** — uses `SimpleDateFormat` with manual ISO-8601 fallback instead of `java.time.Instant` (API 26+)
 - **Library pinning** — all AndroidX / Material / Lifecycle dependencies are pinned to versions that support API 24
 - **MultiDex enabled** — prevents the 65k method limit on older runtimes
+
+### Adaptations for Android 17
+
+- **Edge-to-Edge display** — content extends behind system bars using `WindowCompat.setDecorFitsSystemWindows(window, false)`
+- **Foreground service types** — Android 14+ requires explicit `foregroundServiceType`; data updates use `dataSync`
+- **Notification permission** — Android 13+ requires `POST_NOTIFICATIONS` runtime permission
+- **Foreground Service permissions** — added `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_DATA_SYNC` to the manifest
 
 > For Android 8+ only, you can remove the cleartext setting and switch to HTTPS endpoints.
 

@@ -2,8 +2,8 @@
 
 ![GitHub Actions Build](https://github.com/your-username/hketa-app/actions/workflows/build-apk.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Android API](https://img.shields.io/badge/Android%20API-24--38-brightgreen.svg)](https://developer.android.com/about/versions)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.1-blue.svg)](https://kotlinlang.org)
+[![Android API](https://img.shields.io/badge/Android-7.0%20~%2017-brightgreen.svg)](https://developer.android.com/about/versions)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.21-blue.svg)](https://kotlinlang.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org)
 
 一個全端香港公共交通 App：**TypeScript API**（Node.js + Express）聚合官方開放數據並提供統一的 JSON 資料格式；**Kotlin Android** 客戶端以乾淨的 MVVM 架構消費這些數據。
@@ -130,8 +130,19 @@ App 內「設定」頁面提供完整的資料更新管理：
 | 項目 | 版本 |
 |---|---|
 | 最低支援 | Android 7.0（API 24） |
-| 目標版本 | Android 14（API 34） |
-| 測試範圍 | Android 7.0 ~ 14 |
+| 目標版本 | **Android 17（API 37）** |
+| 測試範圍 | Android 7.0 ~ 17 |
+
+### 技術版本矩陣
+
+| 組件 | 版本 |
+|---|---|
+| Android Gradle Plugin (AGP) | 9.5.1 |
+| Gradle | 9.8.0 |
+| Kotlin | 2.4.21 |
+| compileSdk / targetSdk | API 37（Android 17） |
+| minSdk | API 24（Android 7.0） |
+| JDK | 17 |
 
 ### 為 Android 7 所做的相容性處理
 
@@ -140,6 +151,13 @@ App 內「設定」頁面提供完整的資料更新管理：
 - **日期解析相容**：使用 `SimpleDateFormat` + 手動 ISO-8601 解析，避免 `java.time.Instant`（需 API 26+）
 - **Library 版本鎖定**：所有 AndroidX / Material / Lifecycle 依賴均選用支援 API 24 的版本
 - **MultiDex 啟用**：避免方法數超限（API 24 以下需要手動啟用）
+
+### 為 Android 17 所做的適配
+
+- **Edge-to-Edge 全面屏**：使用 `WindowCompat.setDecorFitsSystemWindows(window, false)`，內容延伸至狀態列與導航列下方
+- **前台服務類型**：Android 14+ 要求所有前台服務必須指定 `foregroundServiceType`，資料更新使用 `dataSync` 類型
+- **通知權限**：Android 13+ 需要 `POST_NOTIFICATIONS` 權限
+- **Foreground Service 權限**：加入 `FOREGROUND_SERVICE` 和 `FOREGROUND_SERVICE_DATA_SYNC` 權限
 
 > 若僅用於 Android 8+ 環境，可移除 `network_security_config.xml` 中的明文設定，改為 HTTPS 端點。
 
