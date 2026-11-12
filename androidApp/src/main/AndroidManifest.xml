@@ -3,9 +3,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 15+ 前台服務類型權限（資料同步） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13+ 通知權限 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-        android:minSdkVersion="24" → supports Android 7.0 (Nougat) and above.
+        minSdkVersion="24" → supports Android 7.0 (Nougat) and above.
+        targetSdkVersion="37" → Android 17 (latest stable)
         The networkSecurityConfig below is required on Android 9+ (API 28+)
         to allow cleartext HTTP traffic to the local TypeScript API server.
     -->
@@ -37,6 +43,12 @@
             android:name=".ui.SettingsActivity"
             android:exported="false"
             android:label="@string/title_settings" />
+
+        <!-- 資料更新前台服務 (Android 14+ 需要指定 foregroundServiceType) -->
+        <service
+            android:name=".data.UpdateService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 </manifest>
