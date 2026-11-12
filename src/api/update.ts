@@ -1,4 +1,4 @@
-import { RELEASE_ASSET_NAME } from '../version';
+import { ALLOWED_RELEASE_HOSTS, MAX_APK_BYTES, RELEASE_ASSET_NAME, REPO_NAME_RE } from '../version';
 import { getJson } from './http';
 
 export interface ReleaseInfo {
@@ -38,7 +38,18 @@ export function normaliseVersion(raw: string): string {
   return raw.trim().replace(/^[vV]/, '').split('-')[0].replace(/[^0-9.]/g, '');
 }
 
-/** 單純的三段數字比對；a > b 回 1，a < b 回 -1，相等回 0。 */
+/** 只接受 GitHub 官方下載 host，且必須是 https。 */
+export function isAllowedReleaseUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' &&
+      ALLOWED_RELEASE_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+/** 三段數字比對；帶 -rc/-beta 後綴者視為比同號正式版舊。 */
 export function compareVersions(a: string, b: string): number {
   const pa = normaliseVersion(a).split('.').map((n) => Number(n) || 0);
   const pb = normaliseVersion(b).split('.').map((n) => Number(n) || 0);
@@ -48,21 +59,36 @@ export function compareVersions(a: string, b: string): number {
     if (x > y) return 1;
     if (x < y) return -1;
   }
-  return 0;
+  const preA = /-/.test(a.trim().replace(/^[vV]/, '')) ? 1 : 0;
+  const preB = /-/.test(b.trim().replace(/^[vV]/, '')) ? 1 : 0;
+  if (preA === preB) return 0;
+  return preA < preB ? 1 : -1;
 }
 
 export async function fetchLatestRelease(owner: string, repo: string): Promise<ReleaseInfo> {
   const o = owner.trim();
   const r = repo.trim();
-  if (!/^[A-Za-z0-9_.-]+$/.test(o) || !/^[A-Za-z0-9_.-]+$/.test(r)) {
+  if (!REPO_NAME_RE.test(o) || !REPO_NAME_RE.test(r)) {
     throw new Error('Invalid GitHub owner / repo');
   }
   const raw = await getJson<GhRelease>(`${API}/repos/${encodeURIComponent(o)}/${encodeURIComponent(r)}/releases/latest`, 10000);
 
   const assets = raw.assets ?? [];
-  const preferred = assets.find((a) => a.name === RELEASE_ASSET_NAME)
-    ?? assets.find((a) => (a.name ?? '').toLowerCase().endsWith('.apk'))
-    ?? null;
+  const candidates = assets
+    .filter((a) => (a.name ?? '').toLowerCase().endsWith('.apk'))
+    .filter((a) => isAllowedReleaseUrl(a.browser_download_url ?? ''))
+    .filter((a) => {
+      const size = Number(a.size ?? 0);
+      return size > 0 && size <= MAX_APK_BYTES;
+    });
+  const preferred = candidates.find((a) => a.name === RELEASE_ASSET_NAME) ?? candidates[0] ?? null;
+
+  // html_url 也只信任 github.com，避免 API 回傳被改寫的導向網址。
+  let htmlUrl = `https://github.com/${o}/${r}/releases`;
+  try {
+    const u = new URL(raw.html_url ?? '');
+    if (u.protocol === 'https:' && u.hostname === 'github.com') htmlUrl = u.toString();
+  } catch { /* keep the safe fallback */ }
 
   return {
     tag: raw.tag_name ?? '',
@@ -70,7 +96,7 @@ export async function fetchLatestRelease(owner: string, repo: string): Promise<R
     name: (raw.name || raw.tag_name || 'Release').trim(),
     notes: (raw.body ?? '').trim(),
     publishedAt: raw.published_at ?? null,
-    htmlUrl: raw.html_url ?? `https://github.com/${o}/${r}/releases`,
+    htmlUrl,
     assetUrl: preferred?.browser_download_url ?? null,
     assetName: preferred?.name ?? null,
     assetSize: Number(preferred?.size ?? 0)
