@@ -143,6 +143,68 @@ App 內「設定」頁面提供完整的資料更新管理：
 
 > 若僅用於 Android 8+ 環境，可移除 `network_security_config.xml` 中的明文設定，改為 HTTPS 端點。
 
+## 🔐 長期簽名一致性
+
+為確保用戶能**直接覆蓋安裝**每次更新（無需卸載舊版），本專案採用長期一致的簽名機制。
+
+### 運作原理
+
+```
+首次建置（無 keystore）
+  │
+  ├─ GitHub Actions 自動生成 4096-bit RSA 簽名金鑰
+  ├─ 有效期：30 年（10950 天）
+  ├─ 自動上傳為 Artifact 備份
+  └─ 建議手動設定為 GitHub Secrets（永久保存）
+
+後續建置
+  │
+  ├─ 從 GitHub Secrets 讀取同一個 keystore
+  ├─ 每次建置使用相同簽名 → 可直接覆蓋安裝
+  └─ Version Code 自動遞增（基於 git commit 數）
+```
+
+### 設定方式（推薦）
+
+1. **首次建置後**，下載 `signing-keystore-backup` Artifact
+2. 將 keystore 編碼為 Base64：
+   ```bash
+   base64 -w0 release-key.jks > keystore_b64.txt
+   ```
+3. 在 GitHub Repo → **Settings** → **Secrets and variables** → **Actions** 加入：
+   | Secret 名稱 | 值 |
+   |---|---|
+   | `SIGNING_KEYSTORE` | `keystore_b64.txt` 的內容 |
+   | `SIGNING_STORE_PASSWORD` | Keystore 密碼 |
+   | `SIGNING_KEY_ALIAS` | `hketa` |
+   | `SIGNING_KEY_PASSWORD` | Keystore 密碼 |
+4. 之後每次建置都會自動使用此簽名
+
+### 本地開發
+
+```bash
+# 1. 生成 keystore
+keytool -genkeypair -v -keystore hketa-release-key.jks \
+  -storepass 你的密碼 -keypass 你的密碼 \
+  -alias hketa -keyalg RSA -keysize 4096 -validity 10950
+
+# 2. 複製設定範例並填入資訊
+cp androidApp/keystore.properties.example androidApp/keystore.properties
+# 編輯 keystore.properties，填入你的 keystore 路徑和密碼
+
+# 3. 建置簽名 APK
+cd androidApp && ./gradlew assembleRelease
+```
+
+### 重要提醒
+
+> ⚠️ **簽名金鑰一旦設定就不要更換**，否則：
+> - 用戶必須先卸載舊版才能安裝新版
+> - 所有已安裝用戶的 App 資料會遺失
+> - Google Play / 第三方商店可能拒絕更新
+
+> 💡 **備份建議**：將 `keystore.properties` 中的資訊（或 jks 檔案本身）存放在密碼管理器中，確保即使換電腦也不會遺失。
+
 ## 🔄 GitHub Actions — 自動建置 APK
 
 本專案已配置 GitHub Actions，push 到 `main` 分支後會**自動建置並產出 APK**。
@@ -183,11 +245,13 @@ Push to main ──▶ GitHub Actions 觸發 ──▶ 自動編譯 ──▶ �
 | `.github/workflows/build-apk.yml` | 自動建置 APK + 自動 Release |
 | `.github/workflows/deploy-api.yml` | 部署 API 到 Cloudflare Workers |
 
-> 💡 **提示**：如需 Release APK 簽名，請在 `Settings` → `Secrets and variables` → `Actions` 中設定：
-> - `KEYSTORE_BASE64` — Base64 編碼的 keystore 檔案
-> - `KEYSTORE_PASSWORD` — keystore 密碼
-> - `KEY_ALIAS` — 金鑰別名
-> - `KEY_PASSWORD` — 金鑰密碼
+> 💡 **簽名設定**：如需 Release APK 簽名，請在 `Settings` → `Secrets and variables` → `Actions` 中設定：
+> - `SIGNING_KEYSTORE` — Base64 編碼的 keystore 檔案
+> - `SIGNING_STORE_PASSWORD` — keystore 密碼
+> - `SIGNING_KEY_ALIAS` — 金鑰別名（預設 `hketa`）
+> - `SIGNING_KEY_PASSWORD` — 金鑰密碼
+>
+> 詳見上方「🔐 長期簽名一致性」章節。
 
 ## 🛠️ 技術棧
 

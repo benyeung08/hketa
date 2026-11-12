@@ -1,0 +1,27 @@
+# Node / TypeScript
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# Android
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# 簽名金鑰（重要！不要提交）
+*.jks
+*.keystore
+keystore.properties
+androidApp/keystore.properties
+
+# OS
+.DS_Store
+Thumbs.db
