@@ -11,9 +11,6 @@ permissions:
   contents: write
   actions: read
 
-env:
-  VERSION_CODE_OFFSET: 1000
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,63 +29,75 @@ jobs:
           distribution: 'temurin'
 
       # ============================================================
-      #  Setup Android SDK — 手動安裝方式（最穩定）
+      #  Install Android SDK
       #  ============================================================
-      - name: Setup Android SDK
+      - name: Install Android SDK
         run: |
-          echo "📦 安裝 Android SDK Command Line Tools..."
+          set -eux
           
-          # 下載最新版 command-line tools（使用最新版以支援 API 38+）
-          # 版本 13114758 = 2025.05.20 版，包含最新的 repository XML
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          wget -q "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" -O /tmp/cmdtools.zip
+          SDK_DIR="$HOME/android-sdk"
+          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
           
-          if [ ! -s /tmp/cmdtools.zip ]; then
-            echo "❌ 最新版下載失敗，嘗試備用版本..."
-            wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O /tmp/cmdtools.zip
-          fi
+          mkdir -p "$SDK_DIR/cmdline-tools"
+          cd /tmp
           
-          unzip -q /tmp/cmdtools.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          echo "📦 下載 command-line tools..."
+          # 使用最新的 commandlinetools
+          curl -sL -o cmdtools.zip \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           
-          # 設定環境變數
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_CMD=$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+          ls -la cmdtools.zip
           
-          echo "✅ Android SDK 環境已設定"
+          unzip -q cmdtools.zip -d "$SDK_DIR/cmdline-tools"
+          mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+          
+          # 驗證 sdkmanager 存在
+          ls -la "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          
+          echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
+          
+          echo "✅ Android SDK 準備完成"
 
       - name: Install SDK packages
         run: |
-          # 先接受所有授權
-          yes | $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --licenses > /dev/null 2>&1 || true
+          set -eux
           
-          # 先更新 repository 索引，確保能找到最新 API level
-          echo "📡 更新 SDK repository 索引..."
-          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --update || true
+          SDK_DIR="$HOME/android-sdk"
+          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
           
-          # 檢查可用的最新 platform 版本
-          echo "📋 查詢可用的 platforms..."
-          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --list | grep -E "^platforms;android-" | tail -10
+          # 接受所有授權
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           
-          # 安裝必要套件（build-tools 只裝一個版本以減少時間）
-          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME \
+          # 更新 repository XML
+          "$SDKMANAGER" --update
+          
+          # 診斷：列出所有可用 platforms
+          echo "=== 可用 platforms ==="
+          "$SDKMANAGER" --list 2>/dev/null | grep "platforms;android" | sort -t'-' -k2 -n | tail -10
+          
+          # 安裝所需套件
+          echo "=== 安裝 SDK packages ==="
+          "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-38" \
             "build-tools;38.0.0"
           
-          echo "✅ SDK 套件安裝完成"
-          echo "--- 已安裝套件 ---"
-          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --list_installed
+          echo "=== 已安裝 packages ==="
+          "$SDKMANAGER" --list_installed 2>/dev/null
 
-      - name: Verify Android SDK
+      - name: Verify SDK Installation
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls -la $ANDROID_HOME
-          echo "✅ Android SDK 設定完成"
+          SDK_DIR="$HOME/android-sdk"
+          echo "📂 SDK 目錄："
+          ls "$SDK_DIR/"
+          echo ""
+          echo "📂 Platforms："
+          ls "$SDK_DIR/platforms/" 2>/dev/null && echo "✅ platforms;android-38 已安裝" || echo "❌ platforms 未安裝"
+          echo ""
+          echo "📂 Build-tools："
+          ls "$SDK_DIR/build-tools/" 2>/dev/null || echo "❌ build-tools 未安裝"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -101,141 +110,70 @@ jobs:
             gradle-${{ runner.os }}-
 
       # ============================================================
-      #  長期簽名一致性機制
+      #  簽名金鑰
       #  ============================================================
-      - name: Restore signing keystore from Secret
-        id: restore_keystore
+      - name: Setup signing keystore
+        id: keystore
         run: |
           mkdir -p androidApp/signing
+          
           if [ -n "${{ secrets.SIGNING_KEYSTORE }}" ]; then
             echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 -d > androidApp/signing/release-key.jks
-            echo "✅ Keystore 已從 Secret 恢復"
             echo "has_keystore=true" >> $GITHUB_OUTPUT
+            echo "🔑 使用已儲存的簽名金鑰"
           else
-            echo "⚠️ 未設定 SIGNING_KEYSTORE Secret"
-            echo "has_keystore=false" >> $GITHUB_OUTPUT
+            echo "🔑 生成新的長期簽名金鑰..."
+            STORE_PASS="hketa-$(date +%s)-$(echo $RANDOM | md5sum | cut -c1-8)"
+            KEY_ALIAS="hketa"
+            
+            keytool -genkeypair \
+              -v \
+              -keystore androidApp/signing/release-key.jks \
+              -storepass "$STORE_PASS" \
+              -keypass "$STORE_PASS" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 4096 \
+              -validity 10950 \
+              -dname "CN=HK ETA App, OU=Open Source, O=HK ETA, L=Hong Kong, S=HK, C=HK"
+            
+            echo "has_keystore=true" >> $GITHUB_OUTPUT
+            echo "STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
+            echo "KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
+            echo "KEY_PASS=$STORE_PASS" >> $GITHUB_ENV
+            echo "✅ 新簽名金鑰已生成"
           fi
-        continue-on-error: true
 
-      - name: Generate persistent signing keystore
-        if: steps.restore_keystore.outputs.has_keystore == 'false' && github.event_name == 'push'
-        run: |
-          echo "🔑 首次建置，自動生成長期簽名金鑰..."
-          
-          REPO_NAME="${{ github.repository }}"
-          STORE_PASS=$(echo -n "$REPO_NAME" | sha256sum | cut -c1-32)
-          KEY_ALIAS="hketa"
-          KEY_PASS="$STORE_PASS"
-          
-          mkdir -p androidApp/signing
-          
-          keytool -genkeypair \
-            -v \
-            -keystore androidApp/signing/release-key.jks \
-            -storepass "$STORE_PASS" \
-            -keypass "$KEY_PASS" \
-            -alias "$KEY_ALIAS" \
-            -keyalg RSA \
-            -keysize 4096 \
-            -validity 10950 \
-            -dname "CN=HK ETA App, OU=Open Source, O=HK ETA, L=Hong Kong, S=HK, C=HK"
-          
-          echo "✅ 長期簽名金鑰已生成（有效期 30 年）"
-          
-          base64 androidApp/signing/release-key.jks > /tmp/keystore_b64.txt
-          
-          echo "STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
-          echo "KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
-          echo "KEY_PASS=$KEY_PASS" >> $GITHUB_ENV
-          
-          echo "keystore_b64<<EOF" >> $GITHUB_ENV
-          cat /tmp/keystore_b64.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          echo "::notice::📌 請將 keystore 和密碼妥善保存！建議設定 GitHub Secrets：SIGNING_KEYSTORE, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD"
-
-      - name: Upload keystore as artifact (backup)
-        if: steps.restore_keystore.outputs.has_keystore == 'false' && github.event_name == 'push'
+      - name: Upload keystore backup
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: signing-keystore-backup
           path: androidApp/signing/release-key.jks
           retention-days: 90
 
-      - name: Set up signing environment variables
-        run: |
-          if [ -n "${{ secrets.SIGNING_KEYSTORE }}" ]; then
-            echo "SIGNING_KEYSTORE_FILE=androidApp/signing/release-key.jks" >> $GITHUB_ENV
-            echo "SIGNING_STORE_PASSWORD=${{ secrets.SIGNING_STORE_PASSWORD }}" >> $GITHUB_ENV
-            echo "SIGNING_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }}" >> $GITHUB_ENV
-            echo "SIGNING_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}" >> $GITHUB_ENV
-          elif [ "${{ steps.restore_keystore.outputs.has_keystore }}" = "false" ]; then
-            echo "SIGNING_KEYSTORE_FILE=androidApp/signing/release-key.jks" >> $GITHUB_ENV
-          else
-            echo "⚠️ 使用 debug 簽名"
-          fi
-
       # ============================================================
-      #  建置階段
+      #  建置 APK
       #  ============================================================
-      - name: Verify gradlew exists
+      - name: Build Release APK
         working-directory: androidApp
         run: |
-          ls -la gradlew
-          ls -la gradle/wrapper/gradle-wrapper.jar
+          set -eux
           chmod +x gradlew
-
-      - name: Grant execute permission for gradlew
-        working-directory: androidApp
-        run: chmod +x gradlew
-
-      - name: Build Release APK (signed)
-        working-directory: androidApp
-        run: |
-          echo "🔢 計算 Version Code..."
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          echo "Commit count: $COMMIT_COUNT"
           
-          if [ -f "signing/release-key.jks" ]; then
-            echo "🔐 使用 Release 簽名建置..."
-            ./gradlew assembleRelease \
-              -Pandroid.injected.signing.store.file=$(pwd)/signing/release-key.jks \
-              -Pandroid.injected.signing.store.password="$STORE_PASS" \
-              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-              -Pandroid.injected.signing.key.password="$KEY_PASS" \
-              --no-daemon --stacktrace
-          else
-            echo "⚠️ 無簽名金鑰，建置 Debug APK..."
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          fi
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/signing/release-key.jks \
+            -Pandroid.injected.signing.store.password="$STORE_PASS" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASS" \
+            --no-daemon --stacktrace
 
-      - name: Verify APK signature
-        if: success()
-        working-directory: androidApp
-        run: |
-          echo "=== APK 簽名驗證 ==="
-          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            apksigner verify --verbose app/build/outputs/apk/release/app-release.apk || true
-            echo ""
-            echo "✅ Release APK 已簽名"
-          fi
-
-      - name: List build outputs
-        working-directory: androidApp
-        run: |
-          echo "=== Release APKs ==="
-          ls -lh app/build/outputs/apk/release/ 2>/dev/null || echo "No release APK"
-          echo "=== Debug APKs ==="
-          ls -lh app/build/outputs/apk/debug/ 2>/dev/null || echo "No debug APK"
-
-      - name: Upload Release APK
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: hketa-release-apk
-          path: |
-            androidApp/app/build/outputs/apk/release/*.apk
-            androidApp/app/build/outputs/apk/debug/*.apk
+          path: androidApp/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
   release:
@@ -250,10 +188,9 @@ jobs:
         with:
           name: hketa-release-apk
 
-      - name: Get commit count for version
+      - name: Get version
         id: version
-        run: |
-          echo "count=$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+        run: echo "count=$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -265,19 +202,11 @@ jobs:
 
             由 GitHub Actions 自動產生的已簽名 APK 檔案。
 
-            ### 下載
-            - `app-release.apk` — 已簽名的正式版本（推薦安裝）
-            - `app-debug.apk` — Debug 版本（僅測試用）
-
             ### 建置資訊
             - 提交：`${{ github.sha }}`
-            - 訊息：${{ github.event.head_commit.message }}
             - 版本碼：${{ steps.version.outputs.count }}
 
-            ### 安裝方式
-            下載 APK 後，在手機上開啟檔案即可安裝（需允許「未知來源」安裝權限）。
-
-            > 🔐 本版本使用長期一致的簽名金鑰，可直接覆蓋安裝舊版本。
+            > 🔐 使用長期一致簽名金鑰，可直接覆蓋安裝舊版本。
           files: |
             *.apk
         env:
