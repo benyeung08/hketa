@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -16,6 +17,9 @@ import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 
 /**
  * Native half of the HKETA app.
@@ -192,9 +196,19 @@ class HkEtaNative : CordovaPlugin() {
         }
     }
 
+    /** 只接受 GitHub 官方下載 host；同時擋掉 userinfo 形式的钓鱼网址。 */
+    private fun isAllowedHost(url: String, hosts: Array<String>): Boolean {
+        val host = Uri.parse(url).host?.lowercase() ?: return false
+        return hosts.any { h -> host == h || host.endsWith(".$h") }
+    }
+
     private fun downloadApk(url: String, fileName: String, callbackContext: CallbackContext) {
         if (!url.startsWith("https://")) {
             callbackContext.error("Only https:// download URLs are allowed")
+            return
+        }
+        if (!isAllowedHost(url, arrayOf("github.com", "objects.githubusercontent.com", "api.github.com"))) {
+            callbackContext.error("Download host is not allowed")
             return
         }
         try {
@@ -263,10 +277,87 @@ class HkEtaNative : CordovaPlugin() {
         }
     }
 
+    // ---- APK signature verification (defence against a swapped / wrong-signed update) ----
+
+    @Suppress("DEPRECATION")
+    private fun signingFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            PackageManager.GET_SIGNATURES
+        }
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    @Suppress("DEPRECATION")
+    private fun signaturesOf(info: PackageInfo): Array<Signature> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners ?: emptyArray()
+        } else {
+            info.signatures ?: emptyArray()
+        }
+
+    private fun currentSignerDigests(): Set<String> {
+        val ctx = cordova.activity
+        val pm = ctx.packageManager
+        val info: PackageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(ctx.packageName, PackageManager.PackageInfoFlags.of(signingFlags().toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(ctx.packageName, signingFlags())
+        }
+        return signaturesOf(info).map { sha256(it.toByteArray()) }.toSet()
+    }
+
+    private fun downloadedSignerDigests(uri: Uri): Set<String> {
+        val ctx = cordova.activity
+        val tmp = File(ctx.cacheDir, "hketa-verify-${System.currentTimeMillis()}.apk")
+        val input = ctx.contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("Cannot read downloaded APK")
+        input.use { src -> FileOutputStream(tmp).use { dst -> src.copyTo(dst) } }
+        try {
+            val pm = ctx.packageManager
+            val info: PackageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageArchiveInfo(tmp.absolutePath, PackageManager.PackageInfoFlags.of(signingFlags().toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageArchiveInfo(tmp.absolutePath, signingFlags())
+            } ?: throw IllegalStateException("Downloaded file is not a valid APK")
+            return signaturesOf(info).map { sha256(it.toByteArray()) }.toSet()
+        } finally {
+            tmp.delete()
+        }
+    }
+
     private fun installApk(id: Long, callbackContext: CallbackContext) {
         try {
-            val uri = downloadManager().getUriForDownloadedFile(id)
+            val dm = downloadManager()
+            val uri = dm.getUriForDownloadedFile(id)
                 ?: throw IllegalStateException("Downloaded file URI is not available")
+
+            // 1) 只安裝已完成的下載，避免拿任意 id 觸發安裝。
+            val cursor = dm.query(DownloadManager.Query().setFilterById(id))
+            val complete = try {
+                cursor != null && cursor.moveToFirst() &&
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) ==
+                    DownloadManager.STATUS_SUCCESSFUL
+            } finally {
+                cursor?.close()
+            }
+            if (!complete) throw IllegalStateException("Download is not complete")
+
+            // 2) 簽章必須與目前 App 相同，否則拒絕安裝（不再只靠系統事後擋）。
+            if (downloadedSignerDigests(uri) != currentSignerDigests()) {
+                throw SecurityException("APK signature does not match the installed app")
+            }
+
+            // 3) Android 8+ 需已授權安裝未知來源。
+            if (!canInstallUnknown()) {
+                throw SecurityException("Install permission not granted")
+            }
+
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -284,6 +375,10 @@ class HkEtaNative : CordovaPlugin() {
     private fun openUrl(url: String, callbackContext: CallbackContext) {
         if (!url.startsWith("https://")) {
             callbackContext.error("Only https:// URLs are allowed")
+            return
+        }
+        if (!isAllowedHost(url, arrayOf("github.com", "objects.githubusercontent.com"))) {
+            callbackContext.error("URL host is not allowed")
             return
         }
         try {
