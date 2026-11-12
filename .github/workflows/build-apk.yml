@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -35,8 +39,8 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
           sdkmanager --list_installed | grep -E "android-36|36\.0\.0" || true
 
-      - name: Install npm dependencies
-        run: npm install
+      - name: Install npm dependencies (locked)
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck TypeScript
         run: npm run typecheck
@@ -94,7 +98,10 @@ jobs:
             fs.writeFileSync('build.json', JSON.stringify(cfg, null, 2));
           "
           npx cordova build android --release --buildConfig=build.json
-          rm -f build.json release.keystore
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f build.json release.keystore
 
       - name: Verify the APK is signed
         run: |
