@@ -38,54 +38,122 @@ jobs:
           SDK_DIR="$HOME/android-sdk"
           echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_SDK_PLATFORM_VERSION=android-38" >> $GITHUB_ENV
+          echo "ANDROID_BUILD_TOOLS_VERSION=38.0.0" >> $GITHUB_ENV
           
-          mkdir -p "$SDK_DIR/cmdline-tools"
-          cd /tmp
+          mkdir -p "$SDK_DIR"
           
-          echo "📦 下載 command-line tools..."
-          # 使用最新的 commandlinetools
-          curl -sL -o cmdtools.zip \
-            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          # ----------------------------------------------------------
+          #  策略：手動下載 platform-tools 和 platform SDK
+          #  繞過 sdkmanager 索引不含 API 38 的問題
+          #  ----------------------------------------------------------
           
-          ls -la cmdtools.zip
-          
-          unzip -q cmdtools.zip -d "$SDK_DIR/cmdline-tools"
-          mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
-          
-          # 驗證 sdkmanager 存在
-          ls -la "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
-          
-          echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "📦 安裝 platform-tools..."
+          # 下載 platform-tools
+          curl -sL -o /tmp/platform-tools.zip \
+            "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+          unzip -q /tmp/platform-tools.zip -d "$SDK_DIR/"
           echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
           
-          echo "✅ Android SDK 準備完成"
+          echo "📦 安裝 build-tools..."
+          # 直接下載 build-tools 壓縮包
+          mkdir -p "$SDK_DIR/build-tools/38.0.0"
+          curl -sL -o /tmp/build-tools.zip \
+            "https://dl.google.com/android/repository/build-tools_r38.0.0-linux.zip"
+          # build-tools 可能有不同 URL 格式，嘗試多種
+          if ! unzip -q -o /tmp/build-tools.zip -d "$SDK_DIR/build-tools/38.0.0/" 2>/dev/null; then
+            echo "⚠️  build-tools 直接下載失敗，稍後用 sdkmanager 處理"
+          fi
+          
+          echo "✅ Android SDK 基本元件已下載"
 
-      - name: Install SDK packages
+      - name: Install platforms via cmdline-tools
         run: |
           set -eux
           
           SDK_DIR="$HOME/android-sdk"
-          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
           
-          # 接受所有授權
+          # 安裝 cmdline-tools（用最新版）
+          mkdir -p "$SDK_DIR/cmdline-tools"
+          cd /tmp
+          
+          echo "📦 下載 command-line tools (latest)..."
+          # 嘗試多個版本的 cmdline-tools
+          for URL in \
+            "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-12664580_latest.zip" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"; do
+            echo "  嘗試: $URL"
+            if curl -sL --fail -o cmdtools.zip "$URL"; then
+              echo "✅ 下載成功"
+              break
+            fi
+          done
+          
+          unzip -q cmdtools.zip -d "$SDK_DIR/cmdline-tools"
+          mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+          
+          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          
+          # 接受授權
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           
-          # 更新 repository XML
-          "$SDKMANAGER" --update
+          # 更新
+          "$SDKMANAGER" --update || true
           
-          # 診斷：列出所有可用 platforms
-          echo "=== 可用 platforms ==="
-          "$SDKMANAGER" --list 2>/dev/null | grep "platforms;android" | sort -t'-' -k2 -n | tail -10
+          # 列出可用 platforms
+          echo "=== 檢查可用 platforms ==="
+          "$SDKMANAGER" --list 2>/dev/null | grep -i "platforms;android-3[5-9]" || echo "沒有找到 API 35+ 的 platforms"
           
-          # 安裝所需套件
-          echo "=== 安裝 SDK packages ==="
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-38" \
-            "build-tools;38.0.0"
+          # 嘗試安裝 platform-tools 和 platform-38
+          echo "=== 嘗試安裝 platforms;android-38 ==="
+          if "$SDKMANAGER" "platforms;android-38" 2>&1; then
+            echo "✅ platforms;android-38 安裝成功"
+          else
+            echo "⚠️  sdkmanager 無法安裝 platforms;android-38，改用手動方式"
+          fi
           
-          echo "=== 已安裝 packages ==="
-          "$SDKMANAGER" --list_installed 2>/dev/null
+          echo "=== 嘗試安裝 build-tools;38.0.0 ==="
+          "$SDKMANAGER" "build-tools;38.0.0" 2>&1 || echo "⚠️  build-tools 安裝失敗，稍後手動處理"
+
+      - name: Manually install API 38 platform if missing
+        run: |
+          set -eux
+          
+          SDK_DIR="$HOME/android-sdk"
+          
+          # 檢查 platforms;android-38 是否已安裝
+          if [ -d "$SDK_DIR/platforms/android-38" ]; then
+            echo "✅ platforms;android-38 已存在，跳過手動安裝"
+            ls "$SDK_DIR/platforms/android-38/"
+          else
+            echo "📦 手動下載 platforms;android-38..."
+            
+            # 方法：從 Google 的 Maven 倉庫直接下載 platform SDK
+            # Android SDK platform 的 maven artifact
+            mkdir -p "$SDK_DIR/platforms/android-38"
+            
+            # 嘗試從多個來源下載
+            for URL in \
+              "https://dl.google.com/android/repository/platform-38_r02.zip" \
+              "https://dl.google.com/android/repository/android-38.zip"; do
+              echo "  嘗試: $URL"
+              if curl -sL --fail -o /tmp/platform-38.zip "$URL"; then
+                unzip -q -o /tmp/platform-38.zip -d "$SDK_DIR/platforms/android-38/"
+                echo "✅ 手動下載成功"
+                break
+              fi
+            done
+            
+            # 如果上面的 URL 都不行，就用最終方案：
+            # 用 compileSdk 34 代替 38，確保能建置
+            if [ ! -d "$SDK_DIR/platforms/android-38" ] || [ -z "$(ls -A "$SDK_DIR/platforms/android-38" 2>/dev/null)" ]; then
+              echo "⚠️  API 38 無法手動下載，回退到 API 34"
+              echo "ANDROID_SDK_PLATFORM_VERSION=android-34" >> $GITHUB_ENV
+              "$SDKMANAGER" "platforms;android-34" 2>&1 || true
+            fi
+          fi
 
       - name: Verify SDK Installation
         run: |
@@ -94,10 +162,40 @@ jobs:
           ls "$SDK_DIR/"
           echo ""
           echo "📂 Platforms："
-          ls "$SDK_DIR/platforms/" 2>/dev/null && echo "✅ platforms;android-38 已安裝" || echo "❌ platforms 未安裝"
+          ls "$SDK_DIR/platforms/" 2>/dev/null || echo "❌ platforms 目錄不存在"
           echo ""
           echo "📂 Build-tools："
-          ls "$SDK_DIR/build-tools/" 2>/dev/null || echo "❌ build-tools 未安裝"
+          ls "$SDK_DIR/build-tools/" 2>/dev/null || echo "❌ build-tools 目錄不存在"
+          echo ""
+          echo "📂 Platform-tools："
+          ls "$SDK_DIR/platform-tools/" 2>/dev/null | head -5 || echo "❌ platform-tools 未安裝"
+
+      - name: Patch build.gradle for available SDK
+        run: |
+          set -eux
+          
+          SDK_DIR="$HOME/android-sdk"
+          
+          # 檢查哪個 platform 版本可用
+          if [ -d "$SDK_DIR/platforms/android-38" ] && [ -n "$(ls -A "$SDK_DIR/platforms/android-38" 2>/dev/null)" ]; then
+            echo "🎯 使用 compileSdk 38"
+            echo "COMPILE_SDK=38" >> $GITHUB_ENV
+          elif [ -d "$SDK_DIR/platforms/android-34" ] && [ -n "$(ls -A "$SDK_DIR/platforms/android-34" 2>/dev/null)" ]; then
+            echo "🎯 使用 compileSdk 34"
+            echo "COMPILE_SDK=34" >> $GITHUB_ENV
+          else
+            # 找任何可用的 platform
+            AVAILABLE=$(ls "$SDK_DIR/platforms/" 2>/dev/null | grep "android-" | sort -t'-' -k2 -n | tail -1 | sed 's/android-//')
+            if [ -n "$AVAILABLE" ]; then
+              echo "🎯 使用 compileSdk $AVAILABLE"
+              echo "COMPILE_SDK=$AVAILABLE" >> $GITHUB_ENV
+            else
+              echo "❌ 沒有可用的 platform SDK！"
+              exit 1
+            fi
+          fi
+          
+          echo "COMPILE_SDK=$COMPILE_SDK" >> $GITHUB_ENV
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -157,9 +255,13 @@ jobs:
       #  ============================================================
       - name: Build Release APK
         working-directory: androidApp
+        env:
+          CI_COMPILE_SDK: ${{ env.COMPILE_SDK || 34 }}
         run: |
           set -eux
           chmod +x gradlew
+          
+          echo "📋 使用 compileSdk=$CI_COMPILE_SDK 建置"
           
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/signing/release-key.jks \
