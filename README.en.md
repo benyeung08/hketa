@@ -213,8 +213,8 @@ A small green dot appears on the Settings tab when an update is available. Prefe
 
 **Before first use, change these**
 
-- `src/version.ts`: `DEFAULT_OWNER` / `DEFAULT_REPO` (defaults: `yourname/hketa-apk`)
-- `config.xml`: `<author href="https://github.com/yourname/hketa-apk">`
+- `src/version.ts`: `DEFAULT_OWNER` / `DEFAULT_REPO` (now points at `benyeung08/hketa`; change after forking)
+- `config.xml`: `<author href="...">` and email (the email is still a placeholder — replace it before publishing)
 - Or skip the code edits and just enter owner / repo in the app's Settings screen, then press **Save**
 
 > The unauthenticated API allows 60 requests/hour; auto-check runs once per launch only.
