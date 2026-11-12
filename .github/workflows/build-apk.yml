@@ -38,9 +38,16 @@ jobs:
         run: |
           echo "📦 安裝 Android SDK Command Line Tools..."
           
-          # 下載並安裝 command-line tools
+          # 下載最新版 command-line tools（使用最新版以支援 API 38+）
+          # 版本 13114758 = 2025.05.20 版，包含最新的 repository XML
           mkdir -p $HOME/android-sdk/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+          wget -q "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" -O /tmp/cmdtools.zip
+          
+          if [ ! -s /tmp/cmdtools.zip ]; then
+            echo "❌ 最新版下載失敗，嘗試備用版本..."
+            wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O /tmp/cmdtools.zip
+          fi
+          
           unzip -q /tmp/cmdtools.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
           
@@ -55,15 +62,25 @@ jobs:
 
       - name: Install SDK packages
         run: |
+          # 先接受所有授權
           yes | $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --licenses > /dev/null 2>&1 || true
           
+          # 先更新 repository 索引，確保能找到最新 API level
+          echo "📡 更新 SDK repository 索引..."
+          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --update || true
+          
+          # 檢查可用的最新 platform 版本
+          echo "📋 查詢可用的 platforms..."
+          $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --list | grep -E "^platforms;android-" | tail -10
+          
+          # 安裝必要套件（build-tools 只裝一個版本以減少時間）
           $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME \
             "platform-tools" \
             "platforms;android-38" \
-            "build-tools;34.0.0" \
             "build-tools;38.0.0"
           
           echo "✅ SDK 套件安裝完成"
+          echo "--- 已安裝套件 ---"
           $ANDROID_CMD/sdkmanager --sdk_root=$ANDROID_HOME --list_installed
 
       - name: Verify Android SDK
