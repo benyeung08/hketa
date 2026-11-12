@@ -313,6 +313,28 @@ The **Settings** screen (`SettingsActivity`) is the central hub for keeping rout
 
 ---
 
+## Android Version Support
+
+This app supports **Android 7.0 (Nougat, API 24) and above**, covering the vast majority of Android devices in use since 2016.
+
+| Item | Version |
+|---|---|
+| Minimum | Android 7.0 (API 24) |
+| Target | Android 14 (API 34) |
+| Tested Range | Android 7.0 – 14 |
+
+### Compatibility measures for Android 7
+
+- **Core Library Desugaring** — `com.android.tools:desugar_jdk_libs` back-ports `java.time` APIs down to API 24
+- **Cleartext HTTP** — `network_security_config.xml` allows HTTP connections to the local TypeScript API (Android 9+ blocks cleartext by default)
+- **Date parsing** — uses `SimpleDateFormat` with manual ISO-8601 fallback instead of `java.time.Instant` (API 26+)
+- **Library pinning** — all AndroidX / Material / Lifecycle dependencies are pinned to versions that support API 24
+- **MultiDex enabled** — prevents the 65k method limit on older runtimes
+
+> For Android 8+ only, you can remove the cleartext setting and switch to HTTPS endpoints.
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please follow these steps:

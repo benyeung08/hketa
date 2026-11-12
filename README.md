@@ -1,6 +1,15 @@
 # HK ETA 交通 · 香港公共交通到站預報與路線資訊
 
+![GitHub Actions Build](https://github.com/your-username/hketa-app/actions/workflows/build-apk.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Android API](https://img.shields.io/badge/Android%20API-24--38-brightgreen.svg)](https://developer.android.com/about/versions)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.1-blue.svg)](https://kotlinlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org)
+
 一個全端香港公共交通 App：**TypeScript API**（Node.js + Express）聚合官方開放數據並提供統一的 JSON 資料格式；**Kotlin Android** 客戶端以乾淨的 MVVM 架構消費這些數據。
+
+> 📦 **GitHub Actions 自動建置 APK** — 每次 push 到 `main` 分支都會自動編譯並在 [Actions 頁面](../../actions) 產出 APK 下載。
+> 詳見 [.github/workflows/build-apk.yml](.github/workflows/build-apk.yml)。
 
 ## ✨ 功能特色
 
@@ -114,6 +123,72 @@ App 內「設定」頁面提供完整的資料更新管理：
 
 > 無需 API Key，所有資料均來自公開開放平台。
 
+## 📱 Android 版本支援
+
+本 App 最低支援 **Android 7.0（Nougat, API 24）**，涵蓋 2016 年至今的絕大部分 Android 裝置。
+
+| 項目 | 版本 |
+|---|---|
+| 最低支援 | Android 7.0（API 24） |
+| 目標版本 | Android 14（API 34） |
+| 測試範圍 | Android 7.0 ~ 14 |
+
+### 為 Android 7 所做的相容性處理
+
+- **Desugaring（核心庫脫糖）**：透過 `com.android.tools:desugar_jdk_libs` 將 `java.time` 等新 API 向下相容至 API 24
+- **明文 HTTP 支援**：加入 `network_security_config.xml`，Android 9+ 預設禁止 HTTP，此設定允許連接本地 TypeScript API 伺服器
+- **日期解析相容**：使用 `SimpleDateFormat` + 手動 ISO-8601 解析，避免 `java.time.Instant`（需 API 26+）
+- **Library 版本鎖定**：所有 AndroidX / Material / Lifecycle 依賴均選用支援 API 24 的版本
+- **MultiDex 啟用**：避免方法數超限（API 24 以下需要手動啟用）
+
+> 若僅用於 Android 8+ 環境，可移除 `network_security_config.xml` 中的明文設定，改為 HTTPS 端點。
+
+## 🔄 GitHub Actions — 自動建置 APK
+
+本專案已配置 GitHub Actions，push 到 `main` 分支後會**自動建置並產出 APK**。
+
+### 工作流程
+
+```
+Push to main ──▶ GitHub Actions 觸發 ──▶ 自動編譯 ──▶ 產出 APK Artifact
+                                              │
+                                              ▼
+                                    自動建立 GitHub Release
+```
+
+### 建置流程
+
+1. **Checkout** — 拉取最新程式碼
+2. **Setup JDK 17** — 安裝 Temurin JDK 17
+3. **Setup Android SDK** — 配置 Android 建置環境
+4. **Gradle Build** — 編譯 Debug + Release APK
+5. **Upload Artifact** — 上傳 APK 到 Actions 產物頁
+6. **Auto Release**（僅 main 分支）— 自動建立 Release 並附上 APK
+
+### 使用方式
+
+1. Fork 或 Clone 此 repo 到你的 GitHub 帳號
+2. 確保 GitHub Actions 已啟用（`Settings` → `Actions` → `General` → `Allow all actions`）
+3. Push 到 `main` 分支，Actions 會自動開始建置
+4. 建置完成後，在 `Actions` 頁面下載 APK，或到 `Releases` 頁面取得最新版本
+
+### 手動觸發建置
+
+進入 `Actions` → `Build Android APK` → 點擊 `Run workflow` → 選擇分支 → `Run workflow`
+
+### 工作流檔案
+
+| 檔案 | 用途 |
+|---|---|
+| `.github/workflows/build-apk.yml` | 自動建置 APK + 自動 Release |
+| `.github/workflows/deploy-api.yml` | 部署 API 到 Cloudflare Workers |
+
+> 💡 **提示**：如需 Release APK 簽名，請在 `Settings` → `Secrets and variables` → `Actions` 中設定：
+> - `KEYSTORE_BASE64` — Base64 編碼的 keystore 檔案
+> - `KEYSTORE_PASSWORD` — keystore 密碼
+> - `KEY_ALIAS` — 金鑰別名
+> - `KEY_PASSWORD` — 金鑰密碼
+
 ## 🛠️ 技術棧
 
 | 層級 | 技術 |
@@ -122,6 +197,7 @@ App 內「設定」頁面提供完整的資料更新管理：
 | 前端 | Kotlin · Android SDK · MVVM |
 | 網路 | Retrofit · OkHttp · Gson |
 | 架構 | Repository Pattern · LiveData · ViewModel |
+| CI/CD | GitHub Actions · Gradle |
 
 ## 📝 授權
 
