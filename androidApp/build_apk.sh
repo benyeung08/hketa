@@ -1,6 +1,6 @@
 #!/bin/bash
 # HK ETA Android APK 建置腳本
-# 支援 Android 7.0 (API 24) ~ Android 17 (API 37)
+# 支援 Android 7.0 (API 24) ~ Android 16 (API 36)
 
 set -e
 
@@ -30,7 +30,7 @@ echo ""
 if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
     echo "⚠️ 未設定 ANDROID_HOME 或 ANDROID_SDK_ROOT"
     echo "   請先安裝 Android SDK 並設定環境變數"
-    echo "   需要: platforms;android-37, build-tools;37.0.0, platform-tools"
+    echo "   需要: platforms;android-36, build-tools;36.0.0, platform-tools"
     exit 1
 fi
 echo "✅ Android SDK OK"
@@ -41,7 +41,7 @@ chmod +x gradlew 2>/dev/null || true
 
 # 建置 Debug APK
 echo "🔨 開始建置 Debug APK..."
-echo "   compileSdk: 37 (Android 17)"
+echo "   compileSdk: 36 (Android 16)"
 echo "   minSdk: 24 (Android 7.0)"
 echo ""
 ./gradlew assembleDebug --no-daemon

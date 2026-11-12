@@ -6,11 +6,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// ============================================================
-//  簽名配置 — 長期一致性
-//  優先從環境變數讀取（GitHub Actions）
-//  其次從 keystore.properties 讀取（本地開發）
-// ============================================================
 val keystoreProperties = Properties()
 val keystorePropsFile = rootProject.file("keystore.properties")
 if (keystorePropsFile.exists()) {
@@ -23,21 +18,21 @@ fun getEnvOrProp(envKey: String, propKey: String): String? {
 
 android {
     namespace = "com.hketa.app"
-    // compileSdk = 37（Android 17 - 最新穩定版）
-    compileSdk = 37
+
+    // Read API level from environment (set by CI), default to 36 for local builds
+    val compileSdkVersion = System.getenv("COMPILE_SDK_VERSION")?.toIntOrNull() ?: 36
+
+    compileSdk = compileSdkVersion
 
     defaultConfig {
         applicationId = "com.hketa.app"
-        // minSdk = 24 → Android 7.0 (Nougat)
-        // targetSdk 跟隨 compileSdk → API 37 (Android 17)
         minSdk = 24
-        targetSdk = 37
+        targetSdk = compileSdkVersion
         versionCode = 1
         versionName = "1.0"
 
         multiDexEnabled = true
 
-        // 自動遞增 versionCode（每次建置 +1）
         val gitCommitCount = try {
             val process = Runtime.getRuntime().exec("git rev-list --count HEAD")
             process.inputStream.bufferedReader().readText().trim().toIntOrNull() ?: 1
@@ -45,10 +40,9 @@ android {
             1
         }
         versionCode = gitCommitCount
-        println("🔢 Version Code: $versionCode")
+        println("Version Code: $versionCode")
     }
 
-    // --- 簽名配置 ---
     signingConfigs {
         create("release") {
             val storeFile = getEnvOrProp("SIGNING_KEYSTORE_FILE", "storeFile")
@@ -61,9 +55,9 @@ android {
                 this.storePassword = storePassword
                 this.keyAlias = keyAlias
                 this.keyPassword = keyPassword
-                println("✅ 簽名配置已載入（檔案: $storeFile）")
+                println("Signing config loaded")
             } else {
-                println("⚠️ 未找到簽名金鑰，Release 建置將使用 debug 簽名")
+                println("No signing key found, using debug key")
             }
         }
     }
@@ -72,7 +66,6 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
         }
         release {
             isMinifyEnabled = false
@@ -96,30 +89,16 @@ android {
 }
 
 dependencies {
-    // AndroidX core
-    implementation("androidx.core:core-ktx:1.19.1")
-
-    // AppCompat
-    implementation("androidx.appcompat:appcompat:1.8.0")
-
-    // Material Components
-    implementation("com.google.android.material:material:1.14.0")
-
-    // ConstraintLayout
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
-
-    // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.12.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.12.0")
-
-    // Coroutines
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
+    implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-
-    // Retrofit + Gson converter
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-gson:3.0.0")
-
-    // Desugaring
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }

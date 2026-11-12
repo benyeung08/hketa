@@ -1,6 +1,6 @@
 @echo off
 REM HK ETA Android APK Builder (Windows)
-REM 支援 Android 7.0 (API 24) ~ Android 17 (API 37)
+REM 支援 Android 7.0 (API 24) ~ Android 16 (API 36)
 
 chcp 65001 >nul
 echo 🚌 HK ETA - Android APK Builder
@@ -21,7 +21,7 @@ if "%ANDROID_HOME%"=="" (
     if "%ANDROID_SDK_ROOT%"=="" (
         echo ⚠️ 未設定 ANDROID_HOME 或 ANDROID_SDK_ROOT
         echo    請先安裝 Android SDK 並設定環境變數
-        echo    需要: platforms;android-37, build-tools;37.0.0, platform-tools
+        echo    需要: platforms;android-36, build-tools;36.0.0, platform-tools
         pause
         exit /b 1
     )
@@ -31,7 +31,7 @@ echo.
 
 REM 建置 Debug APK
 echo 🔨 開始建置 Debug APK...
-echo    compileSdk: 37 (Android 17)
+echo    compileSdk: 36 (Android 16)
 echo    minSdk: 24 (Android 7.0)
 echo.
 call gradlew.bat assembleDebug --no-daemon
