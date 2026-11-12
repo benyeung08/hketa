@@ -2,7 +2,7 @@ import { compareVersions, fetchLatestRelease, formatSize } from './api/update';
 import type { ReleaseInfo } from './api/update';
 import { native } from './native';
 import type { Lang } from './types';
-import { DEFAULT_OWNER, DEFAULT_REPO, FALLBACK_APP_VERSION, RELEASE_ASSET_NAME } from './version';
+import { DEFAULT_OWNER, DEFAULT_REPO, FALLBACK_APP_VERSION, RELEASE_ASSET_NAME, REPO_NAME_RE } from './version';
 
 type DictKey =
   | 'appSection' | 'currentVersion' | 'supportRange' | 'targetSdk' | 'rangeNote' | 'outsideRange' | 'language' | 'keepAwake'
@@ -107,6 +107,7 @@ export function initUpdatePanel(ctx: PanelCtx): void {
   let downloadId: number | null = null;
   let pollTimer: number | null = null;
   let pollTicks = 0;
+  let pollInFlight = false;
   let installReady = false;
   let pendingInstall = false;
   let statusKey: DictKey | null = 'updateIdle';
@@ -191,7 +192,11 @@ export function initUpdatePanel(ctx: PanelCtx): void {
     const url = latest?.htmlUrl
       ?? `https://github.com/${prefs.owner}/${prefs.repo}/releases`;
     try {
-      await native.openUrl(url);
+      const u = new URL(url);
+      if (u.protocol !== 'https:' || u.hostname !== 'github.com') {
+        throw new Error('Release URL is not on github.com');
+      }
+      await native.openUrl(u.toString());
     } catch (err) {
       setStatusRaw(`openUrl: ${String(err)}`, true);
     }
@@ -217,14 +222,15 @@ export function initUpdatePanel(ctx: PanelCtx): void {
   }
 
   async function tick(): Promise<void> {
-    if (downloadId === null) return;
-    if (++pollTicks > 300) { // ~4.5 min safety net
-      stopPoll();
-      setStatus('downloadFailed', 'timeout', true);
-      await openReleasePage();
-      return;
-    }
+    if (downloadId === null || pollInFlight) return;
+    pollInFlight = true;
     try {
+      if (++pollTicks > 300) { // ~4.5 min safety net
+        stopPoll();
+        setStatus('downloadFailed', 'timeout', true);
+        await openReleasePage();
+        return;
+      }
       const p = await native.downloadProgress(downloadId);
       if (p.state === 'success') {
         stopPoll();
@@ -243,6 +249,8 @@ export function initUpdatePanel(ctx: PanelCtx): void {
     } catch (err) {
       stopPoll();
       setStatusRaw(`${L('downloadFailed')}: ${String(err)}`, true);
+    } finally {
+      pollInFlight = false;
     }
   }
 
@@ -252,6 +260,7 @@ export function initUpdatePanel(ctx: PanelCtx): void {
     installReady = false;
     pendingInstall = false;
     pollTicks = 0;
+    pollInFlight = false;
     const btn = el<HTMLButtonElement>('download-update');
     btn.disabled = true;
     setStatus('downloading');
@@ -313,6 +322,10 @@ export function initUpdatePanel(ctx: PanelCtx): void {
     const owner = el<HTMLInputElement>('repo-owner').value.trim();
     const repo = el<HTMLInputElement>('repo-name').value.trim();
     if (!owner || !repo) { setStatus('repoMissing', '', true); return; }
+    if (!REPO_NAME_RE.test(owner) || !REPO_NAME_RE.test(repo)) {
+      setStatusRaw(`${L('checkFailed')}: invalid owner / repo`, true);
+      return;
+    }
     prefs = { ...prefs, owner, repo };
     write('hketa.owner', owner);
     write('hketa.repo', repo);
