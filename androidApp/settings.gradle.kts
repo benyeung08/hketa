@@ -13,4 +13,3 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "HK ETA"
-include(":app")
