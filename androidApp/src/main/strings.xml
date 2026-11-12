@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HK ETA 交通</string>
+    <string name="hint_stop_id">巴士站編號 / Stop ID</string>
+    <string name="hint_search">搜尋路線 / Search route</string>
+    <string name="action_query">查詢</string>
+    <string name="action_search">搜尋</string>
+    <string name="action_update_all">更新全部資料 Update All</string>
+    <string name="action_settings">設定</string>
+    <string name="title_settings">設定 Settings</string>
+    <string name="title_data_update">路線資料更新</string>
+    <string name="label_individual_updates">個別模式更新（點擊更新）:</string>
+    <string name="label_stops">途經車站 Stops</string>
+    <string name="empty_routes">暫無路線資料</string>
+    <string name="empty_stops">此路線暫無車站資料</string>
+
+    <!--
+        Android 7.0+ (API 24+) support notice shown on the main screen.
+        Harmless on newer devices; useful for legacy-device diagnostics.
+    -->
+    <string name="notice_min_sdk">支援 Android 7.0 及以上版本</string>
+</resources>
