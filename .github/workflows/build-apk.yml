@@ -12,28 +12,76 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # ubuntu-latest migrated to Ubuntu 26 on 2026-10-19. Pin 24.04 so the
+    # preinstalled Android SDK layout and Node versions stay predictable.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      # Runs BEFORE any toolchain setup. A missing binary / an extra nested
+      # folder now fails in ~1s with an explicit file list.
+      - name: Preflight - verify uploaded files
+        run: |
+          if [ ! -f scripts/preflight.py ]; then
+            echo "::error::缺少 scripts/preflight.py，repo 上傳唔完整"
+            echo "::error::如果係用網頁 Add files via upload，請改用 git push 上傳整個資料夾"
+            exit 1
+          fi
+          python3 scripts/preflight.py
+
+      # Pure-Python check: no JDK / SDK needed, so it fails fast too.
+      - name: Check API field names against official samples
+        run: python3 scripts/check_api_fields.py
 
       - name: JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
+      # REMOVED: android-actions/setup-android@v3 (Node 20 action, was the
+      # failing "Android SDK" step on Ubuntu 26 / Node 24 runners).
+      # GitHub-hosted Ubuntu images already ship an Android SDK; just locate it.
+      - name: Locate Android SDK (preinstalled on runner)
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            for c in /usr/local/lib/android/sdk /usr/lib/android-sdk "$HOME/Android/Sdk"; do
+              [ -d "$c" ] && SDK="$c" && break
+            done
+          fi
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "::error::搵唔到 Android SDK；ANDROID_HOME=$ANDROID_HOME ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            exit 1
+          fi
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          else
+            for c in "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+                     "$SDK/cmdline-tools/bin/sdkmanager" \
+                     "$SDK/tools/bin/sdkmanager"; do
+              [ -x "$c" ] && SDKMANAGER="$c" && break
+            done
+          fi
+          if [ -z "${SDKMANAGER:-}" ]; then
+            echo "::error::搵唔到 sdkmanager（SDK=$SDK）"
+            find "$SDK" -maxdepth 4 -name sdkmanager -type f 2>/dev/null | head -20
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "SDK=$SDK"
+          echo "SDKMANAGER=$SDKMANAGER"
+          "$SDKMANAGER" --version || true
+          echo "### Android SDK: \`$SDK\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Accept licenses and install SDK 34
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
-
-      - name: Check API field names against official samples
-        run: python3 scripts/check_api_fields.py
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
 
       # Every runner uses the SAME committed development keystore, so debug and
       # fallback-release APKs always share one certificate. Prints the fingerprint.
