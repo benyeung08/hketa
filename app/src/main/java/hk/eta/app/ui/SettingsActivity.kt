@@ -204,7 +204,12 @@ class SettingsActivity : AppCompatActivity() {
             getString(R.string.sources_placeholder)
         } else {
             report.sources.joinToString("\n") { s ->
-                val detail = if (s.ok) "${s.count} 筆" else "失敗：${s.error}"
+                val detail = when {
+                    s.ok && s.count > 0 -> "${s.count} 筆"
+                    s.ok -> "按需建立"
+                    s.skipped -> "選用／按需略過：${s.error}"
+                    else -> "失敗：${s.error}"
+                }
                 "• ${s.label} — $detail"
             }
         }
