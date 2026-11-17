@@ -1,6 +1,7 @@
 package hk.eta.app.api;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -518,6 +519,17 @@ public final class MtrCatalog {
         }
         cells.add(sb.toString().trim());
         return cells;
+    }
+
+    /**
+     * parseCsv() stores each row as a String[], while firstWithAll / firstWithAny
+     * work on a List<String>. Bridge the two so the three header lookups compile
+     * (previously `lower(rows.get(0))` was a String[] passed to a List<String>
+     * parameter -> "incompatible types: String[] cannot be converted to
+     * List<String>" at compileDebugJavaWithJavac).
+     */
+    private static List<String> lower(String[] cells) {
+        return lower(Arrays.asList(cells));
     }
 
     private static List<String> lower(List<String> cells) {
