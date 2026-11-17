@@ -66,10 +66,16 @@ class StopAdapter(private val onClick: (StopOption) -> Unit) :
         } else {
             "#${stop.seq}"
         }
-        holder.name.text = stop.stopName.ifEmpty { stop.stopId }
-        val extra = if (stop.note.isEmpty()) "" else " · ${stop.note}"
-        holder.meta.text = operatorLabel(stop.company) +
-            " · ${directionLabel(stop.bound)} · ${stop.stopId}$extra"
+        // APP1933 puts the stop id in brackets after the Chinese stop name.
+        holder.name.text = App1933Format.stopLabel(stop.stopName, stop.stopId)
+        val bits = mutableListOf(operatorLabel(stop.company))
+        if (stop.bound != EtaRepository.NEARBY) {
+            bits.add(directionLabel(stop.bound))
+        }
+        if (stop.note.isNotEmpty()) {
+            bits.add(stop.note)
+        }
+        holder.meta.text = bits.joinToString(" · ")
         holder.root.setOnClickListener { onClick(stop) }
     }
 

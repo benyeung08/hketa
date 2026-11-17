@@ -27,6 +27,10 @@ data class UiState(
     val company: String = EtaRepository.AUTO,
     val stops: List<StopOption> = emptyList(),
     val etas: List<EtaItem> = emptyList(),
+    // APP1933 home cards. When empty, MainActivity derives cards from `etas`.
+    val cards: List<RouteCard> = emptyList(),
+    val activeBound: String = "",     // "" = all directions
+    val searchQuery: String = "",     // stop-list filter
     val selection: StopOption? = null,
     val loading: Boolean = false,
     val message: String = "輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。",
@@ -107,6 +111,10 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         return key
     }
 
+    fun removeFavorite(key: String) {
+        favorites.remove(key)
+    }
+
     fun loadFavorite(key: String) {
         val parts = key.split("|")
         if (parts.size < 4) {
@@ -122,7 +130,9 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 company = parts[0],
                 selection = selection,
                 stops = emptyList(),
-                etas = emptyList()
+                etas = emptyList(),
+                cards = emptyList(),
+                activeBound = ""
             )
         }
         refresh()
@@ -149,6 +159,9 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 message = "正在載入 $effectiveRoute 的車站／月台…",
                 stops = emptyList(),
                 etas = emptyList(),
+                cards = emptyList(),
+                activeBound = "",
+                searchQuery = "",
                 selection = null
             )
         }
@@ -194,6 +207,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 message = "正在定位並整理附近車站座標（首次需下載官方站點清單）…",
                 stops = emptyList(),
                 etas = emptyList(),
+                cards = emptyList(),
                 selection = null
             )
         }
@@ -221,6 +235,60 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * APP1933 home page: locate, take the nearest few stops, query their
+     * ALL-ROUTE ETA in parallel and shape the result into route cards showing
+     * the next three arrivals each. The Java data layer is untouched.
+     */
+    fun loadNearbyRoutes(radiusMeters: Int) {
+        patch {
+            copy(
+                loading = true,
+                message = "正在定位並整理附近路線（會同時向官方 API 查到站時間）…",
+                stops = emptyList(),
+                etas = emptyList(),
+                cards = emptyList(),
+                selection = null
+            )
+        }
+        refreshJob?.cancel()
+        viewModelScope.launch {
+            try {
+                val fix = LocationHelper.current(getApplication<Application>())
+                val stops = withContext(Dispatchers.IO) {
+                    repo.nearbyStops(fix.lat, fix.lng, radiusMeters, 6)
+                }
+                val pairs = stops.mapIndexed { index, s ->
+                    safeEta(s, index) { repo.etaFor(s) }
+                }.awaitAll()
+                val cards = ArrayList<RouteCard>()
+                for (p in pairs) {
+                    val s = p.first
+                    cards.addAll(
+                        App1933Format.cardsFrom(
+                            p.second, s.stopName, s.stopId, s.note, p.third
+                        )
+                    )
+                }
+                patch {
+                    copy(
+                        loading = false,
+                        stops = stops,
+                        cards = cards.sortedBy { it.rank },
+                        updatedAt = System.currentTimeMillis(),
+                        message = if (cards.isEmpty()) {
+                            "${fix.source} · ${radiusMeters} m 內沒有可用班次，可加大半徑或到「搜尋」查路線。"
+                        } else {
+                            "${fix.source} · ${radiusMeters} m 內 ${cards.size} 條路線 · 每條顯示未來三班次"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                patch { copy(loading = false, message = "附近路線載入失敗：${e.message}") }
+            }
+        }
+    }
+
     /** Direct lookup when the user already knows the stop / station ID. */
     fun queryDirect(routeInput: String, stopInput: String, company: String) {
         val route = routeInput.trim().uppercase(Locale.getDefault())
@@ -240,7 +308,9 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                         company = company,
                         selection = selection,
                         stops = emptyList(),
-                        etas = emptyList()
+                        etas = emptyList(),
+                        cards = emptyList(),
+                        activeBound = ""
                     )
                 }
                 refresh()
@@ -252,9 +322,30 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectStop(stop: StopOption) {
-        patch { copy(selection = stop, etas = emptyList()) }
+        patch { copy(selection = stop, etas = emptyList(), cards = emptyList()) }
         refresh()
         startAutoRefresh()
+    }
+
+    /** APP1933 "轉換路線方向": cycle through the bounds present in the stop list. */
+    fun toggleDirection() {
+        val stops = _state.value?.stops ?: return
+        val bounds = stops.map { it.bound }
+            .filter { it.isNotEmpty() && it != EtaRepository.NEARBY }
+            .distinct()
+        if (bounds.size < 2) {
+            patch { copy(message = "此結果只有單一方向，無需切換。") }
+            return
+        }
+        val current = _state.value?.activeBound ?: ""
+        val index = bounds.indexOf(current)
+        val next = bounds[(index + 1 + bounds.size) % bounds.size]
+        patch { copy(activeBound = next, message = "已切換方向：$next") }
+    }
+
+    /** Live filter of the route stop sequence (no API call). */
+    fun filterStops(query: String) {
+        patch { copy(searchQuery = query) }
     }
 
     fun refresh() {
@@ -316,5 +407,18 @@ private fun CoroutineScope.safeStops(
         block()
     } catch (e: Exception) {
         emptyList()
+    }
+}
+
+/** One nearby stop -> (stop, all-route ETA, distance rank). */
+private fun CoroutineScope.safeEta(
+    stop: StopOption,
+    rank: Int,
+    block: () -> List<EtaItem>
+): Deferred<Triple<StopOption, List<EtaItem>, Int>> = async(Dispatchers.IO) {
+    try {
+        Triple(stop, block(), rank)
+    } catch (e: Exception) {
+        Triple(stop, emptyList<EtaItem>(), rank)
     }
 }
