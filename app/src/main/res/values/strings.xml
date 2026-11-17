@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HK ETA</string>
+    <string name="app_title">HK ETA 實時到站</string>
+    <string name="app_subtitle">九巴 · 城巴 · 嶼巴 · 綠小巴 · 港鐵 · 輕鐵 · 港鐵巴士</string>
+    <string name="hint_route">路線號 / 線路代碼 / 輕鐵路線（選填）</string>
+    <string name="hint_stop">站號 / 車站代碼（選填，已知可直接查）</string>
+    <string name="load_stops">載入車站</string>
+    <string name="query_eta">查 ETA</string>
+    <string name="fav_add">☆ 加入收藏</string>
+    <string name="fav_list">★ 我的收藏</string>
+    <string name="nearby">📍 附近車站</string>
+    <string name="stops_header">車站／月台</string>
+    <string name="eta_header">預計到站（每 30 秒自動更新 · 可下拉刷新）</string>
+    <string name="welcome">輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。</string>
+
+    <string name="settings">⚙ 設定</string>
+    <string name="settings_title">設定 · 線路資料</string>
+    <string name="back">← 返回</string>
+    <string name="route_data_section">線路資料更新</string>
+    <string name="last_update_never">上次更新：尚未更新</string>
+    <string name="last_update_at">上次更新：%1$s</string>
+    <string name="summary_never">本機資料：尚未建立快照</string>
+    <string name="summary_format">本機資料：%1$d/%2$d 個來源 · 共 %3$d 筆</string>
+    <string name="update_now">立即更新線路資料</string>
+    <string name="updating">正在下載官方路線／站點資料…</string>
+    <string name="update_hint">更新會下載官方路線清單、全量站點與港鐵 CSV，並存到本機。首次可能需要數十秒。</string>
+    <string name="update_note_live_eta">實時 ETA 仍每次向官方 API 即時查詢</string>
+    <string name="auto_update">自動更新</string>
+    <string name="interval_label">檢查頻率</string>
+    <string name="wifi_only">僅在 Wi-Fi 下自動更新</string>
+    <string name="auto_hint">預設每日於 Wi-Fi 檢查一次。手動更新不受此限制；設為「手動」則完全不自動下載。</string>
+    <string name="sources_title">資料來源狀態</string>
+    <string name="sources_placeholder">尚未更新。按「立即更新線路資料」後會顯示每個來源的結果。</string>
+    <string name="clear_local">清除本機線路資料（改回即時 API）</string>
+    <string name="clear_done">已清除本機資料，之後會直接向官方 API 查詢。</string>
+    <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK、九巴／龍運、城巴、嶼巴、港鐵公司。線路／站點目錄每日或每月更新；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
+
+    <!-- 填寫你自己的 GitHub 倉庫，例如 yourname/hketa；留空則由設定頁輸入。 -->
+    <string name="default_github_repo"></string>
+    <string name="app_update_section">更新應用程式</string>
+    <string name="app_version">目前版本：%1$s（%2$d）</string>
+    <string name="github_repo_hint">GitHub 倉庫 owner/repo</string>
+    <string name="github_repo_label">發布來源（GitHub 倉庫）</string>
+    <string name="check_app_update">檢查更新</string>
+    <string name="auto_check_app_update">自動檢查應用程式更新</string>
+    <string name="download_install">下載並安裝 APK</string>
+    <string name="open_release_page">在瀏覽器開啟 Release 頁</string>
+    <string name="app_update_hint">從 GitHub 最新 Release 讀取版本與 APK。需要用戶在系統安裝介面確認，不會靜默安裝。</string>
+    <string name="app_update_status_never">尚未檢查。填寫 GitHub 倉庫後按「檢查更新」。</string>
+    <string name="app_update_checking">正在向 GitHub 查詢最新版本…</string>
+    <string name="app_update_up_to_date">已是最新版本 %1$s</string>
+    <string name="app_update_found">發現新版本 %1$s（%2$s）</string>
+    <string name="app_update_no_apk">最新版本 %1$s 沒有附帶 .apk 檔案，可開啟 Release 頁手動下載。</string>
+    <string name="app_update_no_repo">請先填寫 GitHub 倉庫，格式為 owner/repo。</string>
+    <string name="app_update_failed">檢查失敗：%1$s</string>
+    <string name="app_update_downloading">正在下載 APK… %1$s</string>
+    <string name="app_update_download_done">下載完成，請在系統安裝介面按「更新」。</string>
+    <string name="app_update_download_failed">下載失敗：%1$s</string>
+    <string name="app_update_need_permission">請先開啟「安裝未知應用程式」權限，然後再按一次安装。</string>
+    <string name="app_update_rate_limit">GitHub 未登入 API 每小時限 60 次；稍後再試或登入後使用。</string>
+    <string name="app_update_prerelease">（預先發布版本）</string>
+    <string name="app_update_new_badge">🔔 有新版本 %1$s · 到 ⚙ 設定更新</string>
+    <string name="app_update_cached_found">上次檢查發現新版本 %1$s · 按「檢查更新」查看詳情</string>
+
+    <!-- App 簽名一致性 -->
+    <!-- 可選：填入 CI 印出的 SHA-256 指紋（含或不含冒號皆可）；留空則只比對本機 App 憑證。 -->
+    <string name="expected_signing_sha256"></string>
+    <string name="signing_section">App 簽名一致性</string>
+    <string name="signing_fingerprint">本機簽章 SHA-256：\n%1$s</string>
+    <string name="signing_unavailable">無法讀取本機簽章憑證</string>
+    <string name="signing_status_idle">尚未驗證下載 APK；安裝前會自動比對簽章。</string>
+    <string name="signing_status_ok">✓ %1$s，可安全覆蓋安裝。</string>
+    <string name="signing_status_fail">✗ 已拒絕安裝：%1$s</string>
+    <string name="signing_detail">本機：%1$s\nAPK：%2$s</string>
+    <string name="app_update_signature_failed">簽名不一致，已取消安裝並刪除 APK：%1$s</string>
+    <string name="signing_hint">每次安裝前會比對下載 APK 與目前 App 的簽章憑證（含簽章輪替歷史）及套件名稱；不一致會直接拒絕，避免系統報「簽名衝突」。CI 亦會印出 APK 憑證指紋，可填入 expected_signing_sha256 作雙重鎖定。</string>
+
+    <string-array name="update_interval_labels">
+        <item>手動（不自動更新）</item>
+        <item>每日</item>
+        <item>每 3 日</item>
+        <item>每星期</item>
+    </string-array>
+
+    <string-array name="company_labels">
+        <item>自動（全部）</item>
+        <item>九巴 / 龍運 KMB</item>
+        <item>城巴 CTB</item>
+        <item>嶼巴 NLB</item>
+        <item>綠色小巴 GMB</item>
+        <item>港鐵重鐵 MTR</item>
+        <item>輕鐵 LRT</item>
+        <item>港鐵接駁巴士</item>
+    </string-array>
+
+    <string-array name="radius_labels">
+        <item>300 m</item>
+        <item>500 m</item>
+        <item>1000 m</item>
+        <item>2000 m</item>
+    </string-array>
+
+    <string-array name="mode_hints">
+        <item>路線號（如 40、720）／港鐵線路代碼（如 TML）</item>
+        <item>九巴 / 龍運路線號，例如 1A、40、A31</item>
+        <item>城巴路線號，例如 720、5B、B8</item>
+        <item>嶼巴路線號，例如 1、2、23</item>
+        <item>綠小巴路線號，例如 1、101M、808</item>
+        <item>港鐵線路代碼：AEL TCL TML TKL EAL SIL TWL ISL KTL DRL</item>
+        <item>輕鐵路線號可篩選（如 505、751）；留空顯示全部站</item>
+        <item>港鐵巴士路線，例如 K12、K51、506</item>
+    </string-array>
+</resources>
