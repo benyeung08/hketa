@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#0F6CBD</color>
-    <color name="brand_dark">#0A4E8C</color>
+    <!-- APP1933-style KMB red (data layer still covers all 8 operators). -->
+    <color name="brand">#D2232A</color>
+    <color name="brand_dark">#A5181E</color>
     <color name="accent">#FFB020</color>
+    <color name="eta_number">#D2232A</color>
+    <color name="route_badge">#FDECEC</color>
+    <color name="divider">#E3E8EF</color>
     <color name="surface">#F4F7FB</color>
     <color name="card">#FFFFFF</color>
     <color name="text">#1A2230</color>

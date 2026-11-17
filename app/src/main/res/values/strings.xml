@@ -76,6 +76,28 @@
     <string name="app_update_signature_failed">簽名不一致，已取消安裝並刪除 APK：%1$s</string>
     <string name="signing_hint">每次安裝前會比對下載 APK 與目前 App 的簽章憑證（含簽章輪替歷史）及套件名稱；不一致會直接拒絕，避免系統報「簽名衝突」。CI 亦會印出 APK 憑證指紋，可填入 expected_signing_sha256 作雙重鎖定。</string>
 
+    <!-- APP1933-style shell: 4 bottom tabs, route cards, three-arrival trips -->
+    <string name="tab_home">⌂&#10;主頁</string>
+    <string name="tab_fav">★&#10;收藏</string>
+    <string name="tab_search">🔍&#10;搜尋</string>
+    <string name="tab_more">☰&#10;更多</string>
+    <string name="home_title">附近路線</string>
+    <string name="home_empty">按「📍 重新定位」載入附近路線，或到「搜尋」輸入路線號載入沿途車站。</string>
+    <string name="trips_hint">未來三班次 · 每 30 秒自動更新 · 可下拉刷新</string>
+    <string name="unit_minutes">分鐘</string>
+    <string name="locate">📍 重新定位</string>
+    <string name="refresh">↻ 刷新</string>
+    <string name="search_title">路線搜尋</string>
+    <string name="direction_switch">⇄ 轉換路線方向</string>
+    <string name="filter_stop_hint">篩選站名／站號</string>
+    <string name="fav_title">收藏車站</string>
+    <string name="fav_empty">尚未收藏任何車站。到主頁點卡片後按 ☆；長按可移除。</string>
+    <string name="fav_hint">點選查看 · 長按移除</string>
+    <string name="more_title">更多</string>
+    <string name="more_settings_hint">線路資料更新 · 更新應用程式 · App 簽名一致性</string>
+    <string name="more_disclaimer">本 App 只使用公開開放數據，還原 APP1933 嘅版面與到站格式，屬非官方作品。\n\n不包含（需官方私有服務或會員帳號）：AI 智能問路、實時載客量、預計落車時間、九巴月票、club1933 會員、遊戲室、bot1933 實時對話、街景／步行導航、寵物巴士及廣告。</string>
+    <string name="header_subtitle">九巴 · 龍運 · 城巴 · 嶼巴 · 綠小巴 · 港鐵 · 輕鐵 | 非官方 · 開放數據</string>
+
     <string-array name="update_interval_labels">
         <item>手動（不自動更新）</item>
         <item>每日</item>
