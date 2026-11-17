@@ -364,6 +364,8 @@ ALIASES = {
     "stopId", "stopName_c", "stopName_e", "stopName_s", "name_c",
     # RouteDataStore writes its own meta.json; these are local keys, not API fields.
     "label", "ok", "count", "error", "at", "total", "sources", "updated_at",
+    # Local snapshot markers written by RouteDataStore (not API response fields).
+    "partial", "skipped", "type", "version", "generated_timestamp",
     # Column-name keywords scanned in CSV headers are not JSON keys either.
     "linecode", "stationcode", "stopid", "stationid", "longitude", "latitude",
     # GitHub Releases REST API.
@@ -472,11 +474,31 @@ check("10 official catalogue datasets + derived NLB stops",
 check("official catalogue URLs",
       all(u in store_java for u in (
           "/v1/transport/kmb/route/", "/v1/transport/kmb/stop",
-          "/v2/transport/citybus/route/CTB", "/v2/transport/citybus/stop",
+          "/v2/transport/citybus/route/CTB",
           "/v2/transport/nlb/route.php?action=list",
           "data.etagmb.gov.hk/route", "data.etagmb.gov.hk/stop",
           "mtr_lines_and_stations.csv", "light_rail_routes_and_stops.csv",
           "mtr_bus_stops.csv")))
+# Citybus v2 spec has ONLY /stop/{stop_id}; the old bulk /stop URL caused a
+# permanent HTML 403 in the 線路資料更新 screen.
+check("no invalid Citybus full stop-list download",
+      "/v2/transport/citybus/stop\"" not in store_java
+      and "new Dataset(CTB_STOPS" in store_java
+      and "stopCacheStatus" in store_java)
+check("KMB bulk stop list is optional with trailing-slash retry",
+      "KMB_STOPS, \"九巴／龍運全量站點（選用）\", true, true" in store_java
+      and "/v1/transport/kmb/stop/\"" in store_java)
+check("403 / HTML WAF pages are retried and rejected", all(
+      s in http_java for s in (
+          "USER_AGENT_BROWSER", "getFirst(", "getFirstText(", "singleStop(",
+          "trimmed.startsWith(\"<\")", "Accept-Language")))
+check("single-stop API resolves Chinese stop names", all(
+      s in repo_java for s in (
+          "fetchStopName", "HttpJson.singleStop", "/stop/\" + HttpJson.seg(stopId)",
+          "resolveMissingNames", "invokeAll(tasks, 12L")))
+check("resolved stop names are persisted as a partial snapshot", all(
+      s in store_java for s in (
+          "cacheStop(", "partial", "mergeStops", "catalogueJson(")))
 check("CTB route list has v1 fallback",
       "/v1/transport/citybus-nwfb/route/CTB" in store_java)
 check("atomic snapshot writes", "writeAtomic" in store_java and '.tmp' in store_java)
@@ -602,10 +624,13 @@ check("preflight tells user to full-sync, not patch one by one", all(
       s in workflow for s in ("唔好逐個檔改", "git add . && git commit",
                               "一次過拖「成個資料夾」")))
 fix_drift = read(ROOT / "scripts/fix_drift.py")
+DRIFT_REPAIR_DETAIL = (
+    "→ scripts/fix_drift.py 唔見咗或仍係舊版；由完整 zip 覆蓋，"
+    "或全量 git add -A && git commit && git push（唔好逐個檔 upload）")
 check("one-shot drift repair script exists and is idempotent", all(
       s in fix_drift for s in ("fix_gitignore", "fix_manifest", "fix_strings",
                                "benyeung08/hketa", "ic_launcher_round",
-                               "已經係新版", "Full sync")))
+                               "已經係新版", "Full sync")), DRIFT_REPAIR_DETAIL)
 
 # --- CI: surface the REAL Gradle error (Assemble debug APK 1m42s) ------------
 build_error = read(ROOT / "scripts/show_build_error.py")
@@ -670,7 +695,9 @@ check("CI no longer hides the error behind --stacktrace", all(
       and "gradle assembleDebug --no-daemon --stacktrace" not in workflow
       and "gradle assembleRelease --no-daemon --stacktrace" not in workflow)
 check("distiller warns when old stacktrace-shaped log is seen",
-      "新 workflow 未生效" in build_error)
+      "新 workflow 未生效" in build_error,
+      "→ scripts/show_build_error.py 唔見咗或仍係舊版；由完整 zip 覆蓋，"
+      "或全量 git add -A && git commit && git push")
 check("failure steps distil the real error instead of stack frames", all(
       s in workflow for s in ("Show real Gradle error",
                               "steps.assemble_debug.outcome",

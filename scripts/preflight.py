@@ -31,10 +31,15 @@ REQUIRED = [
     "app/icon-source.png",                # binary, logo artwork
     "app/src/main/AndroidManifest.xml",
     "app/src/main/ic_launcher-playstore.png",
-    # Scripts
+    # Scripts — ALL six are required. fix_drift.py and show_build_error.py
+    # were accidentally omitted from this list before: preflight let them
+    # through, so a stale/missing one only surfaced at static-check line 178.
     "scripts/check_api_fields.py",
+    "scripts/preflight.py",
     "scripts/pin_signing_fingerprint.py",
     "scripts/make_launcher_icons.py",
+    "scripts/fix_drift.py",
+    "scripts/show_build_error.py",
     # Resources
     "app/src/main/res/xml/file_paths.xml",
     "app/src/main/res/values/strings.xml",
@@ -139,6 +144,23 @@ def main() -> int:
          '<string name="default_github_repo">benyeung08/hketa</string>',
          "strings.xml 缺內建 default_github_repo",
          '改成：<string name="default_github_repo">benyeung08/hketa</string>'),
+        # 城巴站名 / 403 後備修復
+        ("app/src/main/java/hk/eta/app/api/HttpJson.java",
+         "USER_AGENT_BROWSER",
+         "HttpJson.java 仍係舊版（缺 403／HTML 重試）",
+         "由完整 zip 覆蓋 HttpJson.java"),
+        ("app/src/main/java/hk/eta/app/api/RouteDataStore.java",
+         "stopCacheStatus",
+         "RouteDataStore.java 仍係舊版（仍打唔存在嘅城巴全量站點 URL）",
+         "由完整 zip 覆蓋 RouteDataStore.java"),
+        ("app/src/main/java/hk/eta/app/api/EtaRepository.java",
+         "fetchStopName",
+         "EtaRepository.java 仍係舊版（城巴會繼續顯示純站號）",
+         "由完整 zip 覆蓋 EtaRepository.java"),
+        ("app/src/main/java/hk/eta/app/ui/SettingsActivity.kt",
+         "s.skipped",
+         "SettingsActivity.kt 仍係舊版（選用來源會誤報失敗）",
+         "由完整 zip 覆蓋 SettingsActivity.kt"),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel
