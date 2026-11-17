@@ -36,8 +36,8 @@
     <string name="clear_done">已清除本機資料，之後會直接向官方 API 查詢。</string>
     <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK、九巴／龍運、城巴、嶼巴、港鐵公司。線路／站點目錄每日或每月更新；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
 
-    <!-- 填寫你自己的 GitHub 倉庫，例如 yourname/hketa；留空則由設定頁輸入。 -->
-    <string name="default_github_repo"></string>
+    <!-- 內建更新來源：已指向 benyeung08/hketa；要換 repo 就改呢個值一次打包。 -->
+    <string name="default_github_repo">benyeung08/hketa</string>
     <string name="app_update_section">更新應用程式</string>
     <string name="app_version">目前版本：%1$s（%2$d）</string>
     <string name="github_repo_hint">GitHub 倉庫 owner/repo</string>
