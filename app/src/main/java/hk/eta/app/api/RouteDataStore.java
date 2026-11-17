@@ -73,44 +73,55 @@ public final class RouteDataStore {
     private static final class Dataset {
         final String file;
         final String label;
-        final String url;
-        final String fallback;
+        /** Tried in order; each URL is retried with a browser User-Agent too. */
+        final String[] urls;
         final boolean json;
         final boolean optional;
 
-        Dataset(String file, String label, String url, String fallback,
-                boolean json, boolean optional) {
+        Dataset(String file, String label, boolean json, boolean optional, String... urls) {
             this.file = file;
             this.label = label;
-            this.url = url;
-            this.fallback = fallback;
+            this.urls = urls;
             this.json = json;
             this.optional = optional;
         }
     }
 
+    /**
+     * IMPORTANT: Citybus v2 has NO full stop-list endpoint in the official spec
+     * (only /stop/{stop_id}). The old entry pointed at /v2/transport/citybus/stop
+     * and therefore ALWAYS failed with an HTML 403 page. CTB_STOPS is now a
+     * derived, on-demand cache built from single-stop lookups — no download.
+     *
+     * KMB's /stop full list IS official, but edge nodes sometimes 403 it. It is
+     * marked optional: when it fails, EtaRepository falls back to the official
+     * /stop/{stop_id} API and the app still shows Chinese stop names.
+     */
     private static final Dataset[] DATASETS = {
-            new Dataset(KMB_ROUTES, "九巴／龍運路線清單",
-                    "https://data.etabus.gov.hk/v1/transport/kmb/route/", "", true, false),
-            new Dataset(KMB_STOPS, "九巴／龍運全量站點",
-                    "https://data.etabus.gov.hk/v1/transport/kmb/stop", "", true, false),
-            new Dataset(CTB_ROUTES, "城巴路線清單",
+            new Dataset(KMB_ROUTES, "九巴／龍運路線清單", true, false,
+                    "https://data.etabus.gov.hk/v1/transport/kmb/route/",
+                    "https://data.etabus.gov.hk/v1/transport/kmb/route"),
+            new Dataset(KMB_STOPS, "九巴／龍運全量站點（選用）", true, true,
+                    "https://data.etabus.gov.hk/v1/transport/kmb/stop",
+                    "https://data.etabus.gov.hk/v1/transport/kmb/stop/"),
+            new Dataset(CTB_ROUTES, "城巴路線清單", true, false,
                     "https://rt.data.gov.hk/v2/transport/citybus/route/CTB",
-                    "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB", true, false),
-            new Dataset(CTB_STOPS, "城巴全量站點",
-                    "https://rt.data.gov.hk/v2/transport/citybus/stop", "", true, false),
-            new Dataset(NLB_ROUTES, "嶼巴路線清單",
-                    "https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list", "", true, false),
-            new Dataset(GMB_ROUTES, "綠小巴路線清單",
-                    "https://data.etagmb.gov.hk/route", "", true, false),
-            new Dataset(GMB_STOPS, "綠小巴站點索引（選用）",
-                    "https://data.etagmb.gov.hk/stop", "", true, true),
-            new Dataset(MTR_LINES, "港鐵重鐵線路及車站 CSV",
-                    MTR_DATA + MTR_LINES, "", false, false),
-            new Dataset(LRT_STOPS, "輕鐵路線及車站 CSV",
-                    MTR_DATA + LRT_STOPS, "", false, false),
-            new Dataset(MTR_BUS_STOPS, "港鐵接駁巴士車站 CSV",
-                    MTR_DATA + MTR_BUS_STOPS, "", false, false)
+                    "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB"),
+            // urls is deliberately empty: derived from single-stop API, see stopCacheStatus().
+            new Dataset(CTB_STOPS, "城巴站名快取（單站 API 按需）", true, true),
+            new Dataset(NLB_ROUTES, "嶼巴路線清單", true, false,
+                    "https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list"),
+            new Dataset(GMB_ROUTES, "綠小巴路線清單", true, false,
+                    "https://data.etagmb.gov.hk/route",
+                    "https://data.etagmb.gov.hk/route/"),
+            new Dataset(GMB_STOPS, "綠小巴站點索引（選用）", true, true,
+                    "https://data.etagmb.gov.hk/stop"),
+            new Dataset(MTR_LINES, "港鐵重鐵線路及車站 CSV", false, false,
+                    MTR_DATA + MTR_LINES),
+            new Dataset(LRT_STOPS, "輕鐵路線及車站 CSV", false, false,
+                    MTR_DATA + LRT_STOPS),
+            new Dataset(MTR_BUS_STOPS, "港鐵接駁巴士車站 CSV", false, false,
+                    MTR_DATA + MTR_BUS_STOPS)
     };
 
     // ------------------------------------------------------------------ results
@@ -122,15 +133,23 @@ public final class RouteDataStore {
         public final int count;
         public final String error;
         public final long at;
+        /** Optional / derived source that was skipped: NOT a failure. */
+        public final boolean skipped;
 
         SourceStatus(String file, String label, boolean ok, int count,
                      String error, long at) {
+            this(file, label, ok, count, error, at, false);
+        }
+
+        SourceStatus(String file, String label, boolean ok, int count,
+                     String error, long at, boolean skipped) {
             this.file = file;
             this.label = label;
             this.ok = ok;
             this.count = count;
             this.error = error == null ? "" : error;
             this.at = at;
+            this.skipped = skipped;
         }
     }
 
@@ -296,6 +315,7 @@ public final class RouteDataStore {
             int records = 0;
             int failedRequired = 0;
             List<String> failures = new ArrayList<>();
+            List<String> skippedLabels = new ArrayList<>();
             JSONObject sourcesObj = new JSONObject();
             long now = System.currentTimeMillis();
             for (SourceStatus s : statuses) {
@@ -303,6 +323,7 @@ public final class RouteDataStore {
                 try {
                     o.put("label", s.label);
                     o.put("ok", s.ok);
+                    o.put("skipped", s.skipped);
                     o.put("count", s.count);
                     o.put("error", s.error);
                     o.put("at", s.at > 0L ? s.at : now);
@@ -313,6 +334,12 @@ public final class RouteDataStore {
                 if (s.ok) {
                     ok++;
                     records += s.count;
+                    if (s.skipped) {
+                        skippedLabels.add(s.label);
+                    }
+                } else if (s.skipped) {
+                    // Optional / derived source unavailable: expected, not an error.
+                    skippedLabels.add(s.label);
                 } else {
                     failures.add(s.label);
                     Dataset d = find(s.file);
@@ -329,8 +356,11 @@ public final class RouteDataStore {
                 message = "已更新 " + ok + "/" + statuses.size() + " 個來源（部分失敗："
                         + join(failures, 3) + "）";
             } else {
-                message = "已更新 " + ok + "/" + statuses.size() + " 個來源 · 共 "
-                        + records + " 筆資料";
+                message = "已更新 " + ok + " 個來源 · 共 " + records + " 筆資料";
+                if (!skippedLabels.isEmpty()) {
+                    message += "（另有 " + skippedLabels.size()
+                            + " 個選用／按需來源略過，唔影響站名顯示）";
+                }
             }
 
             JSONObject root = new JSONObject();
@@ -391,6 +421,145 @@ public final class RouteDataStore {
         return readTextFrom(new File(dir, file));
     }
 
+    /**
+     * Local snapshot first, live official API as fallback.
+     * A snapshot marked "partial" (built from single-stop lookups) is merged
+     * with the full live list when that list becomes reachable again; if the
+     * full list still 403s, the partial snapshot is still usable for names.
+     */
+    public static JSONObject catalogueJson(String file, String... urls) throws Exception {
+        JSONObject local = readJson(file);
+        boolean partial = local != null && local.optBoolean("partial", false);
+        if (local != null && !partial) {
+            return local;
+        }
+        if (urls != null && urls.length > 0) {
+            try {
+                JSONObject live = new JSONObject(HttpJson.getFirst(urls));
+                if (local == null) {
+                    return live;
+                }
+                return mergeStops(local, live);
+            } catch (Exception ignored) {
+                // Full list unavailable (e.g. HTTP 403 HTML page). Fall through.
+            }
+        }
+        if (local != null) {
+            return local;
+        }
+        throw new IOException("無法讀取 " + file + " 且官方端點不可用");
+    }
+
+    /** Keeps cached single-stop entries that are missing from a full list. */
+    private static JSONObject mergeStops(JSONObject partial, JSONObject live) {
+        JSONArray merged = live.optJSONArray("data");
+        if (merged == null) {
+            return live;
+        }
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < merged.length(); i++) {
+            JSONObject o = merged.optJSONObject(i);
+            if (o != null) {
+                seen.add(HttpJson.str(o, "stop"));
+            }
+        }
+        JSONArray extra = partial.optJSONArray("data");
+        if (extra != null) {
+            for (int i = 0; i < extra.length(); i++) {
+                JSONObject o = extra.optJSONObject(i);
+                if (o == null) {
+                    continue;
+                }
+                String id = HttpJson.str(o, "stop");
+                if (!id.isEmpty() && seen.add(id)) {
+                    merged.put(o);
+                }
+            }
+        }
+        try {
+            live.remove("partial");
+            live.put("data", merged);
+        } catch (Exception ignored) {
+            // keep live as-is
+        }
+        return live;
+    }
+
+    /**
+     * Persists one stop resolved through the official single-stop API so the
+     * next query (and the nearby-stop index) needs no network at all.
+     * The file is deliberately flagged "partial": it must never suppress a
+     * successful full-list download.
+     */
+    public static synchronized void cacheStop(String file, String stopId,
+                                              String nameTc, String nameEn,
+                                              String nameSc, double lat, double lng) {
+        File dir = dirOrNull();
+        if (dir == null || stopId == null || stopId.isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject root = readJson(file);
+            boolean isNew = root == null;
+            if (root == null) {
+                root = new JSONObject();
+                root.put("type", "StopList");
+                root.put("version", "1.0");
+                root.put("generated_timestamp",
+                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ",
+                                Locale.US).format(new java.util.Date()));
+            }
+            // Adding one stop to an already-complete full-list snapshot must
+            // not downgrade it to "partial" (that would force a live download
+            // on every later lookup).
+            boolean keepPartial = isNew || root.optBoolean("partial", false);
+            JSONArray data = root.optJSONArray("data");
+            if (data == null) {
+                data = new JSONArray();
+            }
+            boolean found = false;
+            for (int i = 0; i < data.length(); i++) {
+                JSONObject o = data.optJSONObject(i);
+                if (o != null && stopId.equals(HttpJson.str(o, "stop"))) {
+                    fillStop(o, nameTc, nameEn, nameSc, lat, lng);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                JSONObject o = new JSONObject();
+                o.put("stop", stopId);
+                fillStop(o, nameTc, nameEn, nameSc, lat, lng);
+                data.put(o);
+            }
+            if (keepPartial) {
+                root.put("partial", true);
+            } else {
+                root.remove("partial");
+            }
+            root.put("data", data);
+            if (!dir.exists() && !dir.mkdirs()) {
+                return;
+            }
+            writeAtomic(new File(dir, file), root.toString());
+        } catch (Exception ignored) {
+            // A cache write failure must never break an ETA query.
+        }
+    }
+
+    private static void fillStop(JSONObject o, String tc, String en, String sc,
+                                 double lat, double lng) throws Exception {
+        o.put("name_tc", tc);
+        o.put("name_en", en);
+        o.put("name_sc", sc);
+        if (lat != 0.0) {
+            o.put("lat", lat);
+        }
+        if (lng != 0.0) {
+            o.put("long", lng);
+        }
+    }
+
     public static void invalidateDownstream() {
         MtrCatalog.invalidateCaches();
         GeoStops.invalidate();
@@ -401,28 +570,30 @@ public final class RouteDataStore {
 
     private static SourceStatus download(Dataset d, File dir) {
         long now = System.currentTimeMillis();
+        // No official bulk endpoint exists for this file (Citybus stops). The
+        // snapshot is built incrementally by single-stop lookups instead.
+        if (d.urls.length == 0) {
+            return stopCacheStatus(d, now);
+        }
         String body = null;
         String error = "";
         try {
-            body = d.json ? HttpJson.get(d.url) : HttpJson.getText(d.url);
+            // getFirst() retries every URL with both an app and a browser UA,
+            // and rejects the HTML WAF pages that caused the HTTP 403 report.
+            body = d.json ? HttpJson.getFirst(d.urls) : HttpJson.getFirstText(d.urls);
         } catch (Exception first) {
             error = first.getMessage() == null ? "連線失敗" : first.getMessage();
-            if (d.fallback != null && !d.fallback.isEmpty()) {
-                try {
-                    body = d.json ? HttpJson.get(d.fallback) : HttpJson.getText(d.fallback);
-                    error = "";
-                } catch (Exception second) {
-                    error = second.getMessage() == null ? error : second.getMessage();
-                }
-            }
         }
         if (body == null || body.trim().isEmpty()) {
+            String reason = error.isEmpty() ? "空回應" : error;
             return new SourceStatus(d.file, d.label, false, 0,
-                    error.isEmpty() ? "空回應" : error, now);
+                    d.optional ? "選用來源略過：" + reason : reason, now, d.optional);
         }
         int count = countRecords(body, d.json);
         if (d.json && count < 0) {
-            return new SourceStatus(d.file, d.label, false, 0, "JSON 格式錯誤", now);
+            return new SourceStatus(d.file, d.label, false, 0,
+                    d.optional ? "選用來源略過：JSON 格式錯誤" : "JSON 格式錯誤",
+                    now, d.optional);
         }
         try {
             writeAtomic(new File(dir, d.file), body);
@@ -430,6 +601,17 @@ public final class RouteDataStore {
         } catch (IOException e) {
             return new SourceStatus(d.file, d.label, false, 0, "寫入失敗", now);
         }
+    }
+
+    /** Status of the derived Citybus stop-name cache (no bulk endpoint exists). */
+    private static SourceStatus stopCacheStatus(Dataset d, long now) {
+        JSONObject root = readJson(d.file);
+        JSONArray data = root == null ? null : root.optJSONArray("data");
+        int count = data == null ? 0 : data.length();
+        String note = count == 0
+                ? "官方無全量端點；查路線時用 /stop/{stop_id} 自動建立"
+                : "按需快取 " + count + " 個站（單站 API）";
+        return new SourceStatus(d.file, d.label, count > 0, count, note, now, count == 0);
     }
 
     /**

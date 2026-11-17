@@ -11,7 +11,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import hk.eta.app.api.EtaModels.EtaItem;
 import hk.eta.app.api.EtaModels.StopOption;
@@ -66,10 +71,12 @@ public final class EtaRepository {
         GMB_ROUTE_CODES.clear();
     }
 
-    /** Local snapshot first, live official API as fallback. */
+    /** Local snapshot first, live official API as fallback (with 403 retry). */
     private static JSONObject catalogueJson(String file, String url) throws Exception {
-        JSONObject local = RouteDataStore.readJson(file);
-        return local != null ? local : fetchWithSlashFallback(url);
+        String[] urls = (url.contains("?") || url.endsWith("/"))
+                ? new String[]{url}
+                : new String[]{url, url + "/"};
+        return RouteDataStore.catalogueJson(file, urls);
     }
 
     // ============================================================ public API
@@ -303,12 +310,24 @@ public final class EtaRepository {
         if (cached != null) {
             return cached;
         }
-        String path = KMB.equals(company) ? KMB_BASE + "/stop" : CTB_BASE + "/stop";
         String file = KMB.equals(company)
                 ? RouteDataStore.KMB_STOPS : RouteDataStore.CTB_STOPS;
-        JSONObject root = catalogueJson(file, path);
+        JSONObject root;
+        if (KMB.equals(company)) {
+            // KMB does publish a full stop list, but edge nodes sometimes 403
+            // it. RouteDataStore falls back to the partial single-stop cache.
+            root = RouteDataStore.catalogueJson(file,
+                    KMB_BASE + "/stop", KMB_BASE + "/stop/");
+        } else {
+            // Citybus v2 has NO full stop-list endpoint. Only the incremental
+            // cache we build from /stop/{stop_id} is available.
+            root = RouteDataStore.readJson(file);
+            if (root == null) {
+                root = new JSONObject();
+            }
+        }
+        Map<String, String> map = new ConcurrentHashMap<>();
         JSONArray data = root.optJSONArray("data");
-        Map<String, String> map = new HashMap<>();
         if (data != null) {
             for (int i = 0; i < data.length(); i++) {
                 JSONObject o = data.optJSONObject(i);
@@ -323,11 +342,93 @@ public final class EtaRepository {
                         HttpJson.str(o, "name_tc"),
                         HttpJson.str(o, "name_en"),
                         HttpJson.str(o, "name_sc"));
-                map.put(id, name);
+                if (!name.isEmpty()) {
+                    map.put(id, name);
+                }
             }
         }
         NAME_CACHE.put(company, map);
         return map;
+    }
+
+    /**
+     * Resolves ONE Chinese stop name through the official single-stop API.
+     * This is the fix for Citybus showing bare ids such as "002891": when the
+     * bulk stop list is unavailable (or does not exist), every stop in the
+     * route sequence is looked up individually, in parallel, and cached both
+     * in memory and in the local snapshot for offline reuse.
+     */
+    public static String fetchStopName(String company, String stopId) {
+        if (stopId == null || stopId.isEmpty()) {
+            return "";
+        }
+        String url;
+        String file;
+        if (KMB.equals(company)) {
+            url = KMB_BASE + "/stop/" + HttpJson.seg(stopId);
+            file = RouteDataStore.KMB_STOPS;
+        } else if (CTB.equals(company)) {
+            url = CTB_BASE + "/stop/" + HttpJson.seg(stopId);
+            file = RouteDataStore.CTB_STOPS;
+        } else if (GMB.equals(company)) {
+            url = GMB_BASE + "/stop/" + HttpJson.seg(stopId);
+            file = "";
+        } else {
+            return "";
+        }
+        return fetchStopNameAt(company, stopId, url, file);
+    }
+
+    /** Package-visible so the resolution logic can be tested without a live API. */
+    static String fetchStopNameAt(String company, String stopId, String url, String file) {
+        if (stopId == null || stopId.isEmpty() || url == null || url.isEmpty()) {
+            return "";
+        }
+        try {
+            JSONObject root = HttpJson.singleStop(url);
+            JSONObject d = root.optJSONObject("data");
+            if (d == null) {
+                JSONArray arr = root.optJSONArray("data");
+                if (arr != null && arr.length() > 0) {
+                    d = arr.optJSONObject(0);
+                }
+            }
+            if (d == null) {
+                return "";
+            }
+            String name = HttpJson.firstNonEmpty(
+                    HttpJson.str(d, "name_tc"),
+                    HttpJson.str(d, "name_en"),
+                    HttpJson.str(d, "name_sc"));
+            if (name.isEmpty()) {
+                return "";
+            }
+            Map<String, String> map = NAME_CACHE.get(company);
+            if (map != null) {
+                map.put(stopId, name);
+            }
+            if (!file.isEmpty()) {
+                double lat = parseCoord(HttpJson.str(d, "lat"));
+                double lng = parseCoord(HttpJson.str(d, "long"));
+                RouteDataStore.cacheStop(file, stopId,
+                        HttpJson.str(d, "name_tc"), HttpJson.str(d, "name_en"),
+                        HttpJson.str(d, "name_sc"), lat, lng);
+            }
+            return name;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static double parseCoord(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(raw.trim());
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
     }
 
     public String stopName(String company, String stopId) {
@@ -876,15 +977,31 @@ public final class EtaRepository {
         }
     }
 
-    private static List<StopOption> parseRouteStops(JSONObject root, String company,
-                                                    String route, String direction,
-                                                    Map<String, String> names,
-                                                    boolean kmbServiceType) {
+    private List<StopOption> parseRouteStops(JSONObject root, String company,
+                                             String route, String direction,
+                                             Map<String, String> names,
+                                             boolean kmbServiceType) {
         List<StopOption> out = new ArrayList<>();
         JSONArray data = root == null ? null : root.optJSONArray("data");
         if (data == null) {
             return out;
         }
+        // First pass: collect the stop ids. Second pass builds StopOption with
+        // resolved names, so the final name is immutable in the model.
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < data.length(); i++) {
+            JSONObject o = data.optJSONObject(i);
+            if (o == null) {
+                continue;
+            }
+            String stopId = HttpJson.str(o, "stop");
+            if (!stopId.isEmpty()) {
+                ids.add(stopId);
+            }
+        }
+        Map<String, String> effective = new HashMap<>(names);
+        resolveMissingNames(company, ids, effective);
+
         String fallbackDir = "outbound".equals(direction) ? "O" : "I";
         for (int i = 0; i < data.length(); i++) {
             JSONObject o = data.optJSONObject(i);
@@ -902,11 +1019,62 @@ public final class EtaRepository {
             if (kmbServiceType) {
                 serviceType = toServiceType(o.optString("service_type", "1"));
             }
-            String name = names.containsKey(stopId) ? names.get(stopId) : "";
+            String name = effective.containsKey(stopId) ? effective.get(stopId) : "";
             out.add(new StopOption(company, route, dir, seq, stopId, name,
                     serviceType, "", ""));
         }
         return out;
+    }
+
+    /**
+     * Fills in names missing from the bulk snapshot using the official
+     * /stop/{stop_id} API. Bounded (3 threads, 12 s, max 30 stops) so an
+     * unreachable operator can never hang the stop list. Resolved names are
+     * persisted, so this cost is paid only once per stop.
+     */
+    private void resolveMissingNames(final String company, List<String> ids,
+                                     Map<String, String> names) {
+        final int MAX_LOOKUPS = 30;
+        List<String> missing = new ArrayList<>();
+        for (String id : ids) {
+            if (!names.containsKey(id) && !missing.contains(id)
+                    && missing.size() < MAX_LOOKUPS) {
+                missing.add(id);
+            }
+        }
+        if (missing.isEmpty()) {
+            return;
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        try {
+            List<Callable<String[]>> tasks = new ArrayList<>();
+            for (final String id : missing) {
+                tasks.add(new Callable<String[]>() {
+                    @Override
+                    public String[] call() {
+                        return new String[]{id, fetchStopName(company, id)};
+                    }
+                });
+            }
+            List<Future<String[]>> futures = pool.invokeAll(tasks, 12L, TimeUnit.SECONDS);
+            for (Future<String[]> f : futures) {
+                if (f.isCancelled()) {
+                    continue;
+                }
+                try {
+                    String[] pair = f.get();
+                    if (pair[1] != null && !pair[1].isEmpty()) {
+                        names.put(pair[0], pair[1]);
+                    }
+                } catch (Exception ignored) {
+                    // one unreachable stop must not hide the others
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     private static int toServiceType(String raw) {

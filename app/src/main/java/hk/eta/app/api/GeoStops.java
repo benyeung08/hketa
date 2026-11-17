@@ -90,8 +90,11 @@ public final class GeoStops {
 
     /** Local snapshot first, live official API as fallback. */
     private static JSONObject datasetJson(String file, String url) throws Exception {
-        JSONObject local = RouteDataStore.readJson(file);
-        return local != null ? local : HttpJson.getObject(url);
+        return datasetJson(file, new String[]{url});
+    }
+
+    private static JSONObject datasetJson(String file, String... urls) throws Exception {
+        return RouteDataStore.catalogueJson(file, urls);
     }
 
     /** Haversine distance in metres. */
@@ -151,14 +154,17 @@ public final class GeoStops {
             @Override
             public List<NearStop> call() throws Exception {
                 return parseBusStopList(RouteDataStore.KMB_STOPS,
-                        KMB_BASE + "/stop", EtaRepository.KMB, "");
+                        new String[]{KMB_BASE + "/stop", KMB_BASE + "/stop/"},
+                        EtaRepository.KMB, "");
             }
         }, out);
         safeList("CTB", new Callable<List<NearStop>>() {
             @Override
             public List<NearStop> call() throws Exception {
+                // Citybus v2 has NO full stop-list endpoint. Only the
+                // incremental cache built from /stop/{stop_id} is usable.
                 return parseBusStopList(RouteDataStore.CTB_STOPS,
-                        CTB_BASE + "/stop", EtaRepository.CTB, "");
+                        new String[0], EtaRepository.CTB, "");
             }
         }, out);
         safeList("NLB", new Callable<List<NearStop>>() {
@@ -194,10 +200,10 @@ public final class GeoStops {
         }
     }
 
-    private static List<NearStop> parseBusStopList(String file, String url,
+    private static List<NearStop> parseBusStopList(String file, String[] urls,
                                                    String company,
                                                    String defaultRef) throws Exception {
-        JSONArray data = datasetJson(file, url).optJSONArray("data");
+        JSONArray data = datasetJson(file, urls).optJSONArray("data");
         List<NearStop> out = new ArrayList<>();
         if (data == null) {
             return out;
