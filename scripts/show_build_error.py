@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Distils the REAL cause out of a noisy `gradle --stacktrace` log.
+"""Distils the REAL cause out of a Gradle build log.
 
-The tail of a failed Gradle build is dozens of internal frames like
-`DefaultConditionalExecutionQueue$ExecutionRunner.run(...)`. Those are NOT the
-error. This script scans the whole log and prints, as GitHub Actions
-::error:: annotations, the lines that actually matter:
+With --stacktrace (older workflow) the tail was dozens of internal frames like
+`DefaultConditionalExecutionQueue$ExecutionRunner.run(...)`; those are NOT the
+error. The CI no longer passes --stacktrace, so Gradle's own tail is already
+the answer -- this script is kept as a belt-and-braces summary for BOTH shapes
+of log. It scans the whole log and prints, as GitHub Actions ::error::
+annotations, the lines that actually matter:
 
   FAILURE: / * What went wrong: / Execution failed for task
   Caused by: / e: ... (Kotlin) / error: ... (Java)
@@ -67,6 +69,8 @@ def main() -> int:
     for log in logs:
         all_lines.extend(log.read_text(encoding="utf-8", errors="replace").splitlines())
     print(f"::error::Gradle log 共 {len(all_lines)} 行；以下係真正嘅錯誤摘要（完整 log 會上傳成 Artifact）")
+    print("::error::提示：如果 log 最尾仍然係 'at org.gradle.internal...'，代表新 workflow 未生效，"
+          "請確認 .github/workflows/build-apk.yml 已經上傳")
 
     regex = re.compile("|".join(f"(?:{p})" for p in PATTERNS), re.IGNORECASE)
     seen = set()
