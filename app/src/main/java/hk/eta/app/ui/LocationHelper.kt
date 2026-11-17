@@ -12,9 +12,12 @@ import android.os.Looper
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+// NOTE: Deferred.await() is a MEMBER of Deferred / CompletableDeferred.
+// There is NO top-level `kotlinx.coroutines.await` extension in coroutines-core
+// (that name only exists for Google Play Services Task / Java Future, which
+// this project deliberately does NOT depend on). Importing it broke compilation.
 
 /**
  * One-shot device location using the Android platform LocationManager.
@@ -67,9 +70,16 @@ object LocationHelper {
                 }
             }
 
+            // Android 34 marks these two params @NonNull, so Kotlin exposes the
+            // overridable signature as `String` (NOT the platform type `String!`).
+            // Declaring `String?` therefore matches nothing -> "overrides nothing".
+            // onStatusChanged has no @NonNull and stays nullable (platform type).
+            // Keeping all three overrides also preserves minSdk 24 compatibility,
+            // where these callbacks are still abstract interface methods.
+            @Deprecated("Deprecated in Java")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-            override fun onProviderEnabled(provider: String?) = Unit
-            override fun onProviderDisabled(provider: String?) = Unit
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
         }
 
         withContext(Dispatchers.Main) {
