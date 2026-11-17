@@ -1,10 +1,10 @@
-name: Build Android APK
+name: Build HK ETA APK
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -13,129 +13,133 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 25
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Detect and Install API 37/36 SDK
+      - name: Accept licenses and install SDK 34
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
 
-          echo "=== Available platforms ==="
-          sdkmanager --list 2>/dev/null | grep "platforms;android-3[6-9]\|platforms;android-4" || true
+      - name: Check API field names against official samples
+        run: python3 scripts/check_api_fields.py
 
-          # Try API 37 first, fallback to API 36
-          API_VER=""
-          for ver in 37 36; do
-            echo "=== Trying API $ver ==="
-            if sdkmanager "platform-tools" "platforms;android-$ver" "build-tools;$ver.0.0" 2>&1 | grep -q "done"; then
-              API_VER=$ver
-              echo "✅ API $ver installed successfully"
-              break
-            else
-              echo "⚠️ API $ver not available, trying next..."
-            fi
-          done
-
-          if [ -z "$API_VER" ]; then
-            echo "❌ Neither API 37 nor API 36 available"
-            echo "=== Fallback: list all available platforms ==="
-            sdkmanager --list 2>/dev/null | grep "^  platforms;android" || true
-            # Find highest available
-            HIGHEST=$(sdkmanager --list 2>/dev/null | grep -oP "platforms;android-\K[0-9]+" | sort -n | tail -1)
-            echo "Highest available: $HIGHEST"
-            API_VER=$HIGHEST
-            sdkmanager "platform-tools" "platforms;android-$API_VER" "build-tools;$API_VER.0.0" || {
-              echo "FATAL: Cannot install any Android platform SDK"
-              exit 1
-            }
-          fi
-
-          echo "=== Final API_VER=$API_VER ==="
-          echo "API_VER=$API_VER" >> $GITHUB_ENV
-          echo "$API_VER" > /tmp/api_ver.txt
-
-          echo "=== Installed platforms ==="
-          ls $ANDROID_HOME/platforms/ 2>/dev/null || true
-          echo "=== Installed build-tools ==="
-          ls $ANDROID_HOME/build-tools/ 2>/dev/null || true
-
-      - name: Update build.gradle.kts API levels
+      # Every runner uses the SAME committed development keystore, so debug and
+      # fallback-release APKs always share one certificate. Prints the fingerprint.
+      - name: Verify committed dev keystore
         run: |
-          cd androidApp
-          API_VER=$(cat /tmp/api_ver.txt)
-          echo "Setting compileSdk/targetSdk to $API_VER"
+          keytool -list -v \
+            -keystore app/hketa-debug.keystore \
+            -storepass 'hketa-dev-2026' -alias hketa 2>/dev/null \
+            | grep 'SHA256:' | head -1 | tee dev-signing-sha256.txt
+          echo "### 固定開發簽章" >> "$GITHUB_STEP_SUMMARY"
+          cat dev-signing-sha256.txt >> "$GITHUB_STEP_SUMMARY"
 
-          # Update compileSdk and targetSdk to detected API level
-          sed -i "s/compileSdk = [0-9]*/compileSdk = $API_VER/" build.gradle.kts
-          sed -i "s/targetSdk = [0-9]*/targetSdk = $API_VER/" build.gradle.kts
-
-          echo "=== Updated build.gradle.kts ==="
-          grep -n "compileSdk\|targetSdk" build.gradle.kts
-
-      - name: Create local.properties
-        run: |
-          cd androidApp
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "✅ local.properties created:"
-          cat local.properties
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.14.2"
-          cache-disabled: false
-
-      - name: Build APK
-        run: |
-          cd androidApp
-          API_VER=$(cat /tmp/api_ver.txt)
-          echo "Building with COMPILE_SDK_VERSION=$API_VER"
-          gradle assembleDebug --no-daemon --stacktrace
+      # Optional: a real production keystore supplied through repo Secrets.
+      # If absent, release signing falls back to the dev key (same certificate).
+      - name: Decode release keystore
+        if: startsWith(github.ref, 'refs/tags/')
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          COMPILE_SDK_VERSION: ${{ env.API_VER }}
-
-      - name: Verify APK
+          HKETA_KEYSTORE_BASE64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
+          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+          HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
         run: |
-          cd androidApp
-          APK_PATH="build/outputs/apk/debug/androidApp-debug.apk"
-          if [ -f "$APK_PATH" ]; then
-            echo "✅ Found APK: $APK_PATH"
-            ls -la "$APK_PATH"
+          if [ -n "$HKETA_KEYSTORE_BASE64" ]; then
+            echo "$HKETA_KEYSTORE_BASE64" | base64 -d > app/hketa-release.keystore
+            echo "HKETA_KEYSTORE_PASSWORD=$HKETA_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "HKETA_KEY_ALIAS=${HKETA_KEY_ALIAS:-hketa}" >> "$GITHUB_ENV"
+            echo "HKETA_KEY_PASSWORD=$HKETA_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "HKETA_CUSTOM_KEY=true" >> "$GITHUB_ENV"
+            echo "Using injected release keystore."
           else
-            echo "APK not at expected path, searching..."
-            find . -name "*.apk" -type f
+            echo "No HKETA_KEYSTORE_BASE64 secret: falling back to the committed dev key (identical certificate)."
           fi
+
+      # Pin the fingerprint of the exact keystore Gradle is about to use.
+      - name: Pin expected signing fingerprint
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+        run: |
+          if [ -f app/hketa-release.keystore ]; then
+            KS=app/hketa-release.keystore
+            PASS="${HKETA_KEYSTORE_PASSWORD:-hketa-dev-2026}"
+            ALIAS="${HKETA_KEY_ALIAS:-hketa}"
+          else
+            KS=app/hketa-debug.keystore
+            PASS=hketa-dev-2026
+            ALIAS=hketa
+          fi
+          FP=$(keytool -list -v -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" 2>/dev/null \
+               | grep -m1 'SHA256:' | cut -d: -f2- | tr -d ' ')
+          python3 scripts/pin_signing_fingerprint.py "$FP"
+
+      # The repository intentionally ships no gradle-wrapper.jar binary.
+      # Grab the official Gradle distribution instead, so CI is self-contained.
+      - name: Gradle 8.7
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gradle-8.7-bin.zip" \
+            https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q "$RUNNER_TEMP/gradle-8.7-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
+          echo "$RUNNER_TEMP/gradle-dist/gradle-8.7/bin" >> "$GITHUB_PATH"
+
+      - name: Assemble debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hketa-app-debug
-          path: androidApp/build/outputs/apk/debug/*.apk
-          retention-days: 30
+          name: hketa-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
-      - name: Create Release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      - name: Assemble signed release APK
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      # Fail the release if the APK certificate differs from the pinned value.
+      - name: Verify APK signing certificate
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          APKSIGNER="$SDK/build-tools/34.0.0/apksigner"
+          APK="app/build/outputs/apk/release/app-release.apk"
+          "$APKSIGNER" verify --print-certs "$APK" | tee apksigner-output.txt
+          APK_FP=$(grep -m1 'SHA-256 digest' apksigner-output.txt \
+                   | cut -d: -f2- | tr -d ' ' | tr 'a-f' 'A-F')
+          PIN=$(python3 -c "import re;print(re.search(r'<string name=\"expected_signing_sha256\">([^<]*)</string>', open('app/src/main/res/values/strings.xml', encoding='utf-8').read()).group(1))")
+          echo "APK certificate : $APK_FP"
+          echo "Pinned value    : $PIN"
+          if [ "$APK_FP" != "$PIN" ]; then
+            echo "::error::APK signing certificate does not match the pinned fingerprint"
+            exit 1
+          fi
+          {
+            echo "HK ETA APK signing certificate"
+            echo "Tag: ${GITHUB_REF_NAME}"
+            echo "SHA-256: $APK_FP"
+          } > SIGNING_FINGERPRINT.txt
+          echo "### Release APK 簽章 SHA-256: \`$APK_FP\`" >> "$GITHUB_STEP_SUMMARY"
+          cp "$APK" "hketa-${GITHUB_REF_NAME}.apk"
+
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: HK ETA App v${{ github.run_number }} (API ${{ env.API_VER }})
-          files: androidApp/build/outputs/apk/debug/*.apk
-          body: |
-            Automated build #${{ github.run_number }}
-            Target API: ${{ env.API_VER }}
-            Commit: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            hketa-${{ github.ref_name }}.apk
+            SIGNING_FINGERPRINT.txt
+          generate_release_notes: true
