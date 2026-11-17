@@ -20,16 +20,77 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # Runs BEFORE any toolchain setup. A missing binary / an extra nested
-      # folder now fails in ~1s with an explicit file list.
+      # SELF_CONTAINED_PREFLIGHT
+      # Deliberately INLINE: the previous version called scripts/preflight.py,
+      # which itself was missing when files were uploaded one-by-one, so the
+      # check could only say "preflight.py is missing" and nothing else.
+      # This version needs no repo file at all and lists EVERY missing file.
       - name: Preflight - verify uploaded files
         run: |
-          if [ ! -f scripts/preflight.py ]; then
-            echo "::error::缺少 scripts/preflight.py，repo 上傳唔完整"
-            echo "::error::如果係用網頁 Add files via upload，請改用 git push 上傳整個資料夾"
-            exit 1
-          fi
-          python3 scripts/preflight.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          R = Path('.')
+          req = [
+              '.github/workflows/build-apk.yml',
+              'settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',
+              'gradlew', 'gradle/wrapper/gradle-wrapper.properties',
+              'app/build.gradle.kts', 'app/proguard-rules.pro',
+              'app/hketa-debug.keystore', 'app/icon-source.png',
+              'app/src/main/AndroidManifest.xml',
+              'app/src/main/ic_launcher-playstore.png',
+              'scripts/check_api_fields.py',
+              'scripts/pin_signing_fingerprint.py',
+              'scripts/make_launcher_icons.py',
+              'app/src/main/res/xml/file_paths.xml',
+              'app/src/main/res/values/strings.xml',
+              'app/src/main/res/values/colors.xml',
+              'app/src/main/res/values-night/colors.xml',
+              'app/src/main/res/layout/activity_main.xml',
+              'app/src/main/res/layout/activity_settings.xml',
+              'app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
+              'app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
+          ]
+          for d in ('mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'):
+              for n in ('ic_launcher.png', 'ic_launcher_round.png',
+                        'ic_launcher_background.png', 'ic_launcher_foreground.png'):
+                  req.append(f'app/src/main/res/mipmap-{d}/{n}')
+
+          key_sources = [
+              'app/src/main/java/hk/eta/app/HkEtaApp.kt',
+              'app/src/main/java/hk/eta/app/api/HttpJson.java',
+              'app/src/main/java/hk/eta/app/api/AppUpdate.java',
+              'app/src/main/java/hk/eta/app/api/RouteDataStore.java',
+              'app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+              'app/src/main/java/hk/eta/app/ui/SettingsActivity.kt',
+              'app/src/main/java/hk/eta/app/ui/ApkSignature.kt',
+          ]
+          req += key_sources
+
+          errs = []
+          if (R / 'hketa/app/build.gradle.kts').exists() \
+                  and not (R / 'app/build.gradle.kts').exists():
+              errs.append('多咗一層 hketa/ 資料夾：請把 hketa/ *入面* 嘅檔案放 repo 根目錄')
+
+          missing = [p for p in req if not (R / p).is_file()]
+          if missing:
+              errs.append(f'缺少 {len(missing)} 個檔案：')
+              errs += [f'  - {p}' for p in missing]
+          srcs = list((R / 'app/src/main/java').rglob('*.java')) + \
+                 list((R / 'app/src/main/java').rglob('*.kt'))
+          if len(srcs) < 19:
+              errs.append(f'原始碼得 {len(srcs)} 個 .java/.kt（預期 >= 19），可能只上傳咗部分')
+
+          if errs:
+              print('::error::HK ETA 上傳完整性檢查失敗')
+              for e in errs:
+                  print(f'::error::{e}')
+              print('::error::建議：解壓 hketa-github.zip 後 git add . && git commit && git push')
+              sys.exit(1)
+          print(f'preflight OK：{len(req)} 個必要檔案齊全，{len(srcs)} 個原始碼檔案。')
+          print('提示：app/hketa-release.keystore 係刻意唔上傳（由 CI Secrets 注入）。')
+          PY
 
       # Pure-Python check: no JDK / SDK needed, so it fails fast too.
       - name: Check API field names against official samples
