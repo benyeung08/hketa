@@ -21,10 +21,10 @@
     <string name="last_update_never">上次更新：尚未更新</string>
     <string name="last_update_at">上次更新：%1$s</string>
     <string name="summary_never">本機資料：尚未建立快照</string>
-    <string name="summary_format">本機資料：%1$d/%2$d 個來源 · 共 %3$d 筆</string>
+    <string name="summary_format">本機資料：%1$d 個來源成功 · 共 %2$d 項 · %3$d 筆</string>
     <string name="update_now">立即更新線路資料</string>
     <string name="updating">正在下載官方路線／站點資料…</string>
-    <string name="update_hint">更新會下載官方路線清單、全量站點與港鐵 CSV，並存到本機。首次可能需要數十秒。</string>
+    <string name="update_hint">更新會下載官方路線清單、全量站點與港鐵 CSV，並存到本機。首次可能需要數十秒。城巴官方沒有全量站點端點，改為查路線時用單站 API 自動建立站名快取；九巴全量站點若被 403 擋亦會自動改用單站 API，唔影響車站名顯示。</string>
     <string name="update_note_live_eta">實時 ETA 仍每次向官方 API 即時查詢</string>
     <string name="auto_update">自動更新</string>
     <string name="interval_label">檢查頻率</string>
@@ -34,7 +34,7 @@
     <string name="sources_placeholder">尚未更新。按「立即更新線路資料」後會顯示每個來源的結果。</string>
     <string name="clear_local">清除本機線路資料（改回即時 API）</string>
     <string name="clear_done">已清除本機資料，之後會直接向官方 API 查詢。</string>
-    <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK、九巴／龍運、城巴、嶼巴、港鐵公司。線路／站點目錄每日或每月更新；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
+    <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK、九巴／龍運、城巴、嶼巴、港鐵公司。城巴站名由 /stop/{stop_id} 單站 API 按需快取；九巴全量站點失敗時亦用單站 API 後備。線路／站點目錄每日或每月更新；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
 
     <!-- 內建更新來源：已指向 benyeung08/hketa；要換 repo 就改呢個值一次打包。 -->
     <string name="default_github_repo">benyeung08/hketa</string>
