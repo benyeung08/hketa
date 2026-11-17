@@ -1,229 +1,319 @@
-# HK ETA · 香港公共交通實時到站 Android App
+# HK ETA · 香港實時到站 / Hong Kong Real-time ETA
 
-一個開源、免 API key 的 Android App：輸入路線／線路代碼 → 載入沿途車站／月台 → 點選 → 查看實時預計到站時間（ETA）。資料直接來自香港運輸署、各巴士公司及港鐵的開放數據。
+**語言 / Language：** [中文（繁體）](#zh) · [English](#en)
 
-語言分工刻意做成 **Java + Kotlin 混合**：
+> 開源、免 API key 的香港巴士與鐵路實時到站 App。資料直接取自官方開放數據。
+> Open-source, API-key-free real-time arrival app for Hong Kong buses and rail, built on official open data.
 
-| 層 | 語言 | 內容 |
+---
+
+<a id="zh"></a>
+
+## 中文（繁體）
+
+### 簡介
+
+**HK ETA** 用 **Java 17**（HTTPS／JSON／CSV 解析、時間換算）加 **Kotlin 1.9.24**（介面、協程並行、自動輪詢）寫成，直接串運輸署、各巴士營運商同港鐵嘅公開實時到站 API，**唔需要申請 API key**，亦**唔依賴 Google Play Services**。
+
+介面由 `v1.0.0` 起採用 **APP1933 風格**：九巴紅色標頭、主頁附近路線卡片、底部四分頁、每條路線顯示未來三班次。**資料層完全冇改**——八種營運商、線路資料更新、App 內更新同簽名一致性全部保留。
+
+版本 `v1.0.0`（`versionCode = 1`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
+
+### ✨ 功能
+
+- **🚌 APP1933 版面**：大字路線號＋「往 目的地」＋站名連編號＋右側大數字分鐘；底部 **主頁／收藏／搜尋／更多** 四分頁
+- **未來三班次**：標記 `-`（剛到站）、`—`（沒有服務）、「預定班次」、「改道」、聯營公司；取代舊嘅單班次列表
+- **路線站序＋方向切換**：輸入路線號列出沿途車站（含站編號），一鍵 `⇄` 切換去程／回程，並可即時篩選站名／站號
+- **8 種查詢模式**：自動（全部）、九巴／龍運、城巴、嶼巴、綠色小巴、港鐵重鐵、輕鐵、港鐵接駁巴士
+- **實時到站**：中文站名、預計分鐘／預計時間／備註，每 30 秒自動更新、下拉刷新
+- **📍 附近車站定位**：300／500／1000／2000 公尺半徑，按距離排序，點站即睇該站全部路線 ETA
+- **⭐ 收藏常用站**：連 `bound` 方向一併還原
+- **⚙️ 線路資料更新**：手動／每日／每 3 日／每星期、僅 Wi-Fi、清除本機資料；10 份官方目錄原子寫入，單一來源失敗保留上一版
+- **🔄 更新應用程式**：讀取 GitHub 最新 Release、24 小時節流、下載後經 `FileProvider` 交系統安裝
+- **🔐 簽名一致性**：固定開發金鑰、CI 指紋鎖定、安裝前比對簽章憑證
+- **🚌 彩虹巴士圖示**：5 種密度 launcher icon、專屬圓形圖示、Android 8+ adaptive icon、512px 商店預覽圖
+
+### 📦 安裝
+
+1. 由 [Releases](https://github.com/benyeung08/hketa/releases) 下載 `hketa-v1.0.0.apk`，或由該次 Actions run 下載 Artifact `hketa-debug-apk`（入面係 `app-debug.apk`）
+2. Android 8+ 首次安裝需開啟「安裝未知應用程式」
+3. 覆蓋安裝會保持簽名一致；若裝置曾裝過**其他金鑰**簽嘅版本，請先卸載
+4. 可對照隨附嘅 `SIGNING_FINGERPRINT.txt` 核對憑證
+
+**簽章憑證 SHA-256**
+
+```
+FE:7B:35:E1:9D:90:F5:88:09:1B:08:1B:05:28:40:12:71:56:52:24:13:2D:9A:EB:1C:C0:53:A6:E6:20:02:57
+```
+
+### 🛠 由原始碼建置
+
+需要 **JDK 17**、**Android SDK 34 / Build Tools 34.0.0**、**Gradle 8.7**。
+
+```bash
+gradle assembleDebug --no-daemon
+# 輸出：app/build/outputs/apk/debug/app-debug.apk
+```
+
+> ⚠️ Repo **刻意唔提交 `gradle-wrapper.jar`**，所以 `./gradlew` 會失敗；本機請用已安裝嘅 Gradle 8.7，或自行補回 wrapper jar。CI 直接下載官方 Gradle 8.7 發行版。
+
+推送到 `main` 後，`.github/workflows/build-apk.yml` 會自動打包並上傳 Artifact `hketa-debug-apk`。打 tag 先會附加簽名 Release APK 同 `SIGNING_FINGERPRINT.txt`：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+出新版前請先 bump `app/build.gradle.kts` 嘅 `versionCode` 同 `versionName`，App 內更新先偵測到。
+
+### ⚙️ 設定頁
+
+⚙ 設定而家收喺底部 **「更多」** 分頁，入面仍然係三個獨立區塊：**線路資料更新**（只快取目錄，ETA 永遠即時查）、**更新應用程式**（內建 repo `benyeung08/hketa`）、**App 簽名一致性**（顯示本機指紋與驗證結果）。
+
+### 🚌 APP1933 版面對照
+
+| 分頁 | 還原咩 | 底層 |
 | --- | --- | --- |
-| 資料層 | Java | HTTPS/POST 請求、org.json 解析、CSV 目錄、時間換算、資料模型 |
-| UI / 狀態層 | Kotlin | Activity、ViewModel、協程並行、LiveData、RecyclerView |
-| 資料來源 | API | 7 種營運商的官方 JSON / CSV API，無需註冊、無需金鑰 |
+| **主頁** | 附近路線卡片：`路線號`／`往 目的地`／`站名 (KT123)`／右側大數字分鐘；每張卡三個班次 chip | `EtaRepository.nearbyStops()` ＋ `stopEta()` 並行查頭 6 個站 |
+| **收藏** | 收藏車站列表，點選查看、長按移除 | `Favorites` |
+| **搜尋** | 路線號＋8 模式、沿途站序（含站編號）、`⇄ 轉換路線方向`、站名／站號即時篩選、已知站號直接查 | `EtaRepository.stops()` / `etaFor()` |
+| **更多** | ⚙ 設定入口＋「不包含專有功能」聲明 | `SettingsActivity` |
 
-## 支援範圍
+**只換介面，唔換資料**：`App1933Format.kt` 係純格式化層，把同一份 `EtaItem` 依 `(company, route, stop, dest)` 分組、取最早三班；`CardAdapters.kt` 只負責畫卡片。全部 8 個營運商、10 份官方目錄、`RouteDataStore`、`ApkSignature` 一行都冇改。
 
-| 模式 | 營運商 | 輸入範例 |
-| --- | --- | --- |
-| 自動 | 一次查齊以下 7 種 | `40`、`TML`（港鐵線路另填） |
-| KMB | 九巴／龍運 | `1A`、`40`、`A31` |
-| CTB | 城巴（已合併新巴路線） | `720`、`5B`、`B8` |
-| NLB | 新大嶼山巴士 | `1`、`2`、`23` |
-| GMB | 綠色專線小巴 | `1`、`101M`、`808` |
-| MTR | 港鐵重鐵（10 條線） | `TML`、`ISL`、`EAL`… |
-| LRT | 輕鐵 | `505`、`751`；留空顯示全部站 |
-| MTRB | 港鐵接駁巴士 | `K12`、`K51`、`506` |
+**明確不做**（需九巴私有 API／會員帳號／Play Services）：AI 智能問路、實時載客量、預計落車時間、九巴月票、club1933 會員、遊戲室、bot1933 實時對話、街景／步行導航、寵物巴士、廣告。**冇灰色佔位按鈕、冇假數據**。
 
-功能：中文站名、來回／上下行方向、目的地、第幾班、預計分鐘／時間、備註、月台、每 30 秒自動更新、下拉刷新、常用站收藏、**📍 附近車站定位（300／500／1000／2000 m）**、**⚙ 設定頁「線路資料更新」＋「更新應用程式」＋「App 簽名一致性」**、深淺色跟隨系統。
+### 🔐 簽名一致性（三層）
 
-設定頁分三部分：
-
-| 區塊 | 更新咩 | 點更新 |
-| --- | --- | --- |
-| 線路資料更新 | 官方路線／站點目錄（本機快照） | 手動／自動，可設僅 Wi-Fi |
-| 更新應用程式 | App 本身（GitHub Release APK） | 查最新版本 → 下载 → 系統安裝介面 |
-| App 簽名一致性 | 顯示本機憑證指紋、安裝前驗簽 | 自動比對，不符即拒絕安裝 |
-
-三者完全獨立：**實時 ETA 永遠即時向官方 API 查詢，不受任何更新設定影響**。
-
-附近車站模式不需要輸入路線：定位後列出半徑內的站（按距離排序），點選任一站即顯示**該站全部路線**的實時 ETA。
-
-## 使用的官方 API
-
-| 營運商 | Base URL | 主要 endpoint |
-| --- | --- | --- |
-| 九巴／龍運 | `https://data.etabus.gov.hk/v1/transport/kmb` | `/route-stop/{route}/{bound}/1`、`/eta/{stop}/{route}/{service_type}`、`/stop` |
-| 城巴 | `https://rt.data.gov.hk/v2/transport/citybus` | `/route-stop/CTB/{route}/{direction}`、`/eta/CTB/{stop}/{route}`、`/stop` |
-| 嶼巴 | `https://rt.data.gov.hk/v2/transport/nlb` | `/route.php?action=list`、`/stop.php?action=list&routeId=`、`/stop.php?action=estimatedArrivals&routeId=...&stopId=...&language=zh` |
-| 綠小巴 | `https://data.etagmb.gov.hk` | `/route`、`/route/{region}/{route}`、`/route-stop/{route_id}/{route_seq}`、`/eta/route-stop/{route_id}/{stop_id}` |
-| 港鐵重鐵 | `https://rt.data.gov.hk/v1/transport/mtr` | `/getSchedule.php?line={LINE}&sta={STA}&lang=tc` |
-| 輕鐵 | 同上 | `/lrt/getSchedule?station_id={ID}&with_special=1` |
-| 港鐵巴士 | 同上 | `/bus/getSchedule`（**POST** JSON：`{"language":"zh","routeName":"K12"}`） |
-| 港鐵目錄 | `https://opendata.mtr.com.hk/data` | `mtr_lines_and_stations.csv`、`light_rail_routes_and_stops.csv`、`mtr_bus_stops.csv` |
-| 整站 ETA（九巴） | `https://data.etabus.gov.hk/v1/transport/kmb` | `/stop-eta/{stop_id}` |
-| 整站 ETA（城巴／嶼巴） | `https://rt.data.gov.hk` | `/v1/transport/batch/stopeta/{company_id}/{stop_id}?lang=zh-hant`（規格與範例對 `stopeta` / `stop-eta` 寫法不一，兩者都會嘗試） |
-| 整站 ETA（綠小巴） | `https://data.etagmb.gov.hk` | `/eta/stop/{stop_id}`；再用 `/route/{route_id}` 換回路線號 |
-
-附近車站的座標來源：九巴／城巴全量站點 JSON 的 `lat` / `long`、嶼巴各路線站序的 `latitude` / `longitude`、綠小巴 `coordinates.wgs84`、港鐵三份月度 CSV 內的座標欄（若該檔沒有座標欄位就自動略過該營運商）。站點清單會在記憶體快取 30 分鐘。
-
-### 更新應用程式（App 版本）
-
-App 會讀取 `GET https://api.github.com/repos/{owner}/{repo}/releases/latest`：
-
-1. **填倉庫**：設定頁「發布來源」輸入 `owner/repo`（例如 `yourname/hketa`），或直接改 `app/src/main/res/values/strings.xml` 的 `default_github_repo` 一次打包進去。
-2. **檢查更新**：比較 `versionName` 與 Release `tag_name`（容許 `v1.0.1`、`1.0.1`、`1.0.1-debug`）；有新版本就顯示版本、發布說明、APK 大小。
-3. **下载並安裝**：只接受 HTTPS 且網域為 `github.com`／`objects.githubusercontent.com`／`release-assets.githubusercontent.com` 嘅 `.apk` asset，下載到 App 私人目錄 `filesDir/updates/`，經 `FileProvider` 交畀系統安裝介面。
-4. **用戶確認**：Android 8+ 需要「安裝未知應用程式」權限；未開會自動跳系統設定頁，返嚟再按一次即接續安裝。**唔會靜默安裝**。
-5. **自動檢查**：預設開啟，每 24 小時最多一次（App 啟動時靜默查、設定頁開啟時亦會查）；有新版本會喺主畫面狀態列顯示 🔔 提示。取消勾選就只會手動查。
-
-**要出一個「更新」**：改 `app/build.gradle.kts` 嘅 `versionCode` / `versionName`，push 後打 tag（`git tag v1.0.1 && git push origin v1.0.1`）；workflow 會自動 `assembleRelease`、驗簽，並把 `hketa-v1.0.1.apk` 同 `SIGNING_FINGERPRINT.txt` 附到該 Release。冇 tag 就冇 Release asset，App 會顯示「最新版本沒有附帶 .apk」。
-
-### App 簽名一致性（三層）
-
-之前提到「runner 每次產生唔同 debug keystore」嘅問題，而家用三層處理：
-
-**1. 固定開發金鑰（Build 層）**
-`app/hketa-debug.keystore` 隨專案提交（公開、專為 sideload 用嘅開發金鑰，密碼亦寫死喺 `build.gradle.kts`，**絕對唔好拎去 Play 上架**）。所有 debug build、以及冇設 Secrets 嘅 release build 都用同一張憑證，所以 CI 每次 runner 都唔會再改變簽名。
-
-**2. 可選正式金鑰（CI 層）**
-喺 repo Settings → Secrets 加：
-
-| Secret | 內容 |
+| 層 | 做法 |
 | --- | --- |
-| `HKETA_KEYSTORE_BASE64` | `base64 -w0 your-release.keystore` |
-| `HKETA_KEYSTORE_PASSWORD` | keystore 密碼 |
-| `HKETA_KEY_ALIAS` | key alias（預設 `hketa`） |
-| `HKETA_KEY_PASSWORD` | key 密碼 |
+| Build | 提交 `app/hketa-debug.keystore`，所有 debug 同無 Secrets 嘅 release 都用同一張憑證 |
+| CI | tag build 用 `apksigner verify --print-certs` 對照 `expected_signing_sha256`，唔夾即 fail |
+| App | 安裝前比對下載 APK 同已安裝 App 嘅簽章憑證 SHA-256，唔一致即刪除並拒絕安裝 |
 
-workflow 會解碼到 `app/hketa-release.keystore`（已被 `.gitignore` 忽略），`assembleRelease` 用佢簽署。**冇設就退回第 1 層嘅開發金鑰，憑證仍然一致**。之後每個 tag 都要沿用同一張 key。
+正式發布可用 Secrets 注入 `app/hketa-release.keystore`；換金鑰要同步更新指紋，舊裝置需卸載一次或走 Android 簽章輪替。
 
-**3. 安裝前驗簽（App 層）**
-`ApkSignature.kt` 喺交畀系統安裝介面之前：
-
-- 讀取**下載 APK**嘅簽章憑證（`getPackageArchiveInfo`）同**已安裝 App**嘅憑證（`GET_SIGNING_CERTIFICATES` / `GET_SIGNATURES`），計 SHA-256 指紋
-- 檢查 APK `packageName` 係咪 `hk.eta.app`
-- 接受 Android 簽章輪替（API 28+ `signingCertificateHistory`）
-- 若 `strings.xml` 嘅 `expected_signing_sha256` 非空，雙重鎖定：APK 同本機都要等於該指紋
-- **唔一致就刪除 APK、拒絕安裝**，並喺設定頁列出兩邊指紋，唔會等到系統彈「簽名衝突」
-
-workflow 亦會用 `apksigner verify --print-certs` 核對 release APK 憑證，同 `scripts/pin_signing_fingerprint.py` 自動寫入嘅 `expected_signing_sha256` 比對，**唔夾就直接 fail 個 release**；指紋會寫入 `SIGNING_FINGERPRINT.txt` 附到 Release 同 Step Summary。
-
-設定頁「App 簽名一致性」會顯示本機指紋、最近一次驗證結果同兩邊憑證對照，方便手動核對 CI 印出嘅值。
-
-**限制（要老實講）**
-- **換 key 要過渡**：一旦改用 Secrets 嘅正式金鑰，憑證就同舊嘅開發金鑰唔同；已裝開發版嘅裝置要卸載一次（或用 Android 簽章輪替 lineage）。驗簽會明確拒絕，唔會靜靜地裝到一半先失敗。
-- **指紋鎖定會擋輪替**：`expected_signing_sha256` 非空時，即使 Android 接受 lineage 簽章，App 都會要求指紋完全相同；換 key 要同時改呢個值再出新版本。
-- **GitHub API 限流**：未登入每 IP 每小時 60 次；超限會提示稍後再試。
-- **Play 政策**：`REQUEST_INSTALL_PACKAGES` 屬高風險權限，Google Play 會要求申報，而且原則上唔容許 App 自我更新。呢個專案定位係 GitHub sideload／自行散佈，唔係畀 Play 上架用。
-- 只讀**最新一個** Release，唔列歷史版本；預先發布（prerelease）會標示但仍照樣顯示。
-- 驗簽比對嘅係**簽章憑證**，唔係 APK 檔案雜湊；信任基礎係你自己的 repo、HTTPS 同 CI。要更嚴可再加 asset digest 比對。
-
-### 設定頁下載的目錄檔案
-
-| 本機檔案 | 來源 |
-| --- | --- |
-| `kmb_routes.json` / `kmb_stops.json` | `/v1/transport/kmb/route/`、`/v1/transport/kmb/stop` |
-| `ctb_routes.json` / `ctb_stops.json` | `/v2/transport/citybus/route/CTB`（失敗退回 v1 `citybus-nwfb`）、`/v2/transport/citybus/stop` |
-| `nlb_routes.json` + `nlb_stops.json` | `/v2/transport/nlb/route.php?action=list`；再並行抓各路線 `stop.php?action=list` 合併去重 |
-| `gmb_routes.json` / `gmb_stops.json` | `data.etagmb.gov.hk/route`、`data.etagmb.gov.hk/stop`（後者為選用，失敗不影響整體） |
-| `mtr_lines_and_stations.csv`、`light_rail_routes_and_stops.csv`、`mtr_bus_stops.csv` | 港鐵月度開放數據 CSV |
-| `meta.json` | 每個來源的成功／失敗、筆數與時間戳 |
-
-寫入用 `.tmp` → `rename` 原子更新；單一來源失敗會保留上一版檔案，不會清空整個快照。更新完成後會清掉記憶體快取（`EtaRepository` / `MtrCatalog` / `GeoStops`），下次查詢立即用新資料。
-
-預設值：每日檢查一次、僅 Wi-Fi 自動下載（首次啟動在 Wi-Fi 會靜默更新）；手動按「立即更新」不受 Wi-Fi 限制。`HkEtaApp` 在 App 啟動時初始化私人目錄，`EtaViewModel` 依 `RouteDataPrefs` 判斷是否到期。
-
-重鐵有效線路代碼：`AEL TCL TML TKL EAL SIL TWL ISL KTL DRL`。輕鐵站 ID 表內建（取自港鐵 Light Rail Next Train 數據字典）；重鐵站碼與港鐵巴士站名會在執行時讀取官方 CSV，CSV 讀不到時退回內建的常用站碼種子表，或直接顯示 `busStopId`。
-
-官方文件：
-
-- 九巴及龍運實時到站數據：https://data.gov.hk/tc-data/dataset/hk-td-tis_21-etakmb
-- 城巴實時抵站時間：https://data.gov.hk/tc-data/dataset/ctb-eta-transport-realtime-eta
-- 綠小巴實時到站數據：https://data.gov.hk/en-data/dataset/hk-td-sm_7-real-time-arrival-data-of-gmb
-- 嶼巴 API 文檔：https://www.nlb.com.hk/datagovhk/BusServiceOpenAPIDocumentation2.0.pdf
-- 港鐵 Next Train / Light Rail / MTR Bus 規格：https://opendata.mtr.com.hk/doc/
-- 港鐵路線車費及無障礙設施 CSV：https://data.gov.hk/tc-data/dataset/mtr-data-routes-fares-barrier-free-facilities
-
-`scripts/check_api_fields.py` 會用各官方規格的 sample response 靜態核對 Java 層讀取的欄位名稱、端點、版本與資源參照。
-
-## 專案結構
+### 📁 專案結構
 
 ```
 hketa/
-├── .github/workflows/build-apk.yml   # 固定金鑰、驗簽、打包 + Release
-├── scripts/check_api_fields.py      # CI 靜態檢查
-├── scripts/pin_signing_fingerprint.py # 把 keystore 指紋寫入 App 資源
-├── app/hketa-debug.keystore         # 公開開發用固定簽名金鑰（非 Play 用）
-├── app/src/main/java/hk/eta/app/
-│   ├── HkEtaApp.kt                  # Application：初始化本機線路資料目錄
-│   ├── api/                         # Java：HttpJson / EtaRepository / EtaModels /
-│   │                                #       TimeUtils / MtrCatalog / GeoStops /
-│   │                                #       RouteDataStore（目錄快照）/
-│   │                                #       AppUpdate（GitHub Release + APK 下載）
-│   ├── res/xml/file_paths.xml       # FileProvider 只暴露 filesDir/updates/
-│   └── ui/                          # Kotlin：MainActivity / SettingsActivity /
-│                                    #       EtaViewModel / RouteDataPrefs /
-│                                    #       AppUpdatePrefs / ApkInstaller /
-│                                    #       ApkSignature（安裝前驗簽）/
-│                                    #       Adapters / Favorites / LocationHelper
-├── app/src/main/res/                # layouts、strings、colors、theme、launcher icon
-├── build.gradle.kts / settings.gradle.kts / gradle.properties
-└── README.md / LICENSE
+├── .github/workflows/build-apk.yml   # CI：預檢、打包、簽章驗證、Release
+├── app/
+│   ├── build.gradle.kts              # AGP 8.5.2 / Kotlin 1.9.24 / signingConfigs
+│   ├── hketa-debug.keystore          # 固定開發金鑰（公開、僅供 sideload）
+│   ├── icon-source.png               # 圖示原始圖
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/hk/eta/app/api/      # Java：HttpJson, EtaRepository, MtrCatalog,
+│       │                            #       RouteDataStore, GeoStops, AppUpdate …
+│       ├── java/hk/eta/app/ui/       # Kotlin：MainActivity, SettingsActivity,
+│       │                            #   App1933Format, CardAdapters, Adapters,
+│       │                            #   LocationHelper, ApkSignature …
+│       └── res/                      # layout / values / mipmap-* / xml
+│           └── layout/               # activity_main (4 tabs), item_route_card,
+│                                     # item_favorite, item_stop …
+├── scripts/
+│   ├── preflight.py                  # 本機上傳完整性與二進位檔預檢
+│   ├── fix_drift.py                  # 一鍵修正 3 個常見舊檔（冪等）
+│   ├── show_build_error.py           # 由 Gradle log 抽出真正錯誤原因
+│   ├── check_api_fields.py           # 官方欄位／版本／資源靜態檢查
+│   ├── make_launcher_icons.py        # 由 icon-source.png 產生全部密度圖示
+│   └── pin_signing_fingerprint.py    # 把 keystore 指紋寫入 strings.xml
+├── LICENSE                           # MIT
+├── README.md                         # 本檔（中英雙語）
+└── RELEASE_NOTES_v1.0.0.md           # v1.0.0 Release 中英雙語說明
 ```
 
-## 本機執行
+### 🧪 CI 與疑難排解
 
-需求：Android Studio（Koala 或以上）、JDK 17、Android SDK 34。
+CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會檢查缺檔、多咗一層資料夾、檔案存在但內容仍係舊版，以及 keystore／PNG 嘅二進位格式。
 
-1. 用 Android Studio 開啟 `hketa/`，等待 Gradle Sync。
-2. 接上手機或啟動模擬器，按 Run，或執行 `./gradlew assembleDebug`。
-3. APK 位置：`app/build/outputs/apk/debug/app-debug.apk`。
+| Log 見到 | 動作 |
+| --- | --- |
+| `檔案存在但內容仍係舊版：…` | **全量同步**：`git add -A && git commit && git push`（`-A` 會清走舊檔）；或跑 `python3 scripts/fix_drift.py` |
+| `Unresolved reference: await` / `overrides nothing` | 已修於 `LocationHelper.kt`（刪走唔存在嘅 coroutines import、修正 `LocationListener` nullability） |
+| `String[] cannot be converted to List<String>` | 已修於 `MtrCatalog.java`（加 `lower(String[])` 多載） |
+| `activity_main.xml 仍係舊單頁版面（缺 APP1933 四分頁）` | 由完整 zip 覆蓋 `activity_main.xml`，並一齊傳 `App1933Format.kt`／`CardAdapters.kt`／兩個新 layout／兩個 drawable |
+| `Could not resolve` / `Read timed out` / 5xx | 直接 **Re-run jobs** |
+| 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
-> 本機同 CI 嘅 debug build 都用同一張 `app/hketa-debug.keystore`，所以本機裝嘅版本可以直接被 CI 產出嘅 APK 覆蓋安裝，唔會出現簽名衝突。
+失敗時會多一個 `Show real Gradle error` step（用 `::error::` 印出真正錯誤＋針對性建議）同 Artifact `hketa-gradle-logs`。
 
-> 本 repo 不含 `gradle/wrapper/gradle-wrapper.jar`（避免提交來路不明的二進位檔）。Android Studio 會自動補齊；若只用命令列，先執行 `gradle wrapper --gradle-version 8.7`。CI 會自行下載官方 Gradle 8.7 發行版並直接用 `gradle assembleDebug` 打包。
+### ⚠️ 已知限制
 
-## 放到 GitHub，讓 Actions 幫你產出 APK
+- **實時 ETA 永遠即時向官方 API 查**，唔會因「線路資料更新」變舊，亦**唔可以離線查 ETA**；離線只可讀已快取嘅路線／站名／座標目錄
+- 紅色小巴、電車、渡輪、愉景灣及馬灣巴士冇同類公開實時 ETA API，未納入；新巴已併入城巴
+- 港鐵月度 CSV 若冇座標欄，附近站列表唔會顯示重鐵／輕鐵／港鐵接駁巴士（路線模式仍可查）
+- 「自動（全部）」同時打多間營運商，官方有速率限制（HTTP 429），請避免密集輪詢
+- 拒絕定位／冇定位服務／逾時會退回中環預設位置，並喺狀態列標示；只攞一次定位，唔背景追蹤
+- App 內更新用 `REQUEST_INSTALL_PACKAGES`，定位係 **GitHub sideload**，唔係 Play 上架版本
+- 驗簽比對嘅係**簽章憑證**而唔係 APK 檔案雜湊；目前未做 APK asset SHA-256 校驗
+- adaptive icon 以整張圖做背景，冇視差層，亦未提供 Android 13 單色 themed icon
+- **只還原 APP1933 嘅版面與到站格式**：AI 智能問路、實時載客量、預計落車時間、月票／會員／遊戲室／bot1933、街景步行導航等專有功能全部唔做；主頁附近站 ETA 係由公開站級 API 即時查，唔係官方嘅大數據預測
+- 到站時間以官方開放數據為準，僅供參考
 
-在 `hketa/` 目錄執行：
+### 🔗 相關
+
+- Repo：https://github.com/benyeung08/hketa
+- Release 說明：[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- 資料來源：[DATA.GOV.HK](https://data.gov.hk) 及各營運商開放數據、[MTR Open Data](https://opendata.mtr.com.hk)
+
+### 📄 授權與聲明
+
+[MIT](LICENSE)。本專案係非官方作品，同各營運商及政府部門無關；到站資料版權屬原提供者所有。
+
+> 本 README 純文件，改動**唔影響 CI 或 APK 打包**。
+
+---
+
+<a id="en"></a>
+
+## English
+
+### Overview
+
+**HK ETA** is written in **Java 17** (HTTPS / JSON / CSV parsing, time conversion) and **Kotlin 1.9.24** (UI, coroutines, auto-refresh). It talks directly to the public real-time arrival APIs of the Transport Department, bus operators and MTR — **no API key required** and **no Google Play Services dependency**.
+
+Since `v1.0.0` the shell follows the **APP1933** layout: KMB-red header, nearby-route cards, four bottom tabs, and the next three arrivals per route. **The data layer is untouched** — all eight operators, the catalogue updater, the in-app updater and signature consistency remain.
+
+Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
+
+### ✨ Features
+
+- **🚌 APP1933 layout**: large route number + "往 destination" + stop name with id + big minutes on the right; **Home / Favourites / Search / More** bottom tabs
+- **Next three arrivals**: markers for `-` (just arrived), `—` (no service), "預定班次" (scheduled), diversion and joint operators — replacing the old single-arrival list
+- **Stop sequence + direction switch**: route number lists all stops (with stop ids), one-tap `⇄` bound toggle, live stop-name / stop-id filter
+- **8 lookup modes**: Auto (all), KMB/LWB, Citybus, NLB, Green Minibus, MTR Heavy Rail, Light Rail, MTR Bus
+- **Real-time ETA**: Chinese stop names, ETA in minutes / clock time / remarks, 30-second auto-refresh and pull-to-refresh
+- **📍 Nearby stops**: 300 / 500 / 1000 / 2000 m radius, sorted by distance; tap a stop to see ETA for **all** routes serving it
+- **⭐ Favourites**: frequently used stops, including the `bound` direction
+- **⚙️ Route catalogue update**: manual / daily / every 3 days / weekly, Wi-Fi-only toggle, clear local data; 10 official catalogues written atomically, a failed source keeps the previous snapshot
+- **🔄 In-app app update**: checks the latest GitHub Release, 24-hour throttle, installs via `FileProvider`
+- **🔐 Signing consistency**: fixed development keystore, CI-pinned fingerprint, pre-install certificate comparison
+- **🚌 Rainbow-bus icon**: launcher icons in 5 densities, dedicated round icon, Android 8+ adaptive icon, 512px store preview
+
+### 📦 Install
+
+1. Download `hketa-v1.0.0.apk` from [Releases](https://github.com/benyeung08/hketa/releases), or the `hketa-debug-apk` artifact (`app-debug.apk`) from an Actions run
+2. On Android 8+, enable "Install unknown apps" for the first install
+3. Overlay installs stay signature-consistent; **uninstall first** if the device previously had a build signed with a different key
+4. Cross-check the certificate against the attached `SIGNING_FINGERPRINT.txt`
+
+**Signing certificate SHA-256**
+
+```
+FE:7B:35:E1:9D:90:F5:88:09:1B:08:1B:05:28:40:12:71:56:52:24:13:2D:9A:EB:1C:C0:53:A6:E6:20:02:57
+```
+
+### 🛠 Build from source
+
+Requires **JDK 17**, **Android SDK 34 / Build Tools 34.0.0**, **Gradle 8.7**.
 
 ```bash
-git init
-git add .
-git commit -m "Multi-operator HK ETA Android app"
-
-# 已安裝 GitHub CLI：
-gh repo create hketa --public --source=. --push
-
-# 或手動：
-git remote add origin https://github.com/<你的帳號>/hketa.git
-git branch -M main
-git push -u origin main
+gradle assembleDebug --no-daemon
+# Output: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-推送後到 **Actions** 等 `Build HK ETA APK` 完成，在該次 run 的 **Artifacts** 下載 `hketa-debug-apk`。打 `v1.0.0` tag 會自動 `assembleRelease`、核對簽章指紋，再把 `hketa-v1.0.0.apk` 同 `SIGNING_FINGERPRINT.txt` 附加到 GitHub Release；也可按 **Run workflow** 手動重打包。
+> ⚠️ The repo **deliberately does not ship `gradle-wrapper.jar`**, so `./gradlew` will fail. Use an installed Gradle 8.7 locally (or restore the wrapper jar). CI downloads the official Gradle 8.7 distribution instead.
 
-> 想用自己嘅正式簽名金鑰，先喺 repo Secrets 加 `HKETA_KEYSTORE_BASE64` 等四項（見「App 簽名一致性」），否則所有版本都用隨專案提交嘅固定開發金鑰，憑證一樣穩定可覆蓋安裝。
+Pushing to `main` triggers `.github/workflows/build-apk.yml`, which builds and uploads the `hketa-debug-apk` artifact. Only tag builds attach the signed Release APK and `SIGNING_FINGERPRINT.txt`:
 
-## 使用方式
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
 
-1. 在「營運商」選單選模式（預設「自動（全部）」）。
-2. 依提示輸入路線號／線路代碼，按「載入車站」。
-   - 港鐵重鐵要填 **線路代碼**（例如 `TML`），不是車站名。
-   - 輕鐵可留空顯示全部 68 個站，或填 `505` 只顯示該路線班次。
-   - 港鐵巴士填 `K12`、`506` 等路線名。
-3. 點選車站／月台，下方顯示班次；每 30 秒自動刷新，亦可下拉。
-4. 已知站號／車站代碼時，可直接填「站號」再按「查 ETA」。
-5. 按「☆ 加入收藏」保存，之後用「★ 我的收藏」一鍵查詢（附近站收藏後仍會查整站 ETA）。
-6. 按「📍 附近車站」並選擇半徑，首次會要求定位權限；拒絕或定位逾時會改用中環預設位置並在狀態列註明。點選列表中的站即可看該站所有路線的班次。
-7. 按右上角「⚙ 設定」→「立即更新線路資料」下载官方目錄；亦可設檢查頻率與「僅 Wi-Fi」。「清除本機線路資料」會改回每次直接打官方 API。
-8. 同一頁「更新應用程式」填入 `owner/repo` →「檢查更新」→ 有新版本按「下载並安裝 APK」；App 會先自動驗簽（結果睇「App 簽名一致性」），通過後先至喺系統安裝介面確認。亦可「在瀏覽器開啟 Release 頁」手動下載。
-9. 對照 Release 附件 `SIGNING_FINGERPRINT.txt` 同設定頁顯示嘅「本機簽章 SHA-256」；要雙重鎖定就把指紋填入 `app/src/main/res/values/strings.xml` 嘅 `expected_signing_sha256`。
+Before the next release, bump **both** `versionCode` and `versionName` in `app/build.gradle.kts` so the in-app updater detects it.
 
-## 注意事項
+### ⚙️ Settings
 
-- 非服務時間、臨時改道、特別班次安排或 API 暫停時 `data` 可能為空；App 會顯示提示而非當機。港鐵 `status=0` 會直接顯示官方警報訊息。
-- 綠小巴一條路線可有多個 `route_id`／`route_seq` 變體，App 會全部列出；ETA 用 `route_id + stop_id` 查詢。
-- 嶼巴／綠小巴／港鐵巴士都需先解析內部 ID（`routeId`、`route_id`、`busStopId`），已做記憶體快取。
-- 港鐵重鐵月台／終點站以 3 字母代碼顯示（例如 `POA` = 寶琳）；完整站名以官方 CSV 為準。
-- **附近車站的限制**：座標必須來自官方全量站點資料。九巴／城巴／嶼巴最完整；綠小巴官方規格只有 `/stop/{stop_id}` 單站查詢，App 會嘗試 `/stop` 全量資源，若該端點不提供列表就自動略過綠小巴站；港鐵三份 CSV 若不含座標欄位，重鐵／輕鐵／港鐵巴士也不會出現在附近列表（仍可用路線模式查）。狀態列會說明使用的是 GPS 還是中環預設位置。
-- 定位用 Android 平台 `LocationManager`，不依賴 Google Play Services；只取單次定位，不背景追蹤。
-- **線路資料更新的範圍**：只快取「目錄類」資料（路線清單、站名、站點座標、港鐵 CSV）。ETA／到站時間、港鐵 Next Train、輕鐵月台、港鐵巴士班次**全部仍即時連線**；所以更新設定不會令到站時間變舊，亦不能離線查 ETA。
-- 未有本機快照時（首次安裝／已清除），App 會直接向官方 API 查詢；有快照時優先讀本機，官方路線改動要等下一次更新才會反映。目錄類資料官方多數每日 05:00 或每月更新，無需頻繁手動按。
-- 城巴路線清單同時準備了 v1 `citybus-nwfb` 後備端點；綠小巴 `/stop` 全量站點為選用來源，官方規格只保證 `/stop/{stop_id}`，失敗時附近列表會自動略過綠小巴站。
-- 新巴 NWFB 已併入城巴 CTB，直接查 CTB 即可。愉景灣巴士、馬灣巴士、紅色小巴、電車、渡輪目前沒有同類公開實時 ETA API，未納入。
-- CI 產出的是 **debug 簽章 APK**，適合自用與測試；上架 Play 需另建 release keystore 並改用 `assembleRelease` / AAB。
-- 官方 API 有速率限制（429），「自動」模式會並行查 7 家，請避免惡意密集輪詢。
+The ⚙ entry now lives in the bottom **More** tab. It still opens the same three independent sections: **Route catalogue update** (caches catalogues only — ETA is always live), **Update application** (repo `benyeung08/hketa` is built in), and **App signing consistency** (shows the local fingerprint and verification result).
 
-## 授權
+### 🚌 APP1933 layout mapping
 
-MIT License — 見 [LICENSE](LICENSE)。開放資料來源為香港政府「資料一線通」、各巴士公司及港鐵公司，使用時請遵守其使用條款。本專案為獨立開源作品，並非任何機構的官方 App。
+| Tab | What is reproduced | Under the hood |
+| --- | --- | --- |
+| **Home** | Nearby route cards: `route` / `往 destination` / `stop (KT123)` / big minutes; three arrival chips per card | `EtaRepository.nearbyStops()` + parallel `stopEta()` for the nearest 6 stops |
+| **Favourites** | Saved stops, tap to open, long-press to remove | `Favorites` |
+| **Search** | Route number + 8 modes, stop sequence with ids, `⇄` direction toggle, live stop filter, direct stop-id lookup | `EtaRepository.stops()` / `etaFor()` |
+| **More** | ⚙ Settings entry + "proprietary features not included" notice | `SettingsActivity` |
+
+**UI only, data unchanged**: `App1933Format.kt` is a pure formatting layer that groups the same `EtaItem` list by `(company, route, stop, dest)` and keeps the three earliest arrivals; `CardAdapters.kt` only draws the cards. All 8 operators, the 10 official catalogues, `RouteDataStore` and `ApkSignature` are untouched.
+
+**Deliberately NOT implemented** (they need KMB private APIs / membership accounts / Play Services): AI route planning, real-time occupancy, predicted alighting time, KMB monthly pass, club1933 membership, game room, bot1933 chat, Street View / walking navigation, pet bus and ads. **No grey placeholder buttons, no fake data.**
+
+### 🔐 Signing consistency (three layers)
+
+| Layer | Mechanism |
+| --- | --- |
+| Build | Committed `app/hketa-debug.keystore`; every debug build and any release without Secrets uses the same certificate |
+| CI | Tag builds run `apksigner verify --print-certs` against `expected_signing_sha256`; a mismatch fails the release |
+| App | Before install, compares the downloaded APK and installed app certificate SHA-256; a mismatch deletes the APK and refuses to install |
+
+For production, inject `app/hketa-release.keystore` via Secrets. Rotating the key requires updating the pinned fingerprint too, and existing devices must uninstall once (or use Android signing certificate lineage).
+
+### 📁 Project structure
+
+```
+hketa/
+├── .github/workflows/build-apk.yml   # CI: preflight, build, signing verify, Release
+├── app/
+│   ├── build.gradle.kts              # AGP 8.5.2 / Kotlin 1.9.24 / signingConfigs
+│   ├── hketa-debug.keystore          # fixed dev key (public, sideload only)
+│   ├── icon-source.png               # launcher artwork source
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/hk/eta/app/api/      # Java: HttpJson, EtaRepository, MtrCatalog,
+│       │                            #       RouteDataStore, GeoStops, AppUpdate …
+│       ├── java/hk/eta/app/ui/       # Kotlin: MainActivity, SettingsActivity,
+│       │                            #       LocationHelper, ApkSignature …
+│       └── res/                      # layout / values / mipmap-* / xml
+├── scripts/
+│   ├── preflight.py                  # local upload + binary integrity check
+│   ├── fix_drift.py                  # one-shot repair of 3 stale files (idempotent)
+│   ├── show_build_error.py           # distils the real error from Gradle logs
+│   ├── check_api_fields.py           # official fields / versions / resources checks
+│   ├── make_launcher_icons.py        # generates all icon densities
+│   └── pin_signing_fingerprint.py    # writes the keystore fingerprint into strings.xml
+├── LICENSE                           # MIT
+├── README.md                         # this file (bilingual)
+└── RELEASE_NOTES_v1.0.0.md           # v1.0.0 bilingual release notes
+```
+
+### 🧪 CI & troubleshooting
+
+The first CI step is a **self-contained preflight** (it needs no repo `.py` file). It checks missing files, an extra nesting folder, files that exist but still contain old content, and binary signatures of the keystore / PNGs.
+
+| Log shows | Action |
+| --- | --- |
+| `檔案存在但內容仍係舊版：…` (stale content) | **Full sync**: `git add -A && git commit && git push` (`-A` also removes stale files); or run `python3 scripts/fix_drift.py` |
+| `Unresolved reference: await` / `overrides nothing` | Fixed in `LocationHelper.kt` (removed a non-existent coroutines import, corrected `LocationListener` nullability) |
+| `String[] cannot be converted to List<String>` | Fixed in `MtrCatalog.java` (added a `lower(String[])` overload) |
+| `activity_main.xml 仍係舊單頁版面（缺 APP1933 四分頁）` (stale single-page layout) | Overwrite `activity_main.xml` from the full zip, together with `App1933Format.kt`, `CardAdapters.kt`, the two new layouts and two drawables |
+| `Could not resolve` / `Read timed out` / 5xx | Simply **Re-run jobs** |
+| Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
+
+On failure, an extra `Show real Gradle error` step prints the real cause as `::error::` annotations with a targeted hint, and the full log is uploaded as the `hketa-gradle-logs` artifact.
+
+### ⚠️ Known limitations
+
+- **Live ETA is always fetched from the official API** — the catalogue updater never serves stale arrival times, and **ETA does not work offline**. Only route / stop / coordinate catalogues are cached.
+- Red minibuses, trams, ferries, Discovery Bay and Ma Wan buses have no equivalent public real-time ETA API and are not included; NWFB has been merged into Citybus.
+- If an MTR monthly CSV has no coordinate column, heavy rail / Light Rail / MTR Bus stops will not appear in the nearby list (route mode still works).
+- "Auto (all)" queries several operators in parallel; official rate limits apply (HTTP 429) — avoid rapid polling.
+- Denied permission / disabled location / timeout falls back to a Central, HK default position, clearly labelled in the status bar; one-shot location only, no background tracking.
+- In-app updates use `REQUEST_INSTALL_PACKAGES`; this project targets **GitHub sideload**, not the Play Store.
+- Signature verification compares the **signing certificate**, not an APK file hash; APK asset SHA-256 digest checking is not implemented.
+- The adaptive icon uses the full artwork as its background: no parallax layer, and no Android 13 monochrome themed icon.
+- **Only the APP1933 layout and arrival format are reproduced**: AI route planning, real-time occupancy, predicted alighting time, monthly pass / membership / game room / bot1933, Street View walking navigation and other proprietary features are not implemented. Home-page nearby ETAs come from public stop-level APIs, not KMB's proprietary prediction engine.
+- Arrival times come from official open data and are indicative only.
+
+### 🔗 Related
+
+- Repo: https://github.com/benyeung08/hketa
+- Release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- Data sources: [DATA.GOV.HK](https://data.gov.hk), operator open-data feeds, [MTR Open Data](https://opendata.mtr.com.hk)
+
+### 📄 License & disclaimer
+
+[MIT](LICENSE). This is an unofficial project, not affiliated with any operator or government department. Arrival data remains the property of its original providers.
+
+> This README is documentation only; editing it does **not** affect CI or the APK build.
