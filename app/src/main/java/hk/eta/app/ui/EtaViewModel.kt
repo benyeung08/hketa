@@ -1,0 +1,320 @@
+package hk.eta.app.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
+import hk.eta.app.api.EtaModels.EtaItem
+import hk.eta.app.api.EtaModels.StopOption
+import hk.eta.app.api.AppUpdate
+import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.RouteDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+
+data class UiState(
+    val route: String = "40",
+    val company: String = EtaRepository.AUTO,
+    val stops: List<StopOption> = emptyList(),
+    val etas: List<EtaItem> = emptyList(),
+    val selection: StopOption? = null,
+    val loading: Boolean = false,
+    val message: String = "輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。",
+    val updatedAt: Long = 0L
+)
+
+/** Kotlin layer: concurrency, 30-second polling and UI state. */
+class EtaViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val repo = EtaRepository()
+    private val favorites = Favorites(app)
+    private val _state = MutableLiveData(UiState())
+    val state: LiveData<UiState> = _state
+
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
+    init {
+        maybeAutoUpdateCatalogue()
+        maybeAutoCheckAppUpdate()
+    }
+
+    /** Silent GitHub Release check; only caches a badge, never installs anything. */
+    private fun maybeAutoCheckAppUpdate() {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            try {
+                if (!AppUpdatePrefs.isDue(app)) return@launch
+                val repo = AppUpdatePrefs.repo(app)
+                if (repo.isBlank()) return@launch   // keep "due" until the user fills it in
+                val release = withContext(Dispatchers.IO) { AppUpdate.latest(repo) }
+                val newer = AppUpdate.compareVersions(
+                    AppUpdatePrefs.installedVersion(app), release.tag
+                ) > 0
+                AppUpdatePrefs.cacheResult(app, release.tag, newer)
+                AppUpdatePrefs.markChecked(app)
+            } catch (e: Exception) {
+                // Silent: a failed version check must never disturb ETA queries.
+            }
+        }
+    }
+
+    /** Silent catalogue refresh according to the Settings screen preferences. */
+    private fun maybeAutoUpdateCatalogue() {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            try {
+                if (RouteDataPrefs.isDue(app) && RouteDataPrefs.updateAllowed(app)) {
+                    val report = withContext(Dispatchers.IO) { RouteDataStore.refresh(false) }
+                    if (!report.busy && !report.skipped && report.okCount > 0) {
+                        RouteDataPrefs.markChecked(app)
+                    }
+                }
+            } catch (e: Exception) {
+                // Silent: a failed background update must never disturb ETA queries.
+            }
+        }
+    }
+
+    companion object {
+        /** Spinner positions must match R.array.company_labels. */
+        fun companyAt(position: Int): String = when (position) {
+            1 -> EtaRepository.KMB
+            2 -> EtaRepository.CTB
+            3 -> EtaRepository.NLB
+            4 -> EtaRepository.GMB
+            5 -> EtaRepository.MTR
+            6 -> EtaRepository.LRT
+            7 -> EtaRepository.MTRB
+            else -> EtaRepository.AUTO
+        }
+    }
+
+    fun favorites(): List<String> = favorites.all()
+
+    fun addCurrentFavorite(): String? {
+        val key = _state.value?.selection?.key() ?: return null
+        favorites.add(key)
+        return key
+    }
+
+    fun loadFavorite(key: String) {
+        val parts = key.split("|")
+        if (parts.size < 4) {
+            patch { copy(message = "收藏資料格式不相容，請重新加入。") }
+            return
+        }
+        val bound = if (parts.size >= 5) parts[4] else ""
+        val selection = StopOption(parts[0], parts[1], bound, 0,
+            parts[2], "", 1, parts[3], "")
+        patch {
+            copy(
+                route = parts[1],
+                company = parts[0],
+                selection = selection,
+                stops = emptyList(),
+                etas = emptyList()
+            )
+        }
+        refresh()
+        startAutoRefresh()
+    }
+
+    /** Load stops for one operator, or for all of them in AUTO mode. */
+    fun loadStops(routeInput: String, company: String) {
+        val route = routeInput.trim().uppercase(Locale.getDefault())
+        if (route.isEmpty() && company != EtaRepository.LRT) {
+            patch { copy(message = "請先輸入路線號；港鐵請填線路代碼（如 TML），輕鐵可留空。") }
+            return
+        }
+        val effectiveRoute = if (company == EtaRepository.LRT && route.isEmpty()) {
+            "ALL"
+        } else {
+            route
+        }
+        patch {
+            copy(
+                route = effectiveRoute,
+                company = company,
+                loading = true,
+                message = "正在載入 $effectiveRoute 的車站／月台…",
+                stops = emptyList(),
+                etas = emptyList(),
+                selection = null
+            )
+        }
+        refreshJob?.cancel()
+
+        viewModelScope.launch {
+            try {
+                val targets = if (company == EtaRepository.AUTO) {
+                    EtaRepository.OPERATORS.toList()
+                } else {
+                    listOf(company)
+                }
+                val result = withContext(Dispatchers.IO) {
+                    val jobs = targets.map { c ->
+                        safeStops { repo.stops(effectiveRoute, c) }
+                    }
+                    jobs.awaitAll().flatten().sortedWith(
+                        compareBy<StopOption>({ it.company }, { it.bound }, { it.seq })
+                    )
+                }
+                patch {
+                    copy(
+                        loading = false,
+                        stops = result,
+                        message = if (result.isEmpty()) {
+                            "找不到資料。巴士請填路線號；港鐵重鐵填線路代碼（TML／ISL…）；輕鐵可留空顯示全部站；港鐵巴士填 K12／506 等。"
+                        } else {
+                            "找到 ${result.size} 個車站／月台，點選查看實時到站時間。"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                patch { copy(loading = false, message = "載入失敗：${e.message}") }
+            }
+        }
+    }
+
+    /** Locate the device, then list stops within the chosen radius. */
+    fun loadNearby(radiusMeters: Int) {
+        patch {
+            copy(
+                loading = true,
+                message = "正在定位並整理附近車站座標（首次需下載官方站點清單）…",
+                stops = emptyList(),
+                etas = emptyList(),
+                selection = null
+            )
+        }
+        refreshJob?.cancel()
+        viewModelScope.launch {
+            try {
+                val fix = LocationHelper.current(getApplication<Application>())
+                val list = withContext(Dispatchers.IO) {
+                    repo.nearbyStops(fix.lat, fix.lng, radiusMeters, 40)
+                }
+                patch {
+                    copy(
+                        loading = false,
+                        stops = list,
+                        message = if (list.isEmpty()) {
+                            "${fix.source} · ${radiusMeters} m 內沒有可用的官方站點座標，可加大半徑或用路線模式。"
+                        } else {
+                            "${fix.source} · ${radiusMeters} m 內 ${list.size} 個站，點選查看該站全部路線 ETA。"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                patch { copy(loading = false, message = "附近車站載入失敗：${e.message}") }
+            }
+        }
+    }
+
+    /** Direct lookup when the user already knows the stop / station ID. */
+    fun queryDirect(routeInput: String, stopInput: String, company: String) {
+        val route = routeInput.trim().uppercase(Locale.getDefault())
+        val stopId = stopInput.trim()
+        if (stopId.isEmpty()) {
+            patch { copy(message = "請輸入站號／車站代碼。") }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val selection = withContext(Dispatchers.IO) {
+                    repo.directSelection(route, stopId, company)
+                }
+                patch {
+                    copy(
+                        route = route,
+                        company = company,
+                        selection = selection,
+                        stops = emptyList(),
+                        etas = emptyList()
+                    )
+                }
+                refresh()
+                startAutoRefresh()
+            } catch (e: Exception) {
+                patch { copy(message = "查站失敗：${e.message}") }
+            }
+        }
+    }
+
+    fun selectStop(stop: StopOption) {
+        patch { copy(selection = stop, etas = emptyList()) }
+        refresh()
+        startAutoRefresh()
+    }
+
+    fun refresh() {
+        val selection = _state.value?.selection
+        if (selection == null) {
+            patch { copy(message = "請先載入並點選車站，或輸入站號後按「查 ETA」。") }
+            return
+        }
+        viewModelScope.launch {
+            patch { copy(loading = true, message = "正在更新到站時間…") }
+            try {
+                val list = withContext(Dispatchers.IO) { repo.etaFor(selection) }.sortedBy { it.etaMillis }
+                val label = selection.stopName.ifEmpty { selection.stopId }
+                patch {
+                    copy(
+                        loading = false,
+                        etas = list,
+                        updatedAt = System.currentTimeMillis(),
+                        message = if (list.isEmpty()) {
+                            "$label 暫無到站班次（可能非服務時間、臨時改道或 API 暫停）。"
+                        } else {
+                            "${selection.route} → $label · 已更新 ${list.size} 班"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                patch { copy(loading = false, message = "更新失敗：${e.message}") }
+            }
+        }
+    }
+
+    private fun startAutoRefresh() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(30_000L)
+                if (_state.value?.selection != null) {
+                    refresh()
+                }
+            }
+        }
+    }
+
+    private fun patch(block: UiState.() -> UiState) {
+        val current = _state.value ?: UiState()
+        _state.value = current.block()
+    }
+
+    override fun onCleared() {
+        refreshJob?.cancel()
+        super.onCleared()
+    }
+}
+
+private fun CoroutineScope.safeStops(
+    block: () -> List<StopOption>
+): Deferred<List<StopOption>> = async(Dispatchers.IO) {
+    try {
+        block()
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
