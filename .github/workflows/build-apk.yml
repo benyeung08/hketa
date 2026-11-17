@@ -50,6 +50,13 @@ jobs:
               'app/src/main/res/values-night/colors.xml',
               'app/src/main/res/layout/activity_main.xml',
               'app/src/main/res/layout/activity_settings.xml',
+              # APP1933-style shell
+              'app/src/main/res/layout/item_route_card.xml',
+              'app/src/main/res/layout/item_favorite.xml',
+              'app/src/main/res/drawable/bg_route_badge.xml',
+              'app/src/main/res/drawable/bg_trip_chip.xml',
+              'app/src/main/java/hk/eta/app/ui/App1933Format.kt',
+              'app/src/main/java/hk/eta/app/ui/CardAdapters.kt',
               'app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
               'app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
           ]
@@ -80,8 +87,8 @@ jobs:
               errs += [f'  - {p}' for p in missing]
           srcs = list((R / 'app/src/main/java').rglob('*.java')) + \
                  list((R / 'app/src/main/java').rglob('*.kt'))
-          if len(srcs) < 19:
-              errs.append(f'原始碼得 {len(srcs)} 個 .java/.kt（預期 >= 19），可能只上傳咗部分')
+          if len(srcs) < 21:
+              errs.append(f'原始碼得 {len(srcs)} 個 .java/.kt（預期 >= 21），可能只上傳咗部分')
 
           # CONTENT DRIFT: a file can exist but still be the OLD version when
           # only some files are uploaded. (Run 44055490312 follow-up: the new
@@ -101,6 +108,10 @@ jobs:
                '<string name="default_github_repo">benyeung08/hketa</string>',
                'strings.xml 缺內建 default_github_repo',
                '改成：<string name="default_github_repo">benyeung08/hketa</string>'),
+              ('app/src/main/res/layout/activity_main.xml',
+               'android:id="@+id/pageHome"',
+               'activity_main.xml 仍係舊單頁版面（缺 APP1933 四分頁）',
+               '由完整 zip 覆蓋 activity_main.xml（同時要傳 App1933Format.kt / CardAdapters.kt）'),
           ]
           for path, needle, msg, fix in drift:
               p = R / path
