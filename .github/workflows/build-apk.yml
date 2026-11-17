@@ -107,11 +107,33 @@ jobs:
               if p.is_file() and needle not in p.read_text(encoding='utf-8'):
                   errs.append(f'檔案存在但內容仍係舊版：{msg} → 修復：{fix}')
 
+          # BINARY INTEGRITY: a file can exist, be non-empty, and STILL be a
+          # corrupted/text-mangled upload (e.g. a keystore saved as plain text
+          # via the web editor). That fails much later at signing/AAPT2.
+          ks = R / 'app/hketa-debug.keystore'
+          if ks.is_file():
+              try:
+                  raw = ks.read_bytes()
+              except OSError:
+                  raw = b''
+              if raw[:2] != b'\x30\x82' and raw[:4] != b'\xfe\xed\xfe\xed':
+                  errs.append('app/hketa-debug.keystore 唔係有效 PKCS12/JKS 二進位檔'
+                              '（可能被當文字上傳／損毀）→ 由 zip 原檔重新覆蓋')
+              if len(raw) < 1000:
+                  errs.append(f'app/hketa-debug.keystore 得 {len(raw)} bytes，'
+                              '疑似空檔／佔位檔 → 由 zip 原檔重新覆蓋')
+          pngs = [R / 'app/icon-source.png',
+                  R / 'app/src/main/ic_launcher-playstore.png']
+          pngs += sorted((R / 'app/src/main/res').glob('mipmap-*/ic_launcher*.png'))
+          for p in pngs:
+              if p.is_file() and p.read_bytes()[:8] != b'\x89PNG\r\n\x1a\n':
+                  errs.append(str(p.relative_to(R)) + ' 唔係有效 PNG（可能被當文字上傳／損毀）')
+
           if errs:
               print('::error::HK ETA 上傳完整性檢查失敗')
               for e in errs:
                   print(f'::error::{e}')
-              print('::error::唔好逐個檔改：新 zip 入面 100 個檔全部已驗證正確')
+              print('::error::唔好逐個檔改：新 zip 入面所有檔案全部已驗證正確')
               print('::error::唯一動作：解壓 hketa-github.zip → cd hketa → git add . && git commit -m "Full sync" && git push origin main')
               print('::error::若堅持用網頁 upload，必須一次過拖「成個資料夾」，連 .github/ 同 .gitignore 都要傳')
               sys.exit(1)
@@ -232,8 +254,29 @@ jobs:
           unzip -q "$RUNNER_TEMP/gradle-8.7-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
           echo "$RUNNER_TEMP/gradle-dist/gradle-8.7/bin" >> "$GITHUB_PATH"
 
+      # NO --stacktrace on purpose: it appends 250+ Gradle-internal frames at
+      # the END, so the user only ever sees "at org.gradle.internal..." and
+      # "BUILD FAILED" instead of the real cause. Without it, Gradle's own tail
+      # IS the answer (FAILURE / What went wrong / Execution failed for task).
+      # --console=plain keeps output readable in the Actions log viewer.
+      # tee + pipefail still preserve the full log and the real exit code.
       - name: Assemble debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        id: assemble_debug
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build-debug.log
+
+      - name: Show real Gradle error
+        if: failure() && steps.assemble_debug.outcome == 'failure'
+        run: python3 scripts/show_build_error.py build-debug.log
+
+      - name: Upload full Gradle error log
+        if: failure() && steps.assemble_debug.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-gradle-logs
+          path: build-debug.log
+          if-no-files-found: warn
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -243,8 +286,23 @@ jobs:
           if-no-files-found: error
 
       - name: Assemble signed release APK
+        id: assemble_release
         if: startsWith(github.ref, 'refs/tags/')
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --console=plain 2>&1 | tee build-release.log
+
+      - name: Show real Gradle error (release)
+        if: failure() && steps.assemble_release.outcome == 'failure'
+        run: python3 scripts/show_build_error.py build-release.log
+
+      - name: Upload full Gradle release log
+        if: failure() && steps.assemble_release.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-gradle-release-log
+          path: build-release.log
+          if-no-files-found: warn
 
       # Fail the release if the APK certificate differs from the pinned value.
       - name: Verify APK signing certificate
