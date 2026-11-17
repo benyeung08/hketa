@@ -1,27 +1,16 @@
-# Node / TypeScript
-node_modules/
-dist/
-*.log
-npm-debug.log*
-
-# Android
 *.iml
 .gradle/
-local.properties
-.idea/
-build/
-captures/
-.externalNativeBuild/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
 .cxx/
 *.apk
 *.aab
 
-# 簽名金鑰（重要！不要提交）
-*.jks
-*.keystore
-keystore.properties
-androidApp/keystore.properties
-
-# OS
-.DS_Store
-Thumbs.db
+# CI-injected / locally created RELEASE keystore. Never commit a real signing key.
+# The committed app/hketa-debug.keystore is a public development-only key.
+/app/hketa-release.keystore
