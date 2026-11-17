@@ -564,6 +564,130 @@ check("startup badge check is silent and read-only",
       and "app_update_new_badge" in main_kt)
 check("default_github_repo is defined",
       "default_github_repo" in read(RES / "values/strings.xml"))
+check("default_github_repo points at this repo",
+      '<string name="default_github_repo">benyeung08/hketa</string>'
+      in read(RES / "values/strings.xml"))
+check("preflight script guards every required file", all(
+      s in read(ROOT / "scripts/preflight.py") for s in (
+          "REQUIRED", "hketa/app/build.gradle.kts", "missing", "empty",
+          "::error::", "hketa-debug.keystore", "icon-source.png")))
+check("preflight runs first in CI",
+      "Preflight - verify uploaded files" in workflow
+      and workflow.index("Preflight - verify uploaded files")
+      < workflow.index("JDK 17"))
+check("CI preflight is self-contained (no dependency on scripts/)",
+      "SELF_CONTAINED_PREFLIGHT" in workflow
+      and "python3 - <<'PY'" in workflow
+      and "if [ ! -f scripts/preflight.py ]" not in workflow
+      and "python3 scripts/preflight.py" not in workflow)
+check("inline preflight lists every missing file", all(
+      s in workflow for s in ("缺少 ", "多咗一層 hketa/", "原始碼得",
+                              "scripts/check_api_fields.py",
+                              "app/hketa-debug.keystore",
+                              "ic_launcher_foreground.png")))
+check("inline preflight catches OLD-content drift", all(
+      s in workflow for s in ("CONTENT DRIFT", "內容仍係舊版",
+                              "/app/hketa-release.keystore",
+                              'android:roundIcon="@mipmap/ic_launcher_round"',
+                              "hketaDev", "benyeung08/hketa")))
+check("local preflight mirrors drift checks", all(
+      s in read(ROOT / "scripts/preflight.py") for s in
+      ("Content drift", "/app/hketa-release.keystore",
+       "ic_launcher_round", "hketaDev", "benyeung08/hketa")))
+check("drift errors include an exact fix hint", all(
+      s in workflow for s in ("→ 修復：", "加一行：/app/hketa-release.keystore",
+                              '改成：android:roundIcon=',
+                              'default_github_repo">benyeung08/hketa')))
+check("preflight tells user to full-sync, not patch one by one", all(
+      s in workflow for s in ("唔好逐個檔改", "git add . && git commit",
+                              "一次過拖「成個資料夾」")))
+fix_drift = read(ROOT / "scripts/fix_drift.py")
+check("one-shot drift repair script exists and is idempotent", all(
+      s in fix_drift for s in ("fix_gitignore", "fix_manifest", "fix_strings",
+                               "benyeung08/hketa", "ic_launcher_round",
+                               "已經係新版", "Full sync")))
+
+# --- CI: surface the REAL Gradle error (Assemble debug APK 1m42s) ------------
+build_error = read(ROOT / "scripts/show_build_error.py")
+check("Gradle build logs are captured with pipefail + tee", all(
+      s in workflow for s in ("set -o pipefail", "tee build-debug.log",
+                              "tee build-release.log", "id: assemble_debug")))
+# --- Kotlin compile pitfalls (real build-debug.log: compileDebugKotlin FAILED) -
+location_helper = read(UI / "LocationHelper.kt")
+# Legit top-level symbols of kotlinx-coroutines-core/android 1.8.1.
+COROUTINES_OK = {
+    "kotlinx.coroutines.CoroutineScope", "kotlinx.coroutines.Deferred",
+    "kotlinx.coroutines.CompletableDeferred", "kotlinx.coroutines.Dispatchers",
+    "kotlinx.coroutines.Job", "kotlinx.coroutines.SupervisorJob",
+    "kotlinx.coroutines.CoroutineExceptionHandler",
+    "kotlinx.coroutines.async", "kotlinx.coroutines.awaitAll",
+    "kotlinx.coroutines.launch", "kotlinx.coroutines.delay",
+    "kotlinx.coroutines.withContext", "kotlinx.coroutines.withTimeoutOrNull",
+    "kotlinx.coroutines.withTimeout", "kotlinx.coroutines.isActive",
+    "kotlinx.coroutines.cancel", "kotlinx.coroutines.cancelAndJoin",
+    "kotlinx.coroutines.joinAll", "kotlinx.coroutines.coroutineScope",
+    "kotlinx.coroutines.supervisorScope", "kotlinx.coroutines.yield",
+    "kotlinx.coroutines.flow.Flow", "kotlinx.coroutines.flow.flow",
+    "kotlinx.coroutines.flow.flowOn", "kotlinx.coroutines.flow.collect",
+    "kotlinx.coroutines.flow.MutableStateFlow", "kotlinx.coroutines.flow.StateFlow",
+}
+bad_imports = []
+for kt in sorted(UI.rglob("*.kt")):
+    for imp in re.findall(r"^import\s+(kotlinx\.coroutines[\w.]*)",
+                          kt.read_text(encoding="utf-8"), re.M):
+        if imp not in COROUTINES_OK:
+            bad_imports.append(f"{kt.name}: {imp}")
+check("no non-existent coroutines imports (Deferred.await is a member)",
+      not bad_imports, ", ".join(bad_imports[:3]))
+check("LocationHelper does not import kotlinx.coroutines.await",
+      "import kotlinx.coroutines.await" not in location_helper)
+check("LocationListener provider callbacks use non-null String (API 34 @NonNull)",
+      "override fun onProviderEnabled(provider: String)" in location_helper
+      and "override fun onProviderDisabled(provider: String)" in location_helper
+      and "override fun onProviderEnabled(provider: String?)" not in location_helper
+      and "override fun onProviderDisabled(provider: String?)" not in location_helper)
+check("LocationHelper keeps all 3 legacy callbacks for minSdk 24",
+      all(s in location_helper for s in
+          ("override fun onStatusChanged(", "override fun onProviderEnabled(",
+           "override fun onProviderDisabled(", "override fun onLocationChanged(")))
+
+# --- Java compile pitfall (build-debug.log: compileDebugJavaWithJavac FAILED) -
+mtr_catalog = read(API / "MtrCatalog.java")
+check("MtrCatalog has lower(String[]) overload for CSV header rows",
+      "private static List<String> lower(String[] cells)" in mtr_catalog
+      and "return lower(Arrays.asList(cells));" in mtr_catalog
+      and "import java.util.Arrays;" in mtr_catalog)
+check("every lower(rows.get(...)) call has an applicable overload",
+      mtr_catalog.count("= lower(rows.get(0))") == 3
+      and "private static List<String> lower(List<String> cells)" in mtr_catalog)
+check("firstWithAll / firstWithAny still consume List<String> header",
+      all(s in mtr_catalog for s in
+          ("private static int firstWithAll(List<String> header",
+           "private static int firstWithAny(List<String> header")))
+
+check("CI no longer hides the error behind --stacktrace", all(
+      s in workflow for s in ("NO --stacktrace on purpose", "--console=plain"))
+      and "gradle assembleDebug --no-daemon --stacktrace" not in workflow
+      and "gradle assembleRelease --no-daemon --stacktrace" not in workflow)
+check("distiller warns when old stacktrace-shaped log is seen",
+      "新 workflow 未生效" in build_error)
+check("failure steps distil the real error instead of stack frames", all(
+      s in workflow for s in ("Show real Gradle error",
+                              "steps.assemble_debug.outcome",
+                              "scripts/show_build_error.py",
+                              "Upload full Gradle error log",
+                              "hketa-gradle-logs")))
+check("error distiller matches real failure categories", all(
+      s in build_error for s in ("What went wrong", "Execution failed for task",
+                                 "Caused by", "Unresolved reference", "AAPT2",
+                                 "Keystore", "Could not resolve",
+                                 "SDK location", "GITHUB_STEP_SUMMARY")))
+check("preflight validates keystore + PNG binary signatures", all(
+      s in workflow for s in ("BINARY INTEGRITY", "\\x30\\x82", "89PNG",
+                              "mipmap-*/ic_launcher*.png")))
+check("local preflight mirrors binary checks", all(
+      s in read(ROOT / "scripts/preflight.py") for s in
+      ("Binary integrity", "\\x30\\x82", "89PNG", "mipmap-*/ic_launcher*.png")))
 
 # --- Settings: signing consistency --------------------------------------------
 signature_kt = read(UI / "ApkSignature.kt")
@@ -617,6 +741,26 @@ check("settings verifies before install and deletes mismatched APK", all(
                                  "apk.delete()", "showInstalledFingerprint")))
 check("unknown-sources return path re-verifies signature",
       settings_kt.count("ApkSignature.verify") >= 2)
+
+# --- CI: the "Android SDK" step failure (run 44055490312) --------------------
+check("removed failing setup-android@v3 action",
+      not re.search(r"uses:\s*android-actions/setup-android", workflow)
+      and not re.search(r"^\s*-\s*name:\s*Android SDK\s*$", workflow, re.M))
+check("runner pinned to Ubuntu 24.04",
+      "runs-on: ubuntu-24.04" in workflow
+      and "runs-on: ubuntu-latest" not in workflow)
+check("Node 24-native action versions",
+      "actions/checkout@v5" in workflow and "actions/setup-java@v5" in workflow)
+check("uses runner-preinstalled Android SDK", all(
+      s in workflow for s in ("Locate Android SDK (preinstalled on runner)",
+                              "ANDROID_SDK_ROOT", "cmdline-tools/latest/bin/sdkmanager",
+                              "SDKMANAGER=", '"$SDKMANAGER" --licenses',
+                              "::error::搵唔到")))
+check("SDK 34 still installed without the action",
+      '"platforms;android-34" "build-tools;34.0.0" "platform-tools"' in workflow)
+check("static check runs before toolchain setup",
+      workflow.index("Check API field names against official samples")
+      < workflow.index("JDK 17"))
 
 # --- Launcher icon (user-supplied rainbow bus artwork) ------------------------
 import struct
@@ -735,6 +879,48 @@ vm_kt = read(UI / "EtaViewModel.kt")
 check("ViewModel has loadNearby", "fun loadNearby" in vm_kt)
 check("ViewModel maps all 8 spinner positions",
       all(f"{i} -> EtaRepository." in vm_kt for i in range(1, 8)))
+
+# --- APP1933 shell: UI only, 8-operator data layer untouched ------------------
+fmt_kt = read(UI / "App1933Format.kt")
+card_kt = read(UI / "CardAdapters.kt")
+check("APP1933 shell has 4 bottom tabs + 4 pages", all(
+      f'android:id="@+id/{n}"' in main_layout for n in
+      ("tabHome", "tabFav", "tabSearch", "tabMore",
+       "pageHome", "pageFav", "pageSearch", "pageMore")))
+check("APP1933 home card with 3 trip chips + big minutes", all(
+      s in main_layout for s in
+      ('android:id="@+id/homeRecycler"', 'android:id="@+id/tvHomeEmpty"',
+       'android:id="@+id/btnRefresh"'))
+      and all(s in read(RES / "layout/item_route_card.xml") for s in
+              ('android:id="@+id/cardRoot"', 'android:id="@+id/cardTrip1"',
+               'android:id="@+id/cardTrip2"', 'android:id="@+id/cardTrip3"',
+               'android:id="@+id/cardMinutes"', 'android:id="@+id/cardRoute"')))
+check("three-arrival formatting with official marks", all(
+      s in fmt_kt for s in
+      ("cardsFrom", "stopLabel", "take(3)", "剛到站", "沒有服務", "預定班次")))
+check("route stop sequence + direction switch + stop filter", all(
+      s in main_layout for s in
+      ("btnDirection", "etFilter", "companySpinner", "routeEdit", "stopsRecycler"))
+      and all(s in vm_kt for s in
+              ("fun toggleDirection", "fun filterStops",
+               "fun loadNearbyRoutes", "fun removeFavorite")))
+check("card + favourite adapters wired", all(
+      s in card_kt for s in
+      ("class RouteCardAdapter", "class FavoriteAdapter", "cardTrip1",
+       "setOnLongClickListener"))
+      and all(s in main_layout for s in ("favRecycler", "tvFavEmpty"))
+      and "RouteCardAdapter" in main_kt)
+check("proprietary APP1933 features are NOT implemented", all(
+      s in read(RES / "values/strings.xml") for s in
+      ("AI 智能問路", "實時載客量", "九巴月票", "遊戲室", "街景"))
+      and not any(x in main_layout for x in
+                  ("btnMonthlyPass", "btnAiRoute", "btnGameRoom",
+                   "btnPetBus", "btnBot1933")))
+check("8-operator data layer is unchanged", all(
+      s in read(API / "EtaRepository.java") for s in
+      ("OPERATORS", "case KMB:", "case CTB:", "case NLB:", "case GMB:",
+       "case MTR:", "case LRT:", "case MTRB:"))
+      and "new Dataset(" in read(API / "RouteDataStore.java"))
 
 if failures:
     print(f"\n{len(failures)} check(s) failed: {', '.join(failures)}")
