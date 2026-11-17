@@ -88,25 +88,32 @@ jobs:
           # checker passed ~140 checks but .gitignore and the Manifest were old.)
           drift = [
               ('.gitignore', '/app/hketa-release.keystore',
-               '.gitignore 缺 /app/hketa-release.keystore（舊版）'),
+               '.gitignore 缺 /app/hketa-release.keystore',
+               '加一行：/app/hketa-release.keystore'),
               ('app/src/main/AndroidManifest.xml',
                'android:roundIcon="@mipmap/ic_launcher_round"',
-               'AndroidManifest.xml roundIcon 未指向 ic_launcher_round（舊版）'),
+               'AndroidManifest.xml roundIcon 未指向 ic_launcher_round',
+               '改成：android:roundIcon="@mipmap/ic_launcher_round"'),
               ('app/build.gradle.kts', 'hketaDev',
-               'app/build.gradle.kts 缺固定 signingConfigs（舊版）'),
-              ('app/src/main/res/values/strings.xml', 'benyeung08/hketa',
-               'strings.xml 缺內建 default_github_repo（舊版）'),
+               'app/build.gradle.kts 缺固定 signingConfigs',
+               '加入 signingConfigs { create("hketaDev") { ... } } 並讓 debug/release 使用'),
+              ('app/src/main/res/values/strings.xml',
+               '<string name="default_github_repo">benyeung08/hketa</string>',
+               'strings.xml 缺內建 default_github_repo',
+               '改成：<string name="default_github_repo">benyeung08/hketa</string>'),
           ]
-          for path, needle, msg in drift:
+          for path, needle, msg, fix in drift:
               p = R / path
               if p.is_file() and needle not in p.read_text(encoding='utf-8'):
-                  errs.append('檔案存在但內容仍係舊版：' + msg)
+                  errs.append(f'檔案存在但內容仍係舊版：{msg} → 修復：{fix}')
 
           if errs:
               print('::error::HK ETA 上傳完整性檢查失敗')
               for e in errs:
                   print(f'::error::{e}')
-              print('::error::建議：解壓 hketa-github.zip 後 git add . && git commit && git push')
+              print('::error::唔好逐個檔改：新 zip 入面 100 個檔全部已驗證正確')
+              print('::error::唯一動作：解壓 hketa-github.zip → cd hketa → git add . && git commit -m "Full sync" && git push origin main')
+              print('::error::若堅持用網頁 upload，必須一次過拖「成個資料夾」，連 .github/ 同 .gitignore 都要傳')
               sys.exit(1)
           print(f'preflight OK：{len(req)} 個必要檔案齊全，{len(srcs)} 個原始碼檔案。')
           print('提示：app/hketa-release.keystore 係刻意唔上傳（由 CI Secrets 注入）。')
