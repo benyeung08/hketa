@@ -24,7 +24,8 @@ jobs:
       # Deliberately INLINE: the previous version called scripts/preflight.py,
       # which itself was missing when files were uploaded one-by-one, so the
       # check could only say "preflight.py is missing" and nothing else.
-      # This version needs no repo file at all and lists EVERY missing file.
+      # This version needs no repo file at all, lists EVERY missing file, AND
+      # catches "file exists but is still the old version" content drift.
       - name: Preflight - verify uploaded files
         run: |
           python3 - <<'PY'
@@ -81,6 +82,25 @@ jobs:
                  list((R / 'app/src/main/java').rglob('*.kt'))
           if len(srcs) < 19:
               errs.append(f'原始碼得 {len(srcs)} 個 .java/.kt（預期 >= 19），可能只上傳咗部分')
+
+          # CONTENT DRIFT: a file can exist but still be the OLD version when
+          # only some files are uploaded. (Run 44055490312 follow-up: the new
+          # checker passed ~140 checks but .gitignore and the Manifest were old.)
+          drift = [
+              ('.gitignore', '/app/hketa-release.keystore',
+               '.gitignore 缺 /app/hketa-release.keystore（舊版）'),
+              ('app/src/main/AndroidManifest.xml',
+               'android:roundIcon="@mipmap/ic_launcher_round"',
+               'AndroidManifest.xml roundIcon 未指向 ic_launcher_round（舊版）'),
+              ('app/build.gradle.kts', 'hketaDev',
+               'app/build.gradle.kts 缺固定 signingConfigs（舊版）'),
+              ('app/src/main/res/values/strings.xml', 'benyeung08/hketa',
+               'strings.xml 缺內建 default_github_repo（舊版）'),
+          ]
+          for path, needle, msg in drift:
+              p = R / path
+              if p.is_file() and needle not in p.read_text(encoding='utf-8'):
+                  errs.append('檔案存在但內容仍係舊版：' + msg)
 
           if errs:
               print('::error::HK ETA 上傳完整性檢查失敗')
