@@ -8,4 +8,10 @@
     <color name="eta_number">#FF6B6B</color>
     <color name="route_badge">#3A2024</color>
     <color name="divider">#2A3648</color>
+    <!-- DETAIL_STOP_BLACK / DETAIL_ALL_BLACK: intentionally the SAME pure-black
+         values as values/. The route-detail screen keeps its fixed white
+         background, so stop names AND all auxiliary labels must stay black
+         even when the system is in dark mode. -->
+    <color name="detail_stop_text">#000000</color>
+    <color name="detail_aux_text">#000000</color>
 </resources>
