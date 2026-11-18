@@ -11,6 +11,7 @@ annotations, the lines that actually matter:
   FAILURE: / * What went wrong: / Execution failed for task
   Caused by: / e: ... (Kotlin) / error: ... (Java)
   AAPT2 / resource linking / Keystore / Could not resolve / SDK location
+  HTTP 429 "Too Many Requests" from Maven Central (MAVEN_429_RETRY)
 
 It also emits a short "ROOT CAUSE" table into $GITHUB_STEP_SUMMARY and a
 category-specific hint. Always exits 0 so it never masks the original failure.
@@ -38,6 +39,10 @@ PATTERNS = [
     r"keystore password was incorrect|Keystore file .* not found",
     r"Could not resolve|Could not GET|Read timed out|Connection reset|"
     r"Received status code 5\d\d",
+    # MAVEN_429_RETRY: repo.maven.apache.org rate-limits shared GitHub
+    # Actions egress IPs. This is a transient NETWORK failure, not a
+    # compile / upload / signing error.
+    r"Received status code 429|Too Many Requests|status code 429",
     r"SDK location not found|Failed to find Platform SDK|"
     r"has not been accepted|license",
     r"No installed build tools|Installed Build Tools revision .* is corrupted",
@@ -45,6 +50,13 @@ PATTERNS = [
 ]
 
 HINTS = [
+    # MAVEN_429_RETRY — put FIRST so it wins over the generic "Could not
+    # resolve" hint when both patterns are present in the same log.
+    ("Too Many Requests", "Maven Central 回 HTTP 429「Too Many Requests」（例如 jsr305-3.0.2.pom）："
+     "呢個係 GitHub Actions 共享出口 IP 被限流，**唔係 code 錯、唔係上傳唔完整、唔係簽名問題**。"
+     "workflow 已經自動重試 3 次（30s／60s 退避）＋ setup-java Gradle 依賴快取；"
+     "若 3 次都失敗，等幾分鐘再撳 Re-run jobs 就得，唔使改任何檔。"),
+    ("status code 429", "同上：Maven Central 429 限流，直接 Re-run jobs；唔好改 source。"),
     ("Unresolved reference", "Kotlin 編譯錯誤：九成係新舊檔案混住（例如新 SettingsActivity 配舊 AppUpdatePrefs）。"
      "唯一解法：由 hketa-github.zip 全量 git push，唔好逐個檔 upload。"),
     ("cannot find symbol", "Java 編譯錯誤：同上，檢查是否只更新咗部分 .java 檔。"),

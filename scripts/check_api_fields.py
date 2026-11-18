@@ -894,6 +894,50 @@ check("no invented fare / alighting numbers; footer explains the dashes",
           "detail_fare_na", "detail_footer_honest", "$5.6", "15:31"))
       and '車資 —' in read(RES / "values/strings.xml")
       and 'name="detail_no_map_label"' in read(RES / "values/strings.xml"))
+# DETAIL_STOP_BLACK — 站名喺固定白底上必須係黑色，
+# 唔可以再用會喺 values-night 變成近白色嘅 @color/text / @color/muted。
+detail_markup_clean = re.sub(r"<!--.*?-->", "", detail_xml, flags=re.S)
+item_markup_clean = re.sub(r"<!--.*?-->", "", detail_item, flags=re.S)
+day_colors = read(RES / "values/colors.xml")
+night_colors = read(RES / "values-night/colors.xml")
+day_stop = re.search(
+    r'<color name="detail_stop_text">([^<]*)</color>', day_colors)
+day_aux = re.search(
+    r'<color name="detail_aux_text">([^<]*)</color>', day_colors)
+night_stop = re.search(
+    r'<color name="detail_stop_text">([^<]*)</color>', night_colors)
+night_aux = re.search(
+    r'<color name="detail_aux_text">([^<]*)</color>', night_colors)
+check("DETAIL_ALL_BLACK: stop names AND every same-colour label are PURE BLACK",
+      '<color name="detail_stop_text">#000000</color>' in day_colors
+      and '<color name="detail_aux_text">#000000</color>' in day_colors
+      and bool(day_stop) and day_stop.group(1).strip() == "#000000"
+      and bool(day_aux) and day_aux.group(1).strip() == "#000000"
+      and '@color/detail_stop_text' in detail_markup_clean
+      and '@color/detail_stop_text' in item_markup_clean
+      and '@color/detail_aux_text' in detail_markup_clean
+      and '@color/detail_aux_text' in item_markup_clean
+      # every textColour on this screen is either pure black or the blue accent
+      and not any(c in detail_markup_clean for c in (
+          '#374151', '#6B7787', '#93A2B5', '#EAF1FA')))
+check("DETAIL_ALL_BLACK: dark mode keeps the SAME pure black (no near-white flip)",
+      '<color name="detail_stop_text">#000000</color>' in night_colors
+      and '<color name="detail_aux_text">#000000</color>' in night_colors
+      and bool(night_stop) and night_stop.group(1).strip() == "#000000"
+      and bool(night_aux) and night_aux.group(1).strip() == "#000000")
+check("DETAIL_ALL_BLACK: footer pinned pale so black text is never on black",
+      'android:id="@+id/tvDetailFooter"' in detail_markup_clean
+      and 'DETAIL_ALL_BLACK' in detail_xml
+      and 'android:background="#F4F7FB"' in detail_markup_clean
+      and '@color/surface' not in detail_markup_clean)
+check("DETAIL_ALL_BLACK: no generic theme text colours remain on this screen",
+      not any(x in detail_markup_clean for x in ('@color/text', '@color/muted'))
+      and not any(x in item_markup_clean for x in ('@color/text', '@color/muted')))
+check("DETAIL_ALL_BLACK: red header / chips keep white text, blue minutes stay blue",
+      detail_markup_clean.count('android:textColor="#FFFFFF"') >= 5
+      and '@color/detail_minutes' in item_markup_clean
+      and 'android:background="#FFFFFF"' in detail_markup_clean
+      and '<color name="detail_minutes">#1A4E8C</color>' in day_colors)
 check("BOTH Home cards and search rows open the NO-MAP RouteDetailActivity",
       main_kt.count('Intent(this, RouteDetailActivity::class.java)') >= 2
       and 'RouteDetailActivity.EXTRA_STOP_ID' in main_kt
@@ -1154,6 +1198,29 @@ def one_apk_asset():
                 and not l.strip().startswith("#")]) == 1
 
 
+# --- MAVEN_429_RETRY: Maven Central 429「Too Many Requests」-------------------
+# GitHub Actions 共享出口 IP 會被 repo.maven.apache.org 限流（常見於
+# jsr305-3.0.2.pom）。呢個係暫時性網絡失敗，唔係 code / 上傳 / 簽名問題。
+distiller = read(ROOT / "scripts/show_build_error.py")
+check("MAVEN_429_RETRY: CI caches Gradle dependencies instead of re-downloading",
+      "MAVEN_429_RETRY" in workflow
+      and "cache: gradle" in workflow
+      and "MAVEN_429_RETRY" in distiller)
+check("MAVEN_429_RETRY: BOTH assemble steps retry transient 429 / 5xx / timeout",
+      all(s in workflow for s in (
+          "for attempt in 1 2 3; do", "Too Many Requests",
+          "Received status code 5[0-9][0-9]", "delay=$((attempt * 30))",
+          'if [ "$ok" -ne 1 ]; then exit 1; fi'))
+      and workflow.count("for attempt in 1 2 3; do") == 2
+      and workflow.count('if [ "$ok" -ne 1 ]; then exit 1; fi') == 2)
+check("MAVEN_429_RETRY: non-network failures are NOT retried (real error shows)",
+      "Gradle 失敗唔係依賴下載問題，唔重試" in workflow
+      and "交畀下一個 step 顯示真正錯誤" in workflow
+      and workflow.count("Gradle 失敗唔係依賴下載問題，唔重試") == 2)
+check("MAVEN_429_RETRY: distiller recognises 429 and says just Re-run jobs",
+      "Received status code 429|Too Many Requests|status code 429" in distiller
+      and "共享出口 IP 被限流" in distiller
+      and "唔使改任何檔" in distiller)
 check("CI builds a SIGNED RELEASE (production) APK, not just debug",
       all(s in workflow for s in (
           "Assemble signed release APK", "gradle assembleRelease",
