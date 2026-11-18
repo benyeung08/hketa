@@ -76,6 +76,197 @@ public final class RouteSearch {
         return searchInternal(raw, true);
     }
 
+    /**
+     * PRELOADED rows for the search home page (the dark empty area in the
+     * reference screenshot). Called BEFORE the user types a single digit, so
+     * "12 往 海麗邨 ›" style rows are already visible on entry.
+     *
+     * Every row comes from the SAME official route catalogues as search():
+     * local snapshot first, live API as fallback. No destination is invented —
+     * if a catalogue has no direction-level destination, that operator is
+     * skipped. GMB directions need one live lookup per route, so preload only
+     * shows its route codes with an explicit "目錄預載（未查方向）" note.
+     */
+    public static List<Result> preload() {
+        final List<Result> out = new ArrayList<>();
+        safe(out, new Source() {
+            @Override public void run() throws Exception { kmbPreload(out); }
+        });
+        safe(out, new Source() {
+            @Override public void run() throws Exception { ctbPreload(out); }
+        });
+        safe(out, new Source() {
+            @Override public void run() throws Exception { nlbPreload(out); }
+        });
+        safe(out, new Source() {
+            @Override public void run() throws Exception { gmbPreload(out); }
+        });
+        railPreload(out);
+        Collections.sort(out, new Comparator<Result>() {
+            @Override
+            public int compare(Result a, Result b) {
+                int c = rank(a.company) - rank(b.company);
+                if (c != 0) {
+                    return c;
+                }
+                c = a.route.compareToIgnoreCase(b.route);
+                return c != 0 ? c : a.dest.compareTo(b.dest);
+            }
+        });
+        if (out.size() > 24) {
+            return new ArrayList<>(out.subList(0, 24));
+        }
+        return out;
+    }
+
+    private static void kmbPreload(List<Result> out) throws Exception {
+        JSONObject root = RouteDataStore.catalogueJson(
+                RouteDataStore.KMB_ROUTES,
+                KMB_BASE + "/route/", KMB_BASE + "/route");
+        JSONArray data = root.optJSONArray("data");
+        if (data == null) {
+            return;
+        }
+        int added = 0;
+        for (int i = 0; i < data.length() && added < 6; i++) {
+            JSONObject o = data.optJSONObject(i);
+            if (o == null) {
+                continue;
+            }
+            String route = HttpJson.str(o, "route");
+            String dest = HttpJson.firstNonEmpty(
+                    HttpJson.str(o, "dest_tc"),
+                    HttpJson.str(o, "dest_en"),
+                    HttpJson.str(o, "orig_tc"));
+            if (route.isEmpty() || dest.isEmpty()) {
+                continue;
+            }
+            String bound = HttpJson.firstNonEmpty(HttpJson.str(o, "bound"), "O");
+            out.add(new Result(EtaRepository.KMB, route, "往 " + dest, bound,
+                    toServiceType(HttpJson.str(o, "service_type")), "", true));
+            added++;
+        }
+    }
+
+    private static void ctbPreload(List<Result> out) throws Exception {
+        JSONObject root = RouteDataStore.catalogueJson(
+                RouteDataStore.CTB_ROUTES,
+                CTB_BASE + "/route/CTB",
+                "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB");
+        JSONArray data = root.optJSONArray("data");
+        if (data == null) {
+            return;
+        }
+        int added = 0;
+        for (int i = 0; i < data.length() && added < 6; i++) {
+            JSONObject o = data.optJSONObject(i);
+            if (o == null) {
+                continue;
+            }
+            String route = HttpJson.str(o, "route");
+            String dest = HttpJson.firstNonEmpty(
+                    HttpJson.str(o, "dest_tc"),
+                    HttpJson.str(o, "dest_en"),
+                    HttpJson.str(o, "orig_tc"));
+            if (route.isEmpty() || dest.isEmpty()) {
+                continue;
+            }
+            String bound = HttpJson.firstNonEmpty(
+                    HttpJson.str(o, "dir"), HttpJson.str(o, "bound"), "O");
+            out.add(new Result(EtaRepository.CTB, route, "往 " + dest,
+                    bound, 1, "", true));
+            added++;
+        }
+    }
+
+    private static void nlbPreload(List<Result> out) throws Exception {
+        JSONObject root = RouteDataStore.catalogueJson(
+                RouteDataStore.NLB_ROUTES,
+                NLB_BASE + "/route.php?action=list");
+        JSONArray routes = root.optJSONArray("routes");
+        if (routes == null) {
+            return;
+        }
+        final String note = "大嶼山巴士 (資料由DATA.GOV.HK提供)";
+        int added = 0;
+        for (int i = 0; i < routes.length() && added < 2; i++) {
+            JSONObject o = routes.optJSONObject(i);
+            if (o == null) {
+                continue;
+            }
+            String route = HttpJson.str(o, "routeNo");
+            if (route.isEmpty()) {
+                continue;
+            }
+            String end = HttpJson.firstNonEmpty(
+                    HttpJson.str(o, "loc_end_name_c"),
+                    HttpJson.str(o, "loc_end_name_e"),
+                    afterDash(HttpJson.str(o, "routeName_c")));
+            String start = HttpJson.firstNonEmpty(
+                    HttpJson.str(o, "loc_start_name_c"),
+                    HttpJson.str(o, "loc_start_name_e"),
+                    beforeDash(HttpJson.str(o, "routeName_c")));
+            if (end.isEmpty() && start.isEmpty()) {
+                continue;
+            }
+            if (!end.isEmpty()) {
+                out.add(new Result(EtaRepository.NLB, route,
+                        "往 " + end + " - 嶼巴", "ALL", 1, note, true));
+            }
+            if (!start.isEmpty() && !start.equals(end)) {
+                out.add(new Result(EtaRepository.NLB, route,
+                        "往 " + start + " - 嶼巴", "ALL", 1, note, true));
+            }
+            added++;
+        }
+    }
+
+    /** No live detail lookups here; the note says directions were not fetched. */
+    private static void gmbPreload(List<Result> out) throws Exception {
+        JSONObject root = RouteDataStore.catalogueJson(
+                RouteDataStore.GMB_ROUTES, GMB_BASE + "/route", GMB_BASE + "/route/");
+        JSONObject data = root.optJSONObject("data");
+        JSONObject routes = data == null ? null : data.optJSONObject("routes");
+        if (routes == null) {
+            return;
+        }
+        String[] regions = {"HKI", "KLN", "NT"};
+        String[] names = {"香港島", "九龍", "新界"};
+        for (int r = 0; r < regions.length; r++) {
+            JSONArray list = routes.optJSONArray(regions[r]);
+            if (list == null) {
+                continue;
+            }
+            int added = 0;
+            for (int i = 0; i < list.length() && added < 2; i++) {
+                String code = list.optString(i, "");
+                if (code.isEmpty()) {
+                    continue;
+                }
+                out.add(new Result(EtaRepository.GMB, code,
+                        "往 " + code + " 總站", "1", 1,
+                        "綠色小巴 (資料由DATA.GOV.HK提供) · " + names[r]
+                                + " · 目錄預載（未查方向）", true));
+                added++;
+            }
+        }
+    }
+
+    /** Rail rows use the project's own official line / MTR Bus code tables. */
+    private static void railPreload(List<Result> out) {
+        for (int i = 0; i < Math.min(4, MtrCatalog.LINE_CODES.length); i++) {
+            out.add(new Result(EtaRepository.MTR, MtrCatalog.LINE_CODES[i],
+                    "往 " + MtrCatalog.LINE_NAMES[i] + " 沿線", "ALL", 1,
+                    "港鐵 (資料由DATA.GOV.HK提供)", true));
+        }
+        for (int i = 0; i < Math.min(2, MtrCatalog.MTR_BUS_ROUTES.length); i++) {
+            String code = MtrCatalog.MTR_BUS_ROUTES[i];
+            out.add(new Result(EtaRepository.MTRB, code,
+                    "往 " + code + " 總站", "ALL", 1,
+                    "港鐵接駁巴士 (資料由DATA.GOV.HK提供)", true));
+        }
+    }
+
     private static List<Result> searchInternal(String raw, final boolean allowPrefix) {
         final String q = raw == null ? "" : raw.trim().toUpperCase(Locale.US);
         if (q.isEmpty()) {
