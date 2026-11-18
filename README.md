@@ -26,6 +26,7 @@
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **🏷 正式版 APK 對應 Releases 版本**：`v1.0.0` tag 只會附 `hketa-v1.0.0-release.apk`；`tag ↔ build.gradle.kts ↔ 實際 APK` 三重校驗唔夾即擋低發布，並附 `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`
+- **⬛ 路線詳情全頁文字純黑**：詳情頁係固定白底，站名**同所有原本同色嘅輔助文字**（車資、落車、分鐘單位、時鐘、標記、路線示意標籤、頁底說明）一律改純黑 `#000000`；`values-night` 保持同一純黑值，頁底背景亦釘死淺色避免黑字落黑底。深色模式唔會再變近白色睇唔到；紅色頂欄／chip 白字同藍色分鐘數字唔變
 - **未來三班次**：標記 `-`（剛到站）、`—`（沒有服務）、「預定班次」、「改道」、聯營公司；取代舊嘅單班次列表
 - **路線站序＋方向切換**：輸入路線號列出沿途車站（含站編號），一鍵 `⇄` 切換去程／回程，並可即時篩選站名／站號
 - **8 種查詢模式**：自動（全部）、九巴／龍運、城巴、嶼巴、綠色小巴、港鐵重鐵、輕鐵、港鐵接駁巴士
@@ -239,6 +240,8 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 | `activity_main.xml 仍係舊單頁版面（缺 APP1933 四分頁）` | 由完整 zip 覆蓋 `activity_main.xml`，並一齊傳 `App1933Format.kt`／`CardAdapters.kt`／兩個新 layout／兩個 drawable |
 | `one-shot drift repair script exists and is idempotent` / `distiller warns when old stacktrace-shaped log is seen` | `scripts/fix_drift.py` 或 `scripts/show_build_error.py` 漏傳／仍係舊版 → **全量 push `scripts/` 七個 `.py`** |
 | `tag 與 Gradle 版本唔對應` / `APK 內容與 Gradle 版本唔對應` | 正式版發布閘門擋低：先 bump `app/build.gradle.kts` 嘅 `versionCode`／`versionName`，push 後重新打 tag |
+| `Release is explicitly tied to the matching tag/version` | checker 曾硬要求 `RELEASE_NOTES_v1.0.0.md` 存在，但 workflow 本身有 fallback —— **已修正為選用**；只需覆蓋 `scripts/check_api_fields.py` 一個檔。若 log 見到 `缺以下 N 項字串`，先再覆蓋 `.github/workflows/build-apk.yml` |
+| `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` | 全黑改動未同步：由完整 zip 覆蓋兩個詳情 layout ＋ `values/` 同 `values-night/` 嘅 `colors.xml`（共 4 個檔；合併包一次過包齊） |
 | `Could not resolve` / `Read timed out` / 5xx | 直接 **Re-run jobs** |
 | 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
@@ -294,6 +297,7 @@ Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compi
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **🏷 Production APK matches its Release version**: a `v1.0.0` tag attaches only `hketa-v1.0.0-release.apk`; a `tag ↔ build.gradle.kts ↔ actual APK` three-way gate blocks publishing on mismatch, with `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt` attached
+- **⬛ Every route-detail label is pure black**: the detail screen has a fixed white background, so stop names AND every label that used to share their colour (fare, alight, minutes unit, clock, tags, map-strip caption, footer note) are now pure `#000000`. `values-night` keeps the SAME pure black, and the footer background is pinned pale so black text is never on black. Dark mode no longer turns them into near-white invisible text; the red header / dark chips keep white text and the big minute numbers stay blue
 - **Next three arrivals**: markers for `-` (just arrived), `—` (no service), "預定班次" (scheduled), diversion and joint operators — replacing the old single-arrival list
 - **Stop sequence + direction switch**: route number lists all stops (with stop ids), one-tap `⇄` bound toggle, live stop-name / stop-id filter
 - **8 lookup modes**: Auto (all), KMB/LWB, Citybus, NLB, Green Minibus, MTR Heavy Rail, Light Rail, MTR Bus
@@ -504,6 +508,8 @@ The first CI step is a **self-contained preflight** (it needs no repo `.py` file
 | `activity_main.xml 仍係舊單頁版面（缺 APP1933 四分頁）` (stale single-page layout) | Overwrite `activity_main.xml` from the full zip, together with `App1933Format.kt`, `CardAdapters.kt`, the two new layouts and two drawables |
 | `one-shot drift repair script exists and is idempotent` / `distiller warns when old stacktrace-shaped log is seen` | `scripts/fix_drift.py` or `scripts/show_build_error.py` is missing / stale → **full-sync all seven `.py` files under `scripts/`** |
 | `tag 與 Gradle 版本唔對應` / `APK 內容與 Gradle 版本唔對應` (version mismatch) | The release gate stopped it: bump `versionCode` / `versionName` in `app/build.gradle.kts`, push, then re-tag |
+| `Release is explicitly tied to the matching tag/version` | The checker used to hard-require `RELEASE_NOTES_v1.0.0.md`, contradicting the workflow's own fallback — **now optional**; just overwrite `scripts/check_api_fields.py`. If the log shows `缺以下 N 項字串`, also overwrite `.github/workflows/build-apk.yml` |
+| `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` (stale all-black detail colours) | Overwrite the two route-detail layouts plus `colors.xml` in both `values/` and `values-night/` (4 files) from the full zip / merged pack |
 | `Could not resolve` / `Read timed out` / 5xx | Simply **Re-run jobs** |
 | Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
 
