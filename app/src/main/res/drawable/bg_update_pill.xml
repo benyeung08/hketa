@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The dark rounded "v2.8.4 · 83 ⟳ 🕐 ⧉" pill from the reference screenshot.
+  Sits at the top of the 更新應用程式 section in Settings.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/pill_bg" />
+    <corners android:radius="28dp" />
+</shape>

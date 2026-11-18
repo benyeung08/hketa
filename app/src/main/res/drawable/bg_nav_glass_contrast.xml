@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility fallback: when the system enables high-contrast text the
+  translucent glass becomes an opaque solid bar with a strong white rim.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FF101820" />
+    <corners android:radius="30dp" />
+    <stroke
+        android:width="2dp"
+        android:color="#FFFFFFFF" />
+    <padding
+        android:bottom="4dp"
+        android:left="6dp"
+        android:right="6dp"
+        android:top="4dp" />
+</shape>
