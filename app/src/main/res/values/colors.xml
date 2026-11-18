@@ -20,4 +20,18 @@
     <color name="mtrb">#136C8C</color>
     <color name="arriving">#1B8A4B</color>
     <color name="input_bg">#EEF2F7</color>
+    <!-- APP1933 route-search keypad -->
+    <color name="keypad_bg">#4C7284</color>
+    <color name="keypad_key">#FFFFFF</color>
+    <color name="keypad_text">#26333D</color>
+    <color name="keypad_muted">#C7D7DE</color>
+    <color name="search_result_hint">#9AA6B2</color>
+    <!-- 設定頁「更新應用程式」深色版本膠囊 -->
+    <color name="pill_bg">#252A31</color>
+    <color name="pill_text">#FFFFFF</color>
+    <color name="pill_muted">#AEB7C2</color>
+    <!-- 設定頁免責聲明卡（對照截圖）／懸浮液態玻璃導航欄 -->
+    <color name="disclaimer_text">#9AA9BC</color>
+    <color name="glass_tab_text">#FFFFFF</color>
+    <color name="glass_tab_muted">#C3CEDA</color>
 </resources>

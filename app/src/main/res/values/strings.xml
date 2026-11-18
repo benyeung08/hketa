@@ -63,6 +63,36 @@
     <string name="app_update_new_badge">🔔 有新版本 %1$s · 到 ⚙ 設定更新</string>
     <string name="app_update_cached_found">上次檢查發現新版本 %1$s · 按「檢查更新」查看詳情</string>
 
+    <!-- 更新應用程式：深色版本膠囊（vX · build · ⟳ 🕐 ⧉） -->
+    <string name="pill_refresh_cd">立即重新檢查更新</string>
+    <string name="pill_history_cd">查看更新記錄與上次檢查時間</string>
+    <string name="pill_copy_cd">複製版本資訊</string>
+    <string name="pill_status_never">尚未檢查更新 · 按 ⟳ 立即檢查</string>
+    <string name="pill_status_checked">上次檢查 %1$s · %2$s</string>
+    <string name="pill_status_latest">已是最新版本</string>
+    <string name="pill_status_new">發現新版本 %1$s</string>
+    <string name="pill_status_failed">檢查失敗，按 ⟳ 重試</string>
+    <string name="pill_status_checking">正在檢查最新版本…</string>
+    <string name="pill_advanced_open">⌄ 進階設定（發布來源／下載／簽名）</string>
+    <string name="pill_advanced_close">⌃ 收起進階設定</string>
+    <string name="pill_history_title">更新記錄</string>
+    <string name="pill_history_body">目前版本：%1$s（%2$d）\n發布來源：%3$s\n自動檢查：%4$s\n上次檢查：%5$s\n快取版本：%6$s\n狀態：%7$s</string>
+    <string name="pill_history_never">尚未檢查</string>
+    <string name="pill_history_no_tag">（無）</string>
+    <string name="pill_on">開啟</string>
+    <string name="pill_off">關閉</string>
+    <string name="pill_copied">已複製版本資訊：%1$s</string>
+    <string name="pill_ok">確定</string>
+    <string name="pill_cancel">取消</string>
+
+    <!-- 定位附近路線嘅距離（設定頁） -->
+    <string name="nearby_radius_section">📍 定位附近路線嘅距離</string>
+    <string name="nearby_radius_title">選擇附近路線半徑</string>
+    <string name="nearby_radius_hint">按上面數字或 ▼ 選擇 50–2000 m；改完返主頁會自動用新半徑重新載入附近路線。主頁唔再設距離下拉、亦冇「↻ 刷新」掣，下拉頁面即可刷新。</string>
+    <string name="nearby_radius_unit">m</string>
+    <string name="nearby_radius_cd">選擇附近路線距離</string>
+    <string name="nearby_radius_saved">附近路線距離已設為 %1$s · 返主頁自動更新</string>
+
     <!-- App 簽名一致性 -->
     <!-- 可選：填入 CI 印出的 SHA-256 指紋（含或不含冒號皆可）；留空則只比對本機 App 憑證。 -->
     <string name="expected_signing_sha256"></string>
@@ -80,22 +110,47 @@
     <string name="tab_home">⌂&#10;主頁</string>
     <string name="tab_fav">★&#10;收藏</string>
     <string name="tab_search">🔍&#10;搜尋</string>
-    <string name="tab_more">☰&#10;更多</string>
+    <string name="tab_more">⚙&#10;應用程式設置</string>
     <string name="home_title">附近路線</string>
-    <string name="home_empty">按「📍 重新定位」載入附近路線，或到「搜尋」輸入路線號載入沿途車站。</string>
-    <string name="trips_hint">未來三班次 · 每 30 秒自動更新 · 可下拉刷新</string>
+    <string name="home_empty">授予定位權限後會自動載入附近路線；亦可到「搜尋」輸入路線號載入沿途車站。</string>
+    <string name="home_swipe_hint">↓ 下拉刷新</string>
+    <string name="trips_hint">未來三班次 · 授權後自動定位 · 下拉頁面即可刷新</string>
     <string name="unit_minutes">分鐘</string>
-    <string name="locate">📍 重新定位</string>
-    <string name="refresh">↻ 刷新</string>
+    <string name="location_permission_hint">⚠ 需要定位權限才能顯示附近路線 · 按此授予</string>
+    <string name="location_permission_denied">未授予定位權限，附近路線已暫停 · 按此到系統設定開啟</string>
+    <string name="location_waiting">正在等待定位權限…授予後會自動載入附近路線。</string>
+    <string name="location_auto">已取得定位權限 · 自動載入附近路線</string>
     <string name="search_title">路線搜尋</string>
+    <string name="search_title_bar">搜尋</string>
+    <string name="search_input_hint">輸入路線號碼</string>
+    <string name="search_empty">輸入路線號碼，即時列出各營運商嘅路線與方向。</string>
+    <string name="search_no_result">找不到路線「%1$s」。可試其他號碼，或到設定更新線路資料。</string>
+    <string name="back_to_search">← 返回路線搜尋</string>
     <string name="direction_switch">⇄ 轉換路線方向</string>
     <string name="filter_stop_hint">篩選站名／站號</string>
     <string name="fav_title">收藏車站</string>
     <string name="fav_empty">尚未收藏任何車站。到主頁點卡片後按 ☆；長按可移除。</string>
     <string name="fav_hint">點選查看 · 長按移除</string>
-    <string name="more_title">更多</string>
-    <string name="more_settings_hint">線路資料更新 · 更新應用程式 · App 簽名一致性</string>
-    <string name="more_disclaimer">本 App 只使用公開開放數據，還原 APP1933 嘅版面與到站格式，屬非官方作品。\n\n不包含（需官方私有服務或會員帳號）：AI 智能問路、實時載客量、預計落車時間、九巴月票、club1933 會員、遊戲室、bot1933 實時對話、街景／步行導航、寵物巴士及廣告。</string>
+    <string name="more_title">應用程式設置</string>
+    <string name="more_settings_hint">附近路線距離 · 線路資料更新 · 更新應用程式 · App 簽名一致性 · 關於本 App</string>
+    <string name="more_disclaimer_moved">⚙ 按上面「開啟應用程式設置」查看完整設定；非官方聲明與「不包含功能」清單已搬到設定頁底部嘅深色卡片。</string>
+
+    <!-- 對照截圖：設定頁深色圓角白描邊免責聲明卡，分兩段 -->
+    <string name="disclaimer_lead">本 App 只使用公開開放數據，還原 APP1933 嘅版面與到站格式，屬非官方作品。</string>
+    <string name="disclaimer_excluded">不包含（需官方私有服務或會員帳號）：AI 智能問路、實時載客量、預計落車時間、九巴月票、club1933 會員、遊戲室、bot1933 實時對話、街景／步行導航、寵物巴士及廣告。</string>
+    <string name="disclaimer_section">關於本 App</string>
+
+    <!-- 懸浮液態玻璃導航欄：跟隨系統外觀 -->
+    <string name="nav_glass_section">◌ 導航欄外觀（懸浮液態玻璃）</string>
+    <string name="nav_glass_follow">跟隨系統外觀</string>
+    <string name="nav_glass_hint">預設跟隨系統：深色模式轉深玻璃、開啟高對比文字轉實色描邊、關閉動畫（減少動態效果）收起陰影與模糊；系統設定改變後返到主頁即時更新。關掉呢個開關會固定用標準玻璃。</string>
+    <string name="nav_glass_status">目前：%1$s</string>
+    <string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
+    <string name="nav_glass_state_fixed">固定標準玻璃</string>
+    <string name="nav_glass_state_night">夜間深玻璃</string>
+    <string name="nav_glass_state_contrast">高對比實色</string>
+    <string name="nav_glass_state_reduced">減少動態（無陰影／模糊）</string>
+    <string name="nav_glass_state_day">日間標準玻璃</string>
     <string name="header_subtitle">九巴 · 龍運 · 城巴 · 嶼巴 · 綠小巴 · 港鐵 · 輕鐵 | 非官方 · 開放數據</string>
 
     <string-array name="update_interval_labels">
@@ -117,6 +172,9 @@
     </string-array>
 
     <string-array name="radius_labels">
+        <item>50 m</item>
+        <item>100 m</item>
+        <item>200 m</item>
         <item>300 m</item>
         <item>500 m</item>
         <item>1000 m</item>
