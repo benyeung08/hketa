@@ -7,6 +7,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.RouteSearch
 
 private fun cardOperatorLabel(company: String): String = when (company) {
     EtaRepository.KMB -> "九巴 / 龍運"
@@ -133,5 +134,46 @@ class FavoriteAdapter(
         val root: View = view.findViewById(R.id.favRoot)
         val title: TextView = view.findViewById(R.id.favTitle)
         val meta: TextView = view.findViewById(R.id.favMeta)
+    }
+}
+
+/**
+ * APP1933 route-search result: big route number, "往 destination", an
+ * optional operator / DATA.GOV.HK attribution line and a chevron.
+ * Tapping a row opens that route's stop sequence (unchanged Java layer).
+ */
+class RouteResultAdapter(
+    private val onClick: (RouteSearch.Result) -> Unit
+) : RecyclerView.Adapter<RouteResultAdapter.VH>() {
+
+    private var items: List<RouteSearch.Result> = emptyList()
+
+    fun submit(list: List<RouteSearch.Result>) {
+        items = list
+        notifyDataSetChanged()
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+        VH(
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_route_result, parent, false)
+        )
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val item = items[position]
+        holder.route.text = item.route
+        holder.dest.text = item.dest
+        holder.note.text = item.note
+        holder.note.visibility = if (item.note.isEmpty()) View.GONE else View.VISIBLE
+        holder.root.setOnClickListener { onClick(item) }
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    class VH(view: View) : RecyclerView.ViewHolder(view) {
+        val root: View = view.findViewById(R.id.resultRoot)
+        val route: TextView = view.findViewById(R.id.resultRoute)
+        val dest: TextView = view.findViewById(R.id.resultDest)
+        val note: TextView = view.findViewById(R.id.resultNote)
     }
 }

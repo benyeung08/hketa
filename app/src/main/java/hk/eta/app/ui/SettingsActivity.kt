@@ -1,5 +1,8 @@
 package hk.eta.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -9,11 +12,13 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.lifecycleScope
@@ -32,6 +37,14 @@ import java.util.TimeZone
 /** Settings screen: route-catalogue update + in-app application update. */
 class SettingsActivity : AppCompatActivity() {
 
+    // --- 懸浮液態玻璃導航欄 --------------------------------------------------
+    private lateinit var swNavGlass: SwitchCompat
+    private lateinit var tvNavGlassStatus: TextView
+
+    // --- 定位附近路線嘅距離（對照截圖「50 ▼」）------------------------------
+    private lateinit var radiusPickerRoot: View
+    private lateinit var radiusPickerValue: TextView
+
     // --- 線路資料更新 ---------------------------------------------------------
     private lateinit var tvLastUpdate: TextView
     private lateinit var tvSummary: TextView
@@ -42,8 +55,15 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var spInterval: Spinner
     private lateinit var swWifi: SwitchCompat
 
-    // --- 更新應用程式 ---------------------------------------------------------
+    // --- 更新應用程式：深色版本膠囊 -------------------------------------------
     private lateinit var tvAppVersion: TextView
+    private lateinit var tvAppBuild: TextView
+    private lateinit var pillRefresh: ImageView
+    private lateinit var pillHistory: ImageView
+    private lateinit var pillCopy: ImageView
+    private lateinit var tvPillStatus: TextView
+    private lateinit var btnAdvanced: TextView
+    private lateinit var advancedAppUpdate: View
     private lateinit var etRepo: EditText
     private lateinit var swAutoApp: SwitchCompat
     private lateinit var btnCheckApp: View
@@ -91,6 +111,8 @@ class SettingsActivity : AppCompatActivity() {
         RouteDataStore.init(applicationContext)
 
         bindViews()
+        setupNavGlassSection()
+        setupRadiusSection()
         setupCatalogueSection()
         setupAppUpdateSection()
         showInstalledFingerprint()
@@ -105,11 +127,19 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 由系統設定改外觀返嚟：狀態文字同步
+        renderNavGlassStatus()
         // An automatic background update may have finished while this screen was paused.
         if (!RouteDataStore.refreshBusy()) render(RouteDataStore.meta())
     }
 
     private fun bindViews() {
+        swNavGlass = findViewById(R.id.swNavGlass)
+        tvNavGlassStatus = findViewById(R.id.tvNavGlassStatus)
+
+        radiusPickerRoot = findViewById(R.id.radiusPickerRoot)
+        radiusPickerValue = findViewById(R.id.radiusPickerValue)
+
         tvLastUpdate = findViewById(R.id.tvLastUpdate)
         tvSummary = findViewById(R.id.tvSummary)
         tvUpdateStatus = findViewById(R.id.tvUpdateStatus)
@@ -120,6 +150,13 @@ class SettingsActivity : AppCompatActivity() {
         swWifi = findViewById(R.id.swWifi)
 
         tvAppVersion = findViewById(R.id.tvAppVersion)
+        tvAppBuild = findViewById(R.id.tvAppBuild)
+        pillRefresh = findViewById(R.id.pillRefresh)
+        pillHistory = findViewById(R.id.pillHistory)
+        pillCopy = findViewById(R.id.pillCopy)
+        tvPillStatus = findViewById(R.id.tvPillStatus)
+        btnAdvanced = findViewById(R.id.btnAdvanced)
+        advancedAppUpdate = findViewById(R.id.advancedAppUpdate)
         etRepo = findViewById(R.id.etRepo)
         swAutoApp = findViewById(R.id.swAutoApp)
         btnCheckApp = findViewById(R.id.btnCheckApp)
@@ -132,6 +169,54 @@ class SettingsActivity : AppCompatActivity() {
         tvSigningFingerprint = findViewById(R.id.tvSigningFingerprint)
         tvSigningStatus = findViewById(R.id.tvSigningStatus)
         tvSigningDetail = findViewById(R.id.tvSigningDetail)
+    }
+
+    // -------------------------------------------------- 懸浮液態玻璃導航欄
+
+    private fun setupNavGlassSection() {
+        swNavGlass.isChecked = NavGlassPrefs.followSystem(this)
+        swNavGlass.setOnCheckedChangeListener { _, enabled ->
+            NavGlassPrefs.setFollowSystem(this, enabled)
+            renderNavGlassStatus()
+        }
+        renderNavGlassStatus()
+    }
+
+    private fun renderNavGlassStatus() {
+        tvNavGlassStatus.text = getString(
+            R.string.nav_glass_status, NavGlass.status(this)
+        )
+    }
+
+    // -------------------------------------------------- 定位附近路線嘅距離
+
+    /** Big-number picker: tapping the bar opens a single-choice radius dialog. */
+    private fun setupRadiusSection() {
+        renderRadiusPicker()
+        radiusPickerRoot.setOnClickListener {
+            val labels = resources.getStringArray(R.array.radius_labels)
+            val current = NearbyRadiusPrefs.radiusIndex(this)
+            AlertDialog.Builder(this)
+                .setTitle(R.string.nearby_radius_title)
+                .setSingleChoiceItems(labels, current) { dialog, which ->
+                    NearbyRadiusPrefs.setRadiusMeters(
+                        this, NearbyRadiusPrefs.RADIUS_METERS[which]
+                    )
+                    renderRadiusPicker()
+                    dialog.dismiss()
+                    Toast.makeText(
+                        this,
+                        getString(R.string.nearby_radius_saved, labels[which]),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .setNegativeButton(R.string.pill_cancel, null)
+                .show()
+        }
+    }
+
+    private fun renderRadiusPicker() {
+        radiusPickerValue.text = NearbyRadiusPrefs.radiusMeters(this).toString()
     }
 
     // ------------------------------------------------------------- 線路資料更新
@@ -219,22 +304,24 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupAppUpdateSection() {
         currentVersion = AppUpdatePrefs.installedVersion(this)
-        tvAppVersion.text = getString(
-            R.string.app_version,
-            currentVersion,
-            AppUpdatePrefs.installedVersionCode(this)
-        )
+        // 對照截圖：v2.8.4 · 83。版本名統一加 "v"，右邊係 versionCode（build）。
+        tvAppVersion.text = versionLabel()
+        tvAppBuild.text = AppUpdatePrefs.installedVersionCode(this).toString()
 
         etRepo.setText(AppUpdatePrefs.repo(this))
         swAutoApp.isChecked = AppUpdatePrefs.autoCheck(this)
         swAutoApp.setOnCheckedChangeListener { _, enabled ->
             AppUpdatePrefs.setAutoCheck(this, enabled)
+            renderPillStatus()
         }
 
-        btnCheckApp.setOnClickListener {
-            AppUpdatePrefs.setRepo(this, etRepo.text.toString())
-            checkForUpdate(manual = true)
-        }
+        // 三個捷徑：⟳ 重新檢查 / 🕐 更新記錄 / ⧉ 複製版本資訊
+        pillRefresh.setOnClickListener { triggerCheck() }
+        pillHistory.setOnClickListener { showUpdateHistory() }
+        pillCopy.setOnClickListener { copyVersionInfo() }
+        btnAdvanced.setOnClickListener { toggleAdvanced() }
+
+        btnCheckApp.setOnClickListener { triggerCheck() }
         btnDownloadApk.setOnClickListener { downloadAndInstall() }
         btnReleasePage.setOnClickListener { openReleasePage() }
 
@@ -244,6 +331,89 @@ class SettingsActivity : AppCompatActivity() {
                 AppUpdatePrefs.latestTag(this)
             )
         }
+        renderPillStatus()
+    }
+
+    private fun versionLabel(): String = "v" + currentVersion.removePrefix("v")
+
+    /** Single entry point for both the pill's ⟳ and the advanced 檢查更新 button. */
+    private fun triggerCheck() {
+        AppUpdatePrefs.setRepo(this, etRepo.text.toString())
+        checkForUpdate(manual = true)
+    }
+
+    private fun toggleAdvanced() {
+        if (advancedAppUpdate.visibility == View.VISIBLE) {
+            advancedAppUpdate.visibility = View.GONE
+            btnAdvanced.text = getString(R.string.pill_advanced_open)
+        } else {
+            expandAdvanced()
+        }
+    }
+
+    /** Also opened automatically when a newer release is found. */
+    private fun expandAdvanced() {
+        if (advancedAppUpdate.visibility != View.VISIBLE) {
+            advancedAppUpdate.visibility = View.VISIBLE
+            btnAdvanced.text = getString(R.string.pill_advanced_close)
+        }
+    }
+
+    private fun renderPillStatus(failed: Boolean = false) {
+        val last = AppUpdatePrefs.lastCheck(this)
+        val tag = AppUpdatePrefs.latestTag(this)
+        val state = when {
+            failed -> getString(R.string.pill_status_failed)
+            AppUpdatePrefs.hasUpdate(this) && tag.isNotEmpty() ->
+                getString(R.string.pill_status_new, tag)
+            tag.isNotEmpty() -> getString(R.string.pill_status_latest)
+            else -> getString(R.string.pill_status_never)
+        }
+        tvPillStatus.text = if (last > 0L) {
+            getString(R.string.pill_status_checked, hkt(last), state)
+        } else {
+            state
+        }
+    }
+
+    /** 🕐 — last check, cached result, repo and auto-check state. Read-only. */
+    private fun showUpdateHistory() {
+        val last = AppUpdatePrefs.lastCheck(this)
+        val tag = AppUpdatePrefs.latestTag(this)
+        val state = when {
+            AppUpdatePrefs.hasUpdate(this) && tag.isNotEmpty() ->
+                getString(R.string.pill_status_new, tag)
+            tag.isNotEmpty() -> getString(R.string.pill_status_latest)
+            else -> getString(R.string.pill_status_never)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.pill_history_title)
+            .setMessage(
+                getString(
+                    R.string.pill_history_body,
+                    versionLabel(),
+                    AppUpdatePrefs.installedVersionCode(this),
+                    AppUpdatePrefs.repo(this),
+                    getString(
+                        if (AppUpdatePrefs.autoCheck(this)) R.string.pill_on else R.string.pill_off
+                    ),
+                    if (last > 0L) hkt(last) else getString(R.string.pill_history_never),
+                    tag.ifEmpty { getString(R.string.pill_history_no_tag) },
+                    state
+                )
+            )
+            .setPositiveButton(R.string.pill_ok, null)
+            .show()
+    }
+
+    /** ⧉ — copy "vX · build · owner/repo" for bug reports. */
+    private fun copyVersionInfo() {
+        val info = versionLabel() +
+                " · " + AppUpdatePrefs.installedVersionCode(this) +
+                " · " + AppUpdatePrefs.repo(this)
+        val manager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        manager.setPrimaryClip(ClipData.newPlainText("HK ETA version", info))
+        Toast.makeText(this, getString(R.string.pill_copied, info), Toast.LENGTH_SHORT).show()
     }
 
     private fun checkForUpdate(manual: Boolean) {
@@ -259,7 +429,10 @@ class SettingsActivity : AppCompatActivity() {
         btnCheckApp.isEnabled = false
         btnDownloadApk.isEnabled = false
         btnReleasePage.isEnabled = false
+        pillRefresh.isEnabled = false
+        pillRefresh.alpha = 0.45f
         tvAppUpdateStatus.text = getString(R.string.app_update_checking)
+        tvPillStatus.text = getString(R.string.pill_status_checking)
 
         lifecycleScope.launch {
             try {
@@ -268,6 +441,7 @@ class SettingsActivity : AppCompatActivity() {
                 val newer = AppUpdate.compareVersions(currentVersion, release.tag) > 0
                 AppUpdatePrefs.cacheResult(this@SettingsActivity, release.tag, newer)
                 AppUpdatePrefs.markChecked(this@SettingsActivity)
+                renderPillStatus()
 
                 tvAppUpdateStatus.text = when {
                     newer && release.hasApk() ->
@@ -288,6 +462,7 @@ class SettingsActivity : AppCompatActivity() {
                 btnDownloadApk.isEnabled = newer && release.hasApk()
                 btnReleasePage.isEnabled =
                     release.htmlUrl.isNotEmpty() && AppUpdate.isSafeUrl(release.htmlUrl)
+                if (newer) expandAdvanced()
                 if (manual) {
                     Toast.makeText(this@SettingsActivity,
                         tvAppUpdateStatus.text, Toast.LENGTH_SHORT).show()
@@ -295,6 +470,7 @@ class SettingsActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 val reason = e.message ?: e.javaClass.simpleName
                 tvAppUpdateStatus.text = getString(R.string.app_update_failed, reason)
+                renderPillStatus(failed = true)
                 if (reason.contains("rate limit", ignoreCase = true)) {
                     tvReleaseNotes.text = getString(R.string.app_update_rate_limit)
                 }
@@ -305,6 +481,8 @@ class SettingsActivity : AppCompatActivity() {
             } finally {
                 checking = false
                 btnCheckApp.isEnabled = true
+                pillRefresh.isEnabled = true
+                pillRefresh.alpha = 1f
             }
         }
     }
@@ -312,6 +490,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun downloadAndInstall() {
         val release = latestRelease ?: return
         if (!release.hasApk()) return
+        expandAdvanced()
         btnDownloadApk.isEnabled = false
         progressApp.isIndeterminate = false
         progressApp.progress = 0

@@ -22,7 +22,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * One-shot device location using the Android platform LocationManager.
  * No Google Play Services dependency, so the APK builds on a clean CI runner.
- * If permission / provider / fresh fix is unavailable, falls back to Central, HK.
+ *
+ * IMPORTANT: callers MUST gate on [hasPermission] first. MainActivity refuses
+ * to auto-locate and EtaViewModel refuses to query nearby routes until the
+ * user has granted ACCESS_FINE/COARSE_LOCATION. The Central fallback below is
+ * therefore only reachable for "permission granted but provider unavailable /
+ * timed out" — never for "permission not yet granted".
  */
 object LocationHelper {
 
@@ -41,8 +46,10 @@ object LocationHelper {
         val manager = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             ?: return@withContext Fix(DEFAULT_LAT, DEFAULT_LNG, "預設位置（中環）")
 
+        // Defensive only: both callers gate on hasPermission() BEFORE calling
+        // current(), so auto-locate never reaches this branch without consent.
         if (!hasPermission(app)) {
-            return@withContext Fix(DEFAULT_LAT, DEFAULT_LNG, "未授予定位權限 · 預設位置（中環）")
+            return@withContext Fix(DEFAULT_LAT, DEFAULT_LNG, "未授予定位權限 · 不顯示附近路線")
         }
 
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
@@ -99,7 +106,8 @@ object LocationHelper {
         }
     }
 
-    private fun hasPermission(context: Context): Boolean =
+    /** Shared permission gate for both the Activity and the ViewModel. */
+    fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==

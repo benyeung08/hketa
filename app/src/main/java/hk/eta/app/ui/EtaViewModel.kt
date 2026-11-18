@@ -6,11 +6,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import hk.eta.app.R
 import hk.eta.app.api.EtaModels.EtaItem
 import hk.eta.app.api.EtaModels.StopOption
 import hk.eta.app.api.AppUpdate
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.RouteDataStore
+import hk.eta.app.api.RouteSearch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,9 @@ data class UiState(
     val cards: List<RouteCard> = emptyList(),
     val activeBound: String = "",     // "" = all directions
     val searchQuery: String = "",     // stop-list filter
+    // APP1933 route-search screen (red bar + route/destination rows + keypad)
+    val searchResults: List<RouteSearch.Result> = emptyList(),
+    val searchMessage: String = "",
     val selection: StopOption? = null,
     val loading: Boolean = false,
     val message: String = "輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。",
@@ -46,6 +51,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     val state: LiveData<UiState> = _state
 
     private var refreshJob: kotlinx.coroutines.Job? = null
+    private var searchJob: kotlinx.coroutines.Job? = null
 
     init {
         maybeAutoUpdateCatalogue()
@@ -103,6 +109,30 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Nearby routes MUST NOT auto-locate before the user grants location
+     * permission. Both the Activity and this ViewModel gate on the same
+     * LocationHelper.hasPermission() check; this shows a clean waiting state
+     * instead of silently falling back to Central.
+     */
+    fun awaitLocationPermission() {
+        val app = getApplication<Application>()
+        refreshJob?.cancel()
+        patch {
+            copy(
+                loading = false,
+                cards = emptyList(),
+                stops = emptyList(),
+                etas = emptyList(),
+                selection = null,
+                message = app.getString(R.string.location_waiting)
+            )
+        }
+    }
+
+    private fun locationGranted(): Boolean =
+        LocationHelper.hasPermission(getApplication<Application>())
+
     fun favorites(): List<String> = favorites.all()
 
     fun addCurrentFavorite(): String? {
@@ -139,8 +169,38 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         startAutoRefresh()
     }
 
-    /** Load stops for one operator, or for all of them in AUTO mode. */
-    fun loadStops(routeInput: String, company: String) {
+    /**
+     * APP1933 route search: every keystroke re-queries the official route
+     * catalogues. Debounced so "1A" does not fire four separate downloads.
+     */
+    fun searchRoutes(input: String) {
+        val q = input.trim()
+        searchJob?.cancel()
+        if (q.isEmpty()) {
+            patch { copy(searchResults = emptyList(), searchMessage = "") }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(180L)
+            val list = withContext(Dispatchers.IO) { RouteSearch.search(q) }
+            patch {
+                copy(
+                    searchResults = list,
+                    searchMessage = if (list.isEmpty()) {
+                        getApplication<Application>().getString(R.string.search_no_result, q)
+                    } else {
+                        ""
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Load stops for one operator, or for all of them in AUTO mode.
+     * onlyBound comes from a tapped search result ("往 尖沙咀碼頭" = "O").
+     */
+    fun loadStops(routeInput: String, company: String, onlyBound: String = "") {
         val route = routeInput.trim().uppercase(Locale.getDefault())
         if (route.isEmpty() && company != EtaRepository.LRT) {
             patch { copy(message = "請先輸入路線號；港鐵請填線路代碼（如 TML），輕鐵可留空。") }
@@ -160,7 +220,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 stops = emptyList(),
                 etas = emptyList(),
                 cards = emptyList(),
-                activeBound = "",
+                activeBound = if (onlyBound == EtaRepository.NEARBY) "" else onlyBound,
                 searchQuery = "",
                 selection = null
             )
@@ -201,6 +261,10 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Locate the device, then list stops within the chosen radius. */
     fun loadNearby(radiusMeters: Int) {
+        if (!locationGranted()) {
+            awaitLocationPermission()
+            return
+        }
         patch {
             copy(
                 loading = true,
@@ -239,8 +303,15 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
      * APP1933 home page: locate, take the nearest few stops, query their
      * ALL-ROUTE ETA in parallel and shape the result into route cards showing
      * the next three arrivals each. The Java data layer is untouched.
+     *
+     * HARD GATE: auto-location only happens AFTER location permission is
+     * granted. Without consent we show a waiting state and make NO API call.
      */
     fun loadNearbyRoutes(radiusMeters: Int) {
+        if (!locationGranted()) {
+            awaitLocationPermission()
+            return
+        }
         patch {
             copy(
                 loading = true,
@@ -396,6 +467,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         refreshJob?.cancel()
+        searchJob?.cancel()
         super.onCleared()
     }
 }
