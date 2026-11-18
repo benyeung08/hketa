@@ -402,6 +402,15 @@ jobs:
                '<color name="detail_aux_text">#000000</color>',
                'values-night/colors.xml 仍係舊版（夜間輔助文字未改純黑）',
                '由完整 zip 覆蓋 values-night/colors.xml'),
+              # Maven Central 429「Too Many Requests」自動重試 + Gradle 依賴快取
+              ('.github/workflows/build-apk.yml',
+               'MAVEN_429_RETRY',
+               'build-apk.yml 仍係舊版（未加 429 自動重試／Gradle 依賴快取）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              ('scripts/show_build_error.py',
+               'MAVEN_429_RETRY',
+               'show_build_error.py 仍係舊版（唔識辨認 429 Too Many Requests）',
+               '由完整 zip 覆蓋 scripts/show_build_error.py'),
           ]
           for path, needle, msg, fix in drift:
               p = R / path
@@ -446,11 +455,16 @@ jobs:
       - name: Check API field names against official samples
         run: python3 scripts/check_api_fields.py
 
+      # MAVEN_429_RETRY: setup-java's built-in Gradle cache keeps
+      # ~/.gradle/caches across runs, so jsr305 / AGP / Kotlin artifacts are
+      # not re-downloaded every time. Fewer requests = far fewer HTTP 429
+      # "Too Many Requests" from repo.maven.apache.org on shared runner IPs.
       - name: JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       # REMOVED: android-actions/setup-android@v3 (Node 20 action, was the
       # failing "Android SDK" step on Ubuntu 26 / Node 24 runners).
@@ -561,11 +575,40 @@ jobs:
       # IS the answer (FAILURE / What went wrong / Execution failed for task).
       # --console=plain keeps output readable in the Actions log viewer.
       # tee + pipefail still preserve the full log and the real exit code.
+      # MAVEN_429_RETRY: "Received status code 429 from server: Too Many
+      # Requests" on https://repo.maven.apache.org/maven2/.../jsr305-3.0.2.pom
+      # is Maven Central rate-limiting the SHARED GitHub Actions egress IP.
+      # It is NOT a source / upload / signing bug. Retry the whole assemble up
+      # to 3 times with a short backoff; give up immediately on any OTHER
+      # failure so the real compiler error still reaches the distiller.
       - name: Assemble debug APK
         id: assemble_debug
         run: |
           set -o pipefail
-          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build-debug.log
+          ok=0
+          for attempt in 1 2 3; do
+            echo "::group::gradle assembleDebug (attempt $attempt/3)"
+            : > build-debug.log
+            if gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build-debug.log; then
+              echo "::endgroup::"
+              ok=1
+              break
+            fi
+            echo "::endgroup::"
+            if grep -qE '429|Too Many Requests|Could not GET|Could not resolve|Read timed out|Connection reset|Received status code 5[0-9][0-9]' build-debug.log; then
+              if [ "$attempt" -lt 3 ]; then
+                delay=$((attempt * 30))
+                echo "::warning::Maven Central 429 / 5xx / timeout（共享 IP 限流），${delay}s 後自動重試（$attempt/3）"
+                sleep "$delay"
+                continue
+              fi
+              echo "::error::連續 3 次都係依賴下載限流；唔係 code 錯。請等幾分鐘再 Re-run jobs，唔使改任何檔"
+            else
+              echo "::error::Gradle 失敗唔係依賴下載問題，唔重試，交畀下一個 step 顯示真正錯誤"
+              break
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then exit 1; fi
 
       - name: Show real Gradle error
         if: failure() && steps.assemble_debug.outcome == 'failure'
@@ -591,7 +634,30 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -o pipefail
-          gradle assembleRelease --no-daemon --console=plain 2>&1 | tee build-release.log
+          ok=0
+          for attempt in 1 2 3; do
+            echo "::group::gradle assembleRelease (attempt $attempt/3)"
+            : > build-release.log
+            if gradle assembleRelease --no-daemon --console=plain 2>&1 | tee build-release.log; then
+              echo "::endgroup::"
+              ok=1
+              break
+            fi
+            echo "::endgroup::"
+            if grep -qE '429|Too Many Requests|Could not GET|Could not resolve|Read timed out|Connection reset|Received status code 5[0-9][0-9]' build-release.log; then
+              if [ "$attempt" -lt 3 ]; then
+                delay=$((attempt * 30))
+                echo "::warning::Maven Central 429 / 5xx / timeout（共享 IP 限流），${delay}s 後自動重試（$attempt/3）"
+                sleep "$delay"
+                continue
+              fi
+              echo "::error::連續 3 次都係依賴下載限流；唔係 code 錯。請等幾分鐘再 Re-run jobs，唔使改任何檔"
+            else
+              echo "::error::Gradle 失敗唔係依賴下載問題，唔重試，交畀下一個 step 顯示真正錯誤"
+              break
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then exit 1; fi
 
       - name: Show real Gradle error (release)
         if: failure() && steps.assemble_release.outcome == 'failure'
