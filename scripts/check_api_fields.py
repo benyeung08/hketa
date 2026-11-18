@@ -1107,6 +1107,53 @@ check("expected_signing_sha256 resource defined",
 # --- 正式版 APK 對應版本發布（Releases） ---------------------------------------
 release_script = read(ROOT / "scripts/verify_release_version.py")
 app_update_java = read(API / "AppUpdate.java")
+
+# 診斷放喺 CHECKER（已更新的檔）而唔係 workflow/yml（可能未更新的檔）：
+# 舊版 yml 嘅 inline preflight 唔會檢查新 drift，但新 checker 一定會行，
+# 所以由呢度印出「缺邊一個字串」，唔使再估。必須放喺所有 release checks
+# 之前 —— 否則舊 yml 會先令後面嘅 .index() 拋 ValueError，診斷印唔到。
+RELEASE_TOKENS = (
+    "tag_name: ${{ github.ref_name }}",
+    "name: HK ETA ${{ github.ref_name }}",
+    "body_path: RELEASE_BODY.md",
+    "RELEASE_NOTES_${TAG}.md",
+    "Compose release body for this version",
+    "generate_release_notes: false",
+    "fail_on_unmatched_files: true",
+    "prerelease: ${{ contains(github.ref_name, '-') }}",
+)
+missing_release_tokens = [s for s in RELEASE_TOKENS if s not in workflow]
+if missing_release_tokens:
+    print(f"::error::Release 版本對應：workflow 仍係舊版，缺以下 "
+          f"{len(missing_release_tokens)} 項字串：")
+    for s in missing_release_tokens:
+        print(f"::error::  - 缺「{s}」→ 由完整 zip 覆蓋 "
+              ".github/workflows/build-apk.yml")
+    print("::error::新 checker 已傳、只係 yml 未同步；"
+          "只需覆蓋 .github/workflows/build-apk.yml 呢一個檔即可。")
+
+release_notes_file = ROOT / "RELEASE_NOTES_v1.0.0.md"
+if not release_notes_file.is_file():
+    # 唔係錯誤：workflow 設計上容許新版未有專屬 notes，會自動產生簡短說明。
+    print("[INFO] RELEASE_NOTES_v1.0.0.md 未上傳；"
+          "workflow 會用版本對應嘅簡短 Release 內文（fallback），唔影響發布。")
+
+
+def wpos(needle):
+    """Safe .index() — returns -1 instead of raising on an old workflow."""
+    return workflow.find(needle)
+
+
+def one_apk_asset():
+    start = wpos("Attach signed release APK")
+    if start < 0 or "files: |" not in workflow[start:]:
+        return False
+    tail = workflow[start:].split("files: |", 1)[1]
+    return len([l for l in tail.splitlines()
+                if ".apk" in l and l.strip()
+                and not l.strip().startswith("#")]) == 1
+
+
 check("CI builds a SIGNED RELEASE (production) APK, not just debug",
       all(s in workflow for s in (
           "Assemble signed release APK", "gradle assembleRelease",
@@ -1126,30 +1173,31 @@ check("RELEASE_VERSION_GATE: tag == gradle version == actual APK badging",
           "hashlib.sha256", "GITHUB_STEP_SUMMARY"))
       and "versionName" in release_script and "versionCode" in release_script)
 check("version gate runs AFTER signing check and BEFORE publishing",
-      workflow.index("Verify APK signing certificate")
-      < workflow.index("Verify release version matches tag")
-      < workflow.index("Attach signed release APK"))
+      0 <= wpos("Verify APK signing certificate")
+      < wpos("Verify release version matches tag")
+      < wpos("Attach signed release APK"))
 check("Release is explicitly tied to the matching tag/version",
-      all(s in workflow for s in (
-          "tag_name: ${{ github.ref_name }}",
-          "name: HK ETA ${{ github.ref_name }}",
-          "body_path: RELEASE_BODY.md",
-          "RELEASE_NOTES_${TAG}.md",
-          "Compose release body for this version",
-          "generate_release_notes: false",
-          "fail_on_unmatched_files: true",
-          "prerelease: ${{ contains(github.ref_name, '-') }}"))
-      and (ROOT / "RELEASE_NOTES_v1.0.0.md").is_file())
+      not missing_release_tokens
+      and "RELEASE_BODY.md" in workflow
+      and "No RELEASE_NOTES_${TAG}.md; using the short version-matched body."
+      in workflow)
+check("version-matched release notes are OPTIONAL (fallback body always built)",
+      # 刻意唔硬性要求 RELEASE_NOTES_v1.0.0.md 存在：
+      # workflow 有 if/else，缺檔時用簡短說明，兩者都係對應版本。
+      "RELEASE_NOTES_${TAG}.md" in workflow
+      and 'cp "RELEASE_NOTES_${TAG}.md" RELEASE_BODY.md' in workflow
+      and "> RELEASE_BODY.md" in workflow
+      and (not release_notes_file.is_file()
+           or all(s in release_notes_file.read_text(encoding="utf-8")
+                  for s in ("HK ETA v1.0.0", "## English",
+                            "hketa-v1.0.0-release.apk"))))
 check("exactly ONE .apk asset — the signed release — is attached",
       "hketa-${{ github.ref_name }}-release.apk" in workflow
       and "hketa-release-apk" in workflow
       and "SIGNING_FINGERPRINT.txt" in workflow
       and "VERSION_INFO.txt" in workflow
       and 'cp "$APK" "hketa-${GITHUB_REF_NAME}-release.apk"' in workflow
-      and (lambda tail: len([
-          l for l in tail.split("files: |", 1)[1].splitlines()
-          if ".apk" in l and l.strip() and not l.strip().startswith("#")
-      ]) == 1)(workflow[workflow.index("Attach signed release APK"):]))
+      and one_apk_asset())
 check("in-app updater stays compatible: first .apk asset wins",
       'endsWith(".apk")' in app_update_java
       and "break;" in app_update_java
