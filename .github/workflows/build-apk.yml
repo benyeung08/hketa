@@ -51,6 +51,7 @@ jobs:
               'scripts/make_launcher_icons.py',
               'scripts/fix_drift.py',
               'scripts/show_build_error.py',
+              'scripts/verify_release_version.py',
               'app/src/main/res/xml/file_paths.xml',
               'app/src/main/res/values/strings.xml',
               'app/src/main/res/values/colors.xml',
@@ -67,6 +68,9 @@ jobs:
               'app/src/main/res/layout/radius_picker.xml',
               'app/src/main/res/drawable/ic_pill_arrow_down.xml',
               'app/src/main/java/hk/eta/app/ui/NearbyRadiusPrefs.kt',
+              # ⟳ ETA 自動刷新
+              'app/src/main/java/hk/eta/app/ui/EtaRefreshPrefs.kt',
+              'app/src/main/res/layout/eta_refresh_picker.xml',
               # 懸浮液態玻璃導航欄 + 設定頁免責聲明卡
               'app/src/main/java/hk/eta/app/ui/NavGlass.kt',
               'app/src/main/java/hk/eta/app/ui/NavGlassPrefs.kt',
@@ -76,6 +80,16 @@ jobs:
               'app/src/main/res/drawable/bg_nav_glass_dark.xml',
               'app/src/main/res/drawable/bg_nav_glass_contrast.xml',
               'app/src/main/res/drawable/bg_tab_glass_selected.xml',
+              # 主頁附近路線卡片 → 路線詳情（還原截圖，無地圖）
+              'app/src/main/java/hk/eta/app/ui/RouteDetailActivity.kt',
+              'app/src/main/res/layout/activity_route_detail.xml',
+              'app/src/main/res/layout/item_detail_stop.xml',
+              'app/src/main/res/drawable/bg_detail_chip.xml',
+              'app/src/main/res/drawable/bg_detail_dot_on.xml',
+              'app/src/main/res/drawable/bg_detail_dot_off.xml',
+              'app/src/main/res/drawable/bg_detail_action_circle.xml',
+              'app/src/main/res/drawable/bg_stop_bubble.xml',
+              'app/src/main/res/drawable/bg_no_map.xml',
               # APP1933-style shell + 全螢幕路線搜尋
               'app/src/main/res/layout/item_route_card.xml',
               'app/src/main/res/layout/item_favorite.xml',
@@ -247,8 +261,8 @@ jobs:
                '由完整 zip 覆蓋 strings.xml'),
               # 懸浮液態玻璃導航欄 + 免責聲明卡搬入設定頁
               ('app/src/main/res/layout/activity_main.xml',
-               'GLASS_NAV',
-               'activity_main.xml 仍係舊版（導航欄未懸浮玻璃／仍叫「更多」）',
+               'NAV_GEOMETRY',
+               'activity_main.xml 仍係舊版（導航欄未改成新幾何／仍叫「更多」）',
                '由完整 zip 覆蓋 activity_main.xml（同時要傳 4 個 bg_nav_glass*.xml）'),
               ('app/src/main/res/layout/activity_settings.xml',
                'DISCLAIMER_CARD',
@@ -266,6 +280,107 @@ jobs:
                'nav_glass_section',
                'strings.xml 仍係舊版（缺玻璃外觀／兩段免責聲明字串）',
                '由完整 zip 覆蓋 strings.xml'),
+              # 主頁卡片 → 路線詳情（無地圖）
+              ('app/src/main/AndroidManifest.xml',
+               'android:name=".ui.RouteDetailActivity"',
+               'AndroidManifest.xml 仍係舊版（未註冊路線詳情 Activity）',
+               '由完整 zip 覆蓋 AndroidManifest.xml'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'Intent(this, RouteDetailActivity::class.java)',
+               'MainActivity.kt 仍係舊版（點主頁卡片仍跳去搜尋分頁）',
+               '由完整 zip 覆蓋 MainActivity.kt（同時要傳 RouteDetailActivity.kt）'),
+              ('app/src/main/res/values/strings.xml',
+               'detail_footer_honest',
+               'strings.xml 仍係舊版（缺路線詳情字串）',
+               '由完整 zip 覆蓋 strings.xml'),
+              ('app/src/main/res/values/colors.xml',
+               'detail_minutes',
+               'colors.xml 仍係舊版（缺三班次分鐘藍色）',
+               '由完整 zip 覆蓋 colors.xml'),
+              # 搜尋主頁預載 + 搜尋結果列開路線詳情
+              ('app/src/main/java/hk/eta/app/api/RouteSearch.java',
+               'public static List<Result> preload()',
+               'RouteSearch.java 仍係舊版（缺搜尋主頁預載官方路線）',
+               '由完整 zip 覆蓋 RouteSearch.java'),
+              ('app/src/main/java/hk/eta/app/ui/EtaViewModel.kt',
+               'RouteSearch.preload()',
+               'EtaViewModel.kt 仍係舊版（空白輸入仍清空搜尋結果）',
+               '由完整 zip 覆蓋 EtaViewModel.kt'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'RouteDetailActivity.EXTRA_BOUND, result.bound',
+               'MainActivity.kt 仍係舊版（撳搜尋結果仍跳站內站序、未預載）',
+               '由完整 zip 覆蓋 MainActivity.kt'),
+              ('app/src/main/java/hk/eta/app/ui/RouteDetailActivity.kt',
+               'EXTRA_BOUND',
+               'RouteDetailActivity.kt 仍係舊版（未接收搜尋列嘅方向）',
+               '由完整 zip 覆蓋 RouteDetailActivity.kt'),
+              ('app/src/main/res/values/strings.xml',
+               'search_preload_empty',
+               'strings.xml 仍係舊版（缺預載提示字串）',
+               '由完整 zip 覆蓋 strings.xml'),
+              # ⟳ ETA 自動刷新
+              ('app/src/main/java/hk/eta/app/ui/EtaViewModel.kt',
+               'AUTO_REFRESH_ETA',
+               'EtaViewModel.kt 仍係舊版（ETA 只硬編碼 30 秒刷新已選車站）',
+               '由完整 zip 覆蓋 EtaViewModel.kt（同時要傳 EtaRefreshPrefs.kt）'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'vm.onForeground()',
+               'MainActivity.kt 仍係舊版（前景未重啟 ETA 自動刷新／缺 onPause）',
+               '由完整 zip 覆蓋 MainActivity.kt'),
+              ('app/src/main/java/hk/eta/app/ui/RouteDetailActivity.kt',
+               'vm.onForeground()',
+               'RouteDetailActivity.kt 仍係舊版（詳情頁 ETA 唔會自動刷新）',
+               '由完整 zip 覆蓋 RouteDetailActivity.kt'),
+              ('app/src/main/java/hk/eta/app/ui/SettingsActivity.kt',
+               'fun setupEtaRefreshSection',
+               'SettingsActivity.kt 仍係舊版（缺 ETA 自動刷新開關／間隔）',
+               '由完整 zip 覆蓋 SettingsActivity.kt'),
+              ('app/src/main/res/layout/activity_settings.xml',
+               'ETA_AUTO_REFRESH_SECTION',
+               'activity_settings.xml 仍係舊版（缺 ETA 自動刷新區塊）',
+               '由完整 zip 覆蓋 activity_settings.xml（同時要傳 eta_refresh_picker.xml）'),
+              ('app/src/main/res/values/strings.xml',
+               'eta_refresh_status_on',
+               'strings.xml 仍係舊版（缺 ETA 自動刷新字串／間隔陣列）',
+               '由完整 zip 覆蓋 strings.xml'),
+              # 導航欄大小與位置（對照截圖深灰黑藥丸）
+              ('app/src/main/res/layout/activity_main.xml',
+               'NAV_GEOMETRY',
+               'activity_main.xml 仍係舊版（導航欄仍係 64dp／四邊 12dp 寬條）',
+               '由完整 zip 覆蓋 activity_main.xml'),
+              ('app/src/main/java/hk/eta/app/ui/NavGlass.kt',
+               'fun geometry(',
+               'NavGlass.kt 仍係舊版（缺按螢幕寬度調整大小與位置）',
+               '由完整 zip 覆蓋 NavGlass.kt'),
+              ('app/src/main/res/drawable/bg_nav_glass.xml',
+               'android:radius="28dp"',
+               'bg_nav_glass.xml 仍係舊版（30dp 圓角／藍灰玻璃）',
+               '由完整 zip 覆蓋 bg_nav_glass.xml（連 dark／contrast 兩個變體）'),
+              ('app/src/main/res/values/colors.xml',
+               'nav_tab_active',
+               'colors.xml 仍係舊版（缺藍色選中／灰字 tab 配色）',
+               '由完整 zip 覆蓋 colors.xml'),
+              ('app/src/main/res/values/strings.xml',
+               '高 56dp',
+               'strings.xml 仍係舊版（缺導航欄新幾何說明）',
+               '由完整 zip 覆蓋 strings.xml'),
+              # 正式版 APK 對應版本發布
+              ('.github/workflows/build-apk.yml',
+               'RELEASE_VERSION_GATE',
+               'build-apk.yml 仍係舊版（Release 未做版本對應校驗／只附普通 APK）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              ('.github/workflows/build-apk.yml',
+               'hketa-release-apk',
+               'build-apk.yml 仍係舊版（正式版 APK 冇上傳成 Actions Artifact）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              ('.github/workflows/build-apk.yml',
+               'body_path: RELEASE_BODY.md',
+               'build-apk.yml 仍係舊版（Release 說明未對應版本 notes）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              ('scripts/verify_release_version.py',
+               'RELEASE_VERSION_GATE',
+               'scripts/verify_release_version.py 唔見咗或仍係舊版（版本三重校驗）',
+               '由完整 zip 覆蓋 scripts/verify_release_version.py'),
           ]
           for path, needle, msg, fix in drift:
               p = R / path
@@ -492,13 +607,86 @@ jobs:
             echo "SHA-256: $APK_FP"
           } > SIGNING_FINGERPRINT.txt
           echo "### Release APK 簽章 SHA-256: \`$APK_FP\`" >> "$GITHUB_STEP_SUMMARY"
-          cp "$APK" "hketa-${GITHUB_REF_NAME}.apk"
+          # RELEASE_VERSION_GATE: one single, explicitly "release" named APK
+          # asset. The in-app updater takes the FIRST .apk asset of the latest
+          # Release, so there must be exactly one and it must be the signed
+          # production build (never the debug APK).
+          cp "$APK" "hketa-${GITHUB_REF_NAME}-release.apk"
 
-      - name: Attach APK to release
+      # RELEASE_VERSION_GATE — 對應版本三重校驗 --------------------------------
+      # tag (v1.0.0) == build.gradle.kts versionName == ACTUAL APK badging.
+      # Fails BEFORE the Release is created, so a version tag can never carry
+      # an APK built from an unbumped / stale versionCode / versionName.
+      - name: Dump release APK badging (aapt)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          AAPT="$SDK/build-tools/34.0.0/aapt"
+          if [ ! -x "$AAPT" ]; then
+            echo "::error::搵唔到 aapt（$AAPT）"
+            exit 1
+          fi
+          "$AAPT" dump badging \
+            "app/build/outputs/apk/release/app-release.apk" > apk-badging.txt
+          head -1 apk-badging.txt
+
+      - name: Verify release version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python3 scripts/verify_release_version.py \
+            --tag "${GITHUB_REF_NAME}" \
+            --gradle app/build.gradle.kts \
+            --badging apk-badging.txt \
+            --apk "hketa-${GITHUB_REF_NAME}-release.apk" \
+            --signing apksigner-output.txt \
+            --out VERSION_INFO.txt \
+            --commit "${GITHUB_SHA}" \
+            --keystore-source "${HKETA_CUSTOM_KEY:-}"
+          cat VERSION_INFO.txt
+
+      # 對應版本嘅 Release 說明：v1.0.0 自動用 RELEASE_NOTES_v1.0.0.md；
+      # 出新版未有專屬 notes 時退回簡短說明，唔會誤用其它版本嘅說明。
+      - name: Compose release body for this version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -f "RELEASE_NOTES_${TAG}.md" ]; then
+            cp "RELEASE_NOTES_${TAG}.md" RELEASE_BODY.md
+            echo "Using version-matched notes: RELEASE_NOTES_${TAG}.md"
+          else
+            {
+              echo "# HK ETA ${TAG}"
+              echo
+              echo "正式版（signed release）APK 已附上，版本與 tag 對應。"
+              echo "版本、versionCode、APK SHA-256 同簽章指紋見 \`VERSION_INFO.txt\` / \`SIGNING_FINGERPRINT.txt\`。"
+              echo
+              echo "安裝前請確認簽章一致；詳情見 repo 嘅雙語 README。"
+            } > RELEASE_BODY.md
+            echo "No RELEASE_NOTES_${TAG}.md; using the short version-matched body."
+          fi
+
+      - name: Upload signed release APK artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-release-apk
+          path: hketa-${{ github.ref_name }}-release.apk
+          if-no-files-found: error
+
+      # 只附一個 .apk（正式版），其餘兩個係文字清單。
+      # tag_name / name 顯式對應版本；prerelease 由 tag 有無 "-" 後綴決定。
+      - name: Attach signed release APK to the matching version Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: HK ETA ${{ github.ref_name }}
+          body_path: RELEASE_BODY.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: false
+          fail_on_unmatched_files: true
           files: |
-            hketa-${{ github.ref_name }}.apk
+            hketa-${{ github.ref_name }}-release.apk
+            VERSION_INFO.txt
             SIGNING_FINGERPRINT.txt
-          generate_release_notes: true
