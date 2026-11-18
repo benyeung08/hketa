@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  APP1933 route keypad: 3x4 white number keys on the left, round letter keys
+  on the right with up/down arrows to page through route suffixes.
+  Every key carries an android:tag so MainActivity can bind ONE listener by
+  walking the view tree — no system soft keyboard is ever shown.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/keypad_bg"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="12dp">
+
+    <!-- ================= 3 x 4 number pad ================= -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="3"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="1"
+                android:text="1"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="2"
+                android:text="2"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="3"
+                android:text="3"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="4"
+                android:text="4"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="5"
+                android:text="5"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="6"
+                android:text="6"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="7"
+                android:text="7"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="8"
+                android:text="8"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="9"
+                android:text="9"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="DEL"
+                android:text="⌫"
+                android:textColor="@color/muted"
+                android:textSize="26sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="0"
+                android:text="0"
+                android:textColor="@color/keypad_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_key"
+                android:gravity="center"
+                android:tag="ENTER"
+                android:text="↵"
+                android:textColor="@color/muted"
+                android:textSize="26sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ============ round letter keys with page arrows ============ -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="12dp"
+        android:layout_weight="2"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
+            android:gravity="center"
+            android:tag="PREV"
+            android:text="▲"
+            android:textColor="@color/keypad_muted"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/keyLetter0"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_key_circle"
+                android:gravity="center"
+                android:tag="L0"
+                android:text="A"
+                android:textColor="@color/keypad_text"
+                android:textSize="28sp" />
+
+            <TextView
+                android:id="@+id/keyLetter1"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:background="@drawable/bg_key_circle"
+                android:gravity="center"
+                android:tag="L1"
+                android:text="B"
+                android:textColor="@color/keypad_text"
+                android:textSize="28sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/keyLetter2"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_key_circle"
+                android:gravity="center"
+                android:tag="L2"
+                android:text="C"
+                android:textColor="@color/keypad_text"
+                android:textSize="28sp" />
+
+            <TextView
+                android:id="@+id/keyLetter3"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:background="@drawable/bg_key_circle"
+                android:gravity="center"
+                android:tag="L3"
+                android:text="E"
+                android:textColor="@color/keypad_text"
+                android:textSize="28sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
+            android:gravity="center"
+            android:tag="NEXT"
+            android:text="▼"
+            android:textColor="@color/keypad_muted"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+</LinearLayout>

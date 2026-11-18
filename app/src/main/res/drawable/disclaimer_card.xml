@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Matches the reference screenshot: a dark navy rounded card with a thin
+  white 1dp rim, two paragraphs of muted blue-grey text.
+  Moved from the "更多" tab INTO 應用程式設置 (SettingsActivity).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/disclaimerCard"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:background="@drawable/bg_disclaimer"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:lineSpacingExtra="4dp"
+        android:text="@string/disclaimer_lead"
+        android:textColor="@color/disclaimer_text"
+        android:textSize="15sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:lineSpacingExtra="5dp"
+        android:text="@string/disclaimer_excluded"
+        android:textColor="@color/disclaimer_text"
+        android:textSize="15sp" />
+
+</LinearLayout>
