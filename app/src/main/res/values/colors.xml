@@ -39,4 +39,13 @@
     <color name="nav_tab_muted">#A8B0BA</color>
     <!-- 路線詳情頁三班次分鐘（對照截圖深藍） -->
     <color name="detail_minutes">#1A4E8C</color>
+    <!-- DETAIL_STOP_BLACK / DETAIL_ALL_BLACK: the route-detail screen has a
+         fixed WHITE background. Generic @color/text / @color/muted flip to
+         near-white in values-night, which made stop names AND every auxiliary
+         label (fare / alight / minutes / clock / map label) invisible on white.
+         BOTH colours are now PURE BLACK and are deliberately duplicated in
+         values-night with the SAME value, so the whole detail screen stays
+         black-on-white in EVERY system theme. -->
+    <color name="detail_stop_text">#000000</color>
+    <color name="detail_aux_text">#000000</color>
 </resources>
