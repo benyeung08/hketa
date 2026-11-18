@@ -568,10 +568,57 @@ check("installer grants read URI permission",
       and "application/vnd.android.package-archive" in installer_kt
       and "FileProvider.getUriForFile" in installer_kt)
 check("settings layout has app-update section", all(
-      i in settings_layout for i in ("tvAppVersion", "etRepo", "swAutoApp",
+      i in settings_layout for i in ("@layout/update_pill", "advancedAppUpdate",
+                                     "btnAdvanced", "tvPillStatus", "etRepo", "swAutoApp",
                                      "btnCheckApp", "btnDownloadApk",
                                      "btnReleasePage", "progressApp",
-                                     "tvAppUpdateStatus", "tvReleaseNotes")))
+                                     "tvAppUpdateStatus", "tvReleaseNotes"))
+      and 'android:id="@+id/tvAppVersion"'
+      in read(RES / "layout/update_pill.xml"))
+
+# --- 更新應用程式：深色版本膠囊（vX · build · ⟳ 🕐 ⧉）-----------------------
+pill_xml = read(RES / "layout/update_pill.xml")
+pill_bg = read(RES / "drawable/bg_update_pill.xml")
+pill_icons = [read(RES / f"drawable/ic_pill_{n}.xml")
+              for n in ("refresh", "history", "copy")]
+check("update pill reproduces vX · build · refresh/history/copy bar",
+      all(s in pill_xml for s in (
+          'android:id="@+id/updatePill"', 'android:id="@+id/tvAppVersion"',
+          'android:id="@+id/tvAppBuild"', 'android:id="@+id/tvPillDot"',
+          'android:id="@+id/pillRefresh"', 'android:id="@+id/pillHistory"',
+          'android:id="@+id/pillCopy"', '@drawable/bg_update_pill',
+          '@drawable/ic_pill_refresh', '@drawable/ic_pill_history',
+          '@drawable/ic_pill_copy', '@color/pill_text', '@color/pill_muted'))
+      and '@color/pill_bg' in pill_bg
+      and all('android:strokeColor="#FFFFFF"' in x for x in pill_icons))
+check("all original download / install controls survive in advanced drawer",
+      '@layout/update_pill' in settings_layout
+      and 'android:id="@+id/advancedAppUpdate"' in settings_layout
+      and 'android:id="@+id/btnAdvanced"' in settings_layout
+      and 'android:id="@+id/tvPillStatus"' in settings_layout
+      and all(i in settings_layout for i in (
+          "btnCheckApp", "btnDownloadApk", "btnReleasePage",
+          "progressApp", "tvAppUpdateStatus", "tvReleaseNotes", "etRepo", "swAutoApp")))
+check("pill actions wired: re-check / history / copy / advanced toggle",
+      all(s in settings_kt for s in (
+          "fun versionLabel", "fun triggerCheck", "fun showUpdateHistory",
+          "fun copyVersionInfo", "fun toggleAdvanced", "fun expandAdvanced",
+          "fun renderPillStatus", "ClipboardManager", "ClipData.newPlainText",
+          "AlertDialog.Builder", "pillRefresh.setOnClickListener",
+          "pillHistory.setOnClickListener", "pillCopy.setOnClickListener",
+          "renderPillStatus(failed = true)"))
+      and 'tvAppVersion.text = versionLabel()' in settings_kt
+      and 'tvAppBuild.text = AppUpdatePrefs.installedVersionCode(this).toString()'
+      in settings_kt)
+pill_strings = read(RES / "values/strings.xml")
+check("pill strings all defined", all(
+      f'<string name="{name}">' in pill_strings for name in (
+          "pill_refresh_cd", "pill_history_cd", "pill_copy_cd",
+          "pill_status_never", "pill_status_checked", "pill_status_latest",
+          "pill_status_new", "pill_status_failed", "pill_status_checking",
+          "pill_advanced_open", "pill_advanced_close", "pill_history_title",
+          "pill_history_body", "pill_history_never", "pill_history_no_tag",
+          "pill_on", "pill_off", "pill_copied", "pill_ok")))
 check("settings wires check / download / install", all(
       s in settings_kt for s in ("AppUpdate.latest", "AppUpdate.download",
                                  "ApkInstaller.install", "unknownSourcesLauncher",
@@ -584,6 +631,104 @@ check("startup badge check is silent and read-only",
       "maybeAutoCheckAppUpdate" in viewmodel_kt
       and "AppUpdatePrefs.cacheResult" in viewmodel_kt
       and "app_update_new_badge" in main_kt)
+# --- 定位附近路線嘅距離：由主頁搬入設定頁，對照「50 ▼」---------------------
+radius_xml = read(RES / "layout/radius_picker.xml")
+radius_kt = read(UI / "NearbyRadiusPrefs.kt")
+check("settings page owns the dark big-number radius picker",
+      'layout="@layout/radius_picker"' in settings_layout
+      and 'NEARBY_RADIUS_SECTION' in settings_layout
+      and all(s in radius_xml for s in (
+          'android:id="@+id/radiusPickerRoot"',
+          'android:id="@+id/radiusPickerValue"',
+          'android:id="@+id/radiusPickerUnit"',
+          'android:id="@+id/radiusPickerArrow"',
+          '@drawable/bg_update_pill', '@drawable/ic_pill_arrow_down',
+          '@string/nearby_radius_unit', '@color/pill_text'))
+      and 'android:fillColor="#AEB7C2"'
+      in read(RES / "drawable/ic_pill_arrow_down.xml"))
+check("radius picker wired to a single-choice dialog + shared prefs",
+      all(s in settings_kt for s in (
+          "fun setupRadiusSection", "fun renderRadiusPicker",
+          "setSingleChoiceItems", "NearbyRadiusPrefs.setRadiusMeters",
+          "nearby_radius_saved", "radiusPickerRoot.setOnClickListener"))
+      and "setupRadiusSection()" in settings_kt)
+check("NearbyRadiusPrefs exposes 7 radii incl. 50 m, default 500 m",
+      all(s in radius_kt for s in (
+          "intArrayOf(50, 100, 200, 300, 500, 1000, 2000)",
+          "DEFAULT_METERS = 500", "fun radiusMeters", "fun setRadiusMeters",
+          "fun radiusIndex")))
+check("MainActivity reads radius from Settings prefs and reloads on change",
+      "NearbyRadiusPrefs.radiusMeters(this)" in main_kt
+      and "lastRadius" in main_kt
+      and "radiusChanged" in main_kt
+      and "fun selectedRadius(): Int = NearbyRadiusPrefs.radiusMeters(this)"
+      in main_kt)
+check("radius strings all defined", all(
+      f'<string name="{name}">' in read(RES / "values/strings.xml")
+      for name in ("nearby_radius_section", "nearby_radius_title",
+                   "nearby_radius_hint", "nearby_radius_unit",
+                   "nearby_radius_cd", "nearby_radius_saved",
+                   "home_swipe_hint", "pill_cancel")))
+
+# --- 懸浮液態玻璃導航欄 + 免責聲明卡搬入設定頁 ------------------------------
+glass_kt = read(UI / "NavGlass.kt")
+glass_prefs_kt = read(UI / "NavGlassPrefs.kt")
+disclaimer_xml = read(RES / "layout/disclaimer_card.xml")
+check("nav tab renamed to 應用程式設置, disclaimer moved into Settings",
+      '<string name="tab_more">⚙&#10;應用程式設置</string>'
+      in read(RES / "values/strings.xml")
+      and '<string name="more_title">應用程式設置</string>'
+      in read(RES / "values/strings.xml")
+      and 'android:text="@string/more_disclaimer"' not in main_layout
+      and 'more_disclaimer_moved' in main_layout
+      and '@layout/disclaimer_card' in settings_layout
+      and 'DISCLAIMER_CARD' in settings_layout)
+check("disclaimer card reproduces the dark rounded white-rim screenshot",
+      'android:id="@+id/disclaimerCard"' in disclaimer_xml
+      and '@drawable/bg_disclaimer' in disclaimer_xml
+      and '@string/disclaimer_lead' in disclaimer_xml
+      and '@string/disclaimer_excluded' in disclaimer_xml
+      and 'android:color="#CCFFFFFF"'
+      in read(RES / "drawable/bg_disclaimer.xml")
+      and all(s in read(RES / "values/strings.xml") for s in (
+          "disclaimer_lead", "disclaimer_excluded", "disclaimer_section",
+          "AI 智能問路", "實時載客量", "九巴月票", "遊戲室", "街景")))
+check("floating liquid-glass nav bar (margins + elevation + glass drawable)",
+      'GLASS_NAV' in main_layout
+      and '@drawable/bg_nav_glass' in main_layout
+      and 'android:layout_marginStart="12dp"' in main_layout
+      and 'android:layout_marginBottom="12dp"' in main_layout
+      and 'android:elevation="10dp"' in main_layout
+      and 'android:id="@+id/bottomTabs"' in main_layout
+      and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
+          "bg_nav_glass", "bg_nav_glass_dark", "bg_nav_glass_contrast",
+          "bg_tab_glass_selected")))
+check("glass follows system night / high-contrast / reduced-motion settings",
+      all(s in glass_kt for s in (
+          "fun apply(", "fun selectTab(", "fun status(",
+          "Configuration.UI_MODE_NIGHT_MASK", "high_text_contrast_enabled",
+          "ANIMATOR_DURATION_SCALE", "TRANSITION_ANIMATION_SCALE",
+          "setBackgroundBlurRadius", "runCatching"))
+      and "NavGlassPrefs.followSystem" in glass_kt
+      and "fun followSystem" in glass_prefs_kt
+      and "fun setFollowSystem" in glass_prefs_kt)
+check("MainActivity re-applies glass on resume / config change; no opaque tabs",
+      all(s in main_kt for s in (
+          "NavGlass.apply(this, bottomTabs)",
+          "override fun onConfigurationChanged",
+          "NavGlass.selectTab(this, tabs[i], i == index)"))
+      and "setBackgroundColor(" not in main_kt
+      and "fun setupNavGlassSection" in settings_kt
+      and "R.id.swNavGlass" in settings_kt
+      and "NavGlass.status(this)" in settings_kt)
+check("nav glass strings all defined", all(
+      f'<string name="{name}">' in read(RES / "values/strings.xml")
+      for name in ("nav_glass_section", "nav_glass_follow", "nav_glass_hint",
+                   "nav_glass_status", "nav_glass_state_follow",
+                   "nav_glass_state_fixed", "nav_glass_state_night",
+                   "nav_glass_state_contrast", "nav_glass_state_reduced",
+                   "nav_glass_state_day")))
+
 check("default_github_repo is defined",
       "default_github_repo" in read(RES / "values/strings.xml"))
 check("default_github_repo points at this repo",
@@ -892,7 +1037,10 @@ arrays = {
 }
 check("company_labels has 8 modes", len(arrays.get("company_labels", [])) == 8)
 check("mode_hints has 8 entries", len(arrays.get("mode_hints", [])) == 8)
-check("radius_labels has 4 entries", len(arrays.get("radius_labels", [])) == 4)
+check("radius_labels has 7 entries incl. 50 m from the screenshot",
+      len(arrays.get("radius_labels", [])) == 7
+      and arrays["radius_labels"][0] == "50 m"
+      and arrays["radius_labels"][-1] == "2000 m")
 check("update_interval_labels has 4 entries",
       len(arrays.get("update_interval_labels", [])) == 4)
 check("settings strings all defined", all(
@@ -900,8 +1048,28 @@ check("settings strings all defined", all(
                                    "update_now", "auto_update", "sources_title",
                                    "clear_local", "settings_footer")))
 main_kt = read(UI / "MainActivity.kt")
-check("nearby button requests permissions", "btnNearby" in main_kt
-      and "RequestMultiplePermissions" in main_kt and "selectedRadius" in main_kt)
+loc_kt = read(UI / "LocationHelper.kt")
+check("relocate button REMOVED; auto-locate is gated by location permission",
+      "btnNearby" not in main_layout and "btnNearby" not in main_kt
+      and 'android:id="@+id/permissionHint"' in main_layout
+      and "fun autoLocateIfAllowed" in main_kt
+      and "fun requestLocationConsent" in main_kt
+      and "override fun onResume" in main_kt
+      and "LocationHelper.hasPermission" in main_kt
+      and "RequestMultiplePermissions" in main_kt
+      and "selectedRadius" in main_kt)
+check("ViewModel refuses ANY nearby lookup before permission is granted",
+      "fun awaitLocationPermission" in read(UI / "EtaViewModel.kt")
+      and "private fun locationGranted" in read(UI / "EtaViewModel.kt")
+      and read(UI / "EtaViewModel.kt").count("awaitLocationPermission()") >= 3)
+check("LocationHelper exposes one shared permission gate",
+      "fun hasPermission(context: Context): Boolean" in loc_kt
+      and "private fun hasPermission" not in loc_kt
+      and "IMPORTANT: callers MUST gate" in loc_kt)
+check("no stale relocate strings / hints remain",
+      "📍 重新定位" not in read(RES / "values/strings.xml")
+      and 'name="locate"' not in read(RES / "values/strings.xml")
+      and "location_permission_hint" in read(RES / "values/strings.xml"))
 vm_kt = read(UI / "EtaViewModel.kt")
 check("ViewModel has loadNearby", "fun loadNearby" in vm_kt)
 check("ViewModel maps all 8 spinner positions",
@@ -916,12 +1084,20 @@ check("APP1933 shell has 4 bottom tabs + 4 pages", all(
        "pageHome", "pageFav", "pageSearch", "pageMore")))
 check("APP1933 home card with 3 trip chips + big minutes", all(
       s in main_layout for s in
-      ('android:id="@+id/homeRecycler"', 'android:id="@+id/tvHomeEmpty"',
-       'android:id="@+id/btnRefresh"'))
+      ('android:id="@+id/homeRecycler"', 'android:id="@+id/tvHomeEmpty"'))
       and all(s in read(RES / "layout/item_route_card.xml") for s in
               ('android:id="@+id/cardRoot"', 'android:id="@+id/cardTrip1"',
                'android:id="@+id/cardTrip2"', 'android:id="@+id/cardTrip3"',
                'android:id="@+id/cardMinutes"', 'android:id="@+id/cardRoute"')))
+check("Home has NO refresh button / radius spinner; pull-to-refresh only",
+      'android:id="@+id/btnRefresh"' not in main_layout
+      and 'android:id="@+id/radiusSpinner"' not in main_layout
+      and 'btnRefresh' not in main_kt
+      and 'radiusSpinner' not in main_kt
+      and 'android:id="@+id/swipe"' in main_layout
+      and 'HOME_CLEAN' in main_layout
+      and 'swipe.setOnRefreshListener' in main_kt
+      and 'name="refresh"' not in read(RES / "values/strings.xml"))
 check("three-arrival formatting with official marks", all(
       s in fmt_kt for s in
       ("cardsFrom", "stopLabel", "take(3)", "剛到站", "沒有服務", "預定班次")))
@@ -948,6 +1124,47 @@ check("8-operator data layer is unchanged", all(
       ("OPERATORS", "case KMB:", "case CTB:", "case NLB:", "case GMB:",
        "case MTR:", "case LRT:", "case MTRB:"))
       and "new Dataset(" in read(API / "RouteDataStore.java"))
+
+# --- APP1933 搜尋頁：紅 bar / 路線結果 / 自訂鍵盤 -------------------------------
+search_java = read(API / "RouteSearch.java")
+result_row = read(RES / "layout/item_route_result.xml")
+keypad_xml = read(RES / "layout/keypad.xml")
+check("APP1933 route-search full screen (red bar + input + results + keypad)",
+      all(s in main_layout for s in (
+          'android:id="@+id/searchBar"', 'android:id="@+id/routeInput"',
+          'android:id="@+id/searchResultsRecycler"',
+          'android:id="@+id/stopSequenceView"',
+          'android:id="@+id/keypadRoot"', 'android:id="@+id/mainHeader"',
+          'android:id="@+id/bottomTabs"', 'android:id="@+id/btnBackToSearch"'))
+      and '@layout/keypad' in main_layout)
+check("APP1933 keypad: 1-9 / 0 / DEL / ENTER / 4 letter keys / page arrows",
+      all(f'android:tag="{k}"' in keypad_xml for k in
+          ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+           "DEL", "ENTER", "L0", "L1", "L2", "L3", "PREV", "NEXT"))
+      and all(f'android:id="@+id/keyLetter{i}"' in keypad_xml
+              for i in range(4))
+      and '@drawable/bg_key' in keypad_xml
+      and '@drawable/bg_key_circle' in keypad_xml)
+check("route-search row shows big route no., 往 destination, attribution, chevron",
+      all(s in result_row for s in (
+          'android:id="@+id/resultRoute"', 'android:id="@+id/resultDest"',
+          'android:id="@+id/resultNote"', 'android:id="@+id/resultChevron"'))
+      and '往 尖沙咀碼頭' in result_row)
+check("route search uses official catalogues for all 7 operator modes",
+      all(s in search_java for s in (
+          "RouteDataStore.KMB_ROUTES", "RouteDataStore.CTB_ROUTES",
+          "RouteDataStore.NLB_ROUTES", "RouteDataStore.GMB_ROUTES",
+          "MtrCatalog.isLineCode", "EtaRepository.MTRB",
+          "資料由DATA.GOV.HK提供", "public static List<Result> search"))
+      and "HttpJson.getObject" in search_java)
+check("route search wired into ViewModel and Activity",
+      all(s in vm_kt for s in ("fun searchRoutes", "RouteSearch.search",
+                               "onlyBound", "searchJob"))
+      and all(s in main_kt for s in (
+          "bindKeypad", "fun onKey", "fun openResult",
+          "showResults", "showSequence", "RouteResultAdapter",
+          "vm.searchRoutes", "updateLetterKeys"))
+      and "class RouteResultAdapter" in card_kt)
 
 if failures:
     print(f"\n{len(failures)} check(s) failed: {', '.join(failures)}")
