@@ -68,10 +68,21 @@
         android:paddingStart="16dp"
         android:paddingTop="8dp"
         android:paddingEnd="16dp"
-        android:paddingBottom="6dp"
+        android:paddingBottom="2dp"
         android:text="@string/welcome"
         android:textColor="@color/muted"
         android:textSize="11sp" />
+
+    <!-- AUTO_REFRESH_ETA_STATUS：前景輪詢開關／間隔／上次自動更新時間 -->
+    <TextView
+        android:id="@+id/tvAutoRefreshStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="6dp"
+        android:textColor="@color/muted"
+        android:textSize="10sp" />
 
     <!-- 4 tab pages; visibility is switched by MainActivity -->
     <FrameLayout
@@ -533,21 +544,28 @@
 
     </FrameLayout>
 
-    <!-- GLASS_NAV: 懸浮液態玻璃導航欄，外觀由 NavGlass 跟隨系統設定改變 -->
+    <!--
+      NAV_GEOMETRY: 對照截圖嘅深灰黑「藥丸」導航欄 —— 更矮 (56dp)、
+      左右收窄 (28dp，並由 NavGlass.geometry() 按螢幕寬度動態調整)、
+      更貼底 (8dp)、水平置中，全圓角 (radius = 28dp = 高度一半)。
+      選中 tab 係內嵌深色 pill + 藍色字，未選中係淺灰字。
+      外觀（深色／高對比／減少動態）仍由 NavGlass 跟隨系統設定改變。
+    -->
     <LinearLayout
         android:id="@+id/bottomTabs"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:layout_marginStart="12dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="12dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginStart="28dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="28dp"
+        android:layout_marginBottom="8dp"
         android:background="@drawable/bg_nav_glass"
-        android:elevation="10dp"
+        android:elevation="6dp"
         android:orientation="horizontal"
-        android:paddingStart="4dp"
+        android:paddingStart="6dp"
         android:paddingTop="4dp"
-        android:paddingEnd="4dp"
+        android:paddingEnd="6dp"
         android:paddingBottom="4dp">
 
         <TextView
@@ -558,8 +576,8 @@
             android:gravity="center"
             android:lineSpacingExtra="1dp"
             android:text="@string/tab_home"
-            android:textColor="@color/glass_tab_text"
-            android:textSize="11sp"
+            android:textColor="@color/nav_tab_active"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <TextView
@@ -570,8 +588,8 @@
             android:gravity="center"
             android:lineSpacingExtra="1dp"
             android:text="@string/tab_fav"
-            android:textColor="@color/glass_tab_muted"
-            android:textSize="11sp" />
+            android:textColor="@color/nav_tab_muted"
+            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/tabSearch"
@@ -581,8 +599,8 @@
             android:gravity="center"
             android:lineSpacingExtra="1dp"
             android:text="@string/tab_search"
-            android:textColor="@color/glass_tab_muted"
-            android:textSize="11sp" />
+            android:textColor="@color/nav_tab_muted"
+            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/tabMore"
@@ -592,8 +610,8 @@
             android:gravity="center"
             android:lineSpacingExtra="1dp"
             android:text="@string/tab_more"
-            android:textColor="@color/glass_tab_muted"
-            android:textSize="11sp" />
+            android:textColor="@color/nav_tab_muted"
+            android:textSize="10sp" />
     </LinearLayout>
 
 </LinearLayout>

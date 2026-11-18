@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Matches the dark "50 ▼" radius picker: big white number, small unit,
+  grey ▼. Tapping the whole bar opens a single-choice dialog with the four
+  ETA auto-refresh intervals (15 / 30 / 45 / 60 秒).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/etaRefreshPickerRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_update_pill"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="72dp"
+    android:orientation="horizontal"
+    android:paddingStart="20dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="10dp">
+
+    <TextView
+        android:id="@+id/etaRefreshPickerValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="30"
+        android:textColor="@color/pill_text"
+        android:textSize="34sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/etaRefreshPickerUnit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:text="@string/eta_refresh_unit"
+        android:textColor="@color/pill_muted"
+        android:textSize="18sp" />
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_weight="1" />
+
+    <ImageView
+        android:id="@+id/etaRefreshPickerArrow"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:contentDescription="@string/eta_refresh_cd"
+        android:src="@drawable/ic_pill_arrow_down" />
+
+</LinearLayout>
