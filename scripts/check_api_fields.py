@@ -670,6 +670,88 @@ check("radius strings all defined", all(
                    "nearby_radius_cd", "nearby_radius_saved",
                    "home_swipe_hint", "pill_cancel")))
 
+# --- ⟳ ETA 自動刷新 ---------------------------------------------------------
+eta_prefs_kt = read(UI / "EtaRefreshPrefs.kt")
+eta_vm_kt = read(UI / "EtaViewModel.kt")
+eta_detail_kt = read(UI / "RouteDetailActivity.kt")
+eta_settings_kt = read(UI / "SettingsActivity.kt")
+eta_main_kt = read(UI / "MainActivity.kt")
+eta_picker_xml = read(RES / "layout/eta_refresh_picker.xml")
+check("ETA auto-refresh prefs: 4 intervals, ON by default, 30s, off = 0",
+      all(s in eta_prefs_kt for s in (
+          "longArrayOf(15_000L, 30_000L, 45_000L, 60_000L)",
+          "DEFAULT_INTERVAL_MS = 30_000L", "fun enabled",
+          "fun setEnabled", "fun intervalMs", "fun selectedIntervalMs",
+          "fun setIntervalMs", "fun intervalIndex",
+          "fun markAutoRefreshed", "fun lastAutoAt",
+          "fun dueForForegroundRefresh", "fun statusLabel",
+          "fun settingsLabel"))
+      and "if (enabled(context)) selectedIntervalMs(context) else 0L"
+      in eta_prefs_kt)
+check("ViewModel polls EVERY visible ETA surface, interval read from prefs",
+      all(s in eta_vm_kt for s in (
+          "AUTO_REFRESH_ETA", "EtaRefreshPrefs.intervalMs(getApplication())",
+          "delay(interval)", "fun refreshVisibleEta",
+          "fun refreshNearbyCards", "fun onForeground", "fun onBackground",
+          "private suspend fun fetchCards", "coroutineScope",
+          "EtaRefreshPrefs.markAutoRefreshed", "fun startAutoRefresh"))
+      and "delay(30_000L)" not in eta_vm_kt
+      and "state.selection != null -> refresh()" in eta_vm_kt
+      and "state.cards.isNotEmpty() && state.stops.isNotEmpty()" in eta_vm_kt
+      and "else -> return" in eta_vm_kt)
+check("nearby auto-refresh reuses CACHED stops, never re-locates",
+      "val cards = fetchCards(stops)" in eta_vm_kt
+      and "refreshNearbyCards(state.stops)" in eta_vm_kt
+      and "LocationHelper.current" not in
+          eta_vm_kt[eta_vm_kt.index("private fun refreshNearbyCards"):
+                    eta_vm_kt.index("private suspend fun fetchCards")])
+check("foreground-only: onResume restarts + catches up, onPause stops",
+      "vm.onForeground()" in eta_main_kt
+      and "vm.onBackground()" in eta_main_kt
+      and "override fun onPause()" in eta_main_kt
+      and "vm.onForeground()" in eta_detail_kt
+      and "vm.onBackground()" in eta_detail_kt
+      and "override fun onPause()" in eta_detail_kt
+      and "onBackground()" in eta_vm_kt[eta_vm_kt.index("override fun onCleared"):])
+check("Home + route detail show switch / interval / last auto time",
+      'android:id="@+id/tvAutoRefreshStatus"' in main_layout
+      and "EtaRefreshPrefs.statusLabel(this)" in eta_main_kt
+      and "fun renderAutoRefreshStatus" in eta_main_kt
+      and "EtaRefreshPrefs.statusLabel(this)" in eta_detail_kt
+      and "fun renderFooter" in eta_detail_kt
+      and "tvFooter" in eta_detail_kt)
+check("Settings owns the ETA auto-refresh switch + big-number interval picker",
+      'android:id="@+id/etaRefreshSection"' in settings_layout
+      and 'android:id="@+id/swEtaAutoRefresh"' in settings_layout
+      and '@layout/eta_refresh_picker' in settings_layout
+      and 'android:id="@+id/tvEtaRefreshStatus"' in settings_layout
+      and 'android:id="@+id/etaRefreshPickerRoot"' in eta_picker_xml
+      and 'android:id="@+id/etaRefreshPickerValue"' in eta_picker_xml
+      and "@string/eta_refresh_unit" in eta_picker_xml
+      and all(s in eta_settings_kt for s in (
+          "fun setupEtaRefreshSection", "fun renderEtaRefreshSection",
+          "EtaRefreshPrefs.setEnabled", "EtaRefreshPrefs.setIntervalMs",
+          "EtaRefreshPrefs.INTERVALS_MS[which]",
+          "etaRefreshPickerRoot.setOnClickListener",
+          "EtaRefreshPrefs.selectedIntervalMs(this)"))
+      and "setupEtaRefreshSection()" in eta_settings_kt)
+check("eta refresh strings + 4-entry interval array all defined", all(
+      f'<string name="{name}">' in read(RES / "values/strings.xml")
+      for name in ("eta_refresh_section", "eta_refresh_switch",
+                   "eta_refresh_unit", "eta_refresh_cd", "eta_refresh_hint",
+                   "eta_refresh_interval_title", "eta_refresh_status_on",
+                   "eta_refresh_status_never", "eta_refresh_status_off",
+                   "eta_refresh_settings_on", "eta_refresh_settings_off",
+                   "eta_refresh_auto_tag", "eta_refresh_nearby_tag"))
+      and 'name="eta_refresh_interval_labels"'
+      in read(RES / "values/strings.xml")
+      and read(RES / "values/strings.xml").count(
+          'name="eta_refresh_interval_labels"') == 1)
+check("auto-refresh does NOT poll with no data / before location consent",
+      "else -> return   // 未授權／未載入：唔打 API" in eta_vm_kt
+      and "awaitLocationPermission()" in eta_vm_kt
+      and "refreshJob?.cancel()" in eta_vm_kt)
+
 # --- 懸浮液態玻璃導航欄 + 免責聲明卡搬入設定頁 ------------------------------
 glass_kt = read(UI / "NavGlass.kt")
 glass_prefs_kt = read(UI / "NavGlassPrefs.kt")
@@ -693,16 +775,55 @@ check("disclaimer card reproduces the dark rounded white-rim screenshot",
       and all(s in read(RES / "values/strings.xml") for s in (
           "disclaimer_lead", "disclaimer_excluded", "disclaimer_section",
           "AI 智能問路", "實時載客量", "九巴月票", "遊戲室", "街景")))
-check("floating liquid-glass nav bar (margins + elevation + glass drawable)",
-      'GLASS_NAV' in main_layout
+check("navbar GEOMETRY: smaller, centred, bottom-hugging capsule",
+      'NAV_GEOMETRY' in main_layout
       and '@drawable/bg_nav_glass' in main_layout
-      and 'android:layout_marginStart="12dp"' in main_layout
-      and 'android:layout_marginBottom="12dp"' in main_layout
-      and 'android:elevation="10dp"' in main_layout
+      and 'android:layout_height="56dp"' in main_layout
+      and 'android:layout_gravity="center_horizontal"' in main_layout
+      and 'android:layout_marginStart="28dp"' in main_layout
+      and 'android:layout_marginEnd="28dp"' in main_layout
+      and 'android:layout_marginBottom="8dp"' in main_layout
+      and 'android:elevation="6dp"' in main_layout
       and 'android:id="@+id/bottomTabs"' in main_layout
+      and all(old not in main_layout[main_layout.index('NAV_GEOMETRY'):]
+              for old in ('android:layout_marginStart="12dp"',
+                          'android:layout_marginBottom="12dp"',
+                          'android:layout_height="64dp"'))
       and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
           "bg_nav_glass", "bg_nav_glass_dark", "bg_nav_glass_contrast",
           "bg_tab_glass_selected")))
+check("all three glass variants share the 28dp true-pill radius",
+      all('android:radius="28dp"' in read(RES / f"drawable/{n}.xml")
+          for n in ("bg_nav_glass", "bg_nav_glass_dark",
+                    "bg_nav_glass_contrast"))
+      and '#F02C2C2F' in read(RES / "drawable/bg_nav_glass.xml")
+      and 'android:radius="30dp"' not in read(RES / "drawable/bg_nav_glass.xml"))
+check("selected tab = ONE darker inner pill + blue label (screenshot)",
+      '#FF141416' in read(RES / "drawable/bg_tab_glass_selected.xml")
+      and 'android:radius="24dp"'
+      in read(RES / "drawable/bg_tab_glass_selected.xml")
+      and '#55FFFFFF' not in read(RES / "drawable/bg_tab_glass_selected.xml")
+      and '<color name="nav_tab_active">#4A9EFF</color>'
+      in read(RES / "values/colors.xml")
+      and '<color name="nav_tab_muted">#A8B0BA</color>'
+      in read(RES / "values/colors.xml")
+      and 'R.color.nav_tab_active' in glass_kt
+      and 'R.color.nav_tab_muted' in glass_kt
+      and '@color/nav_tab_active' in main_layout
+      and main_layout.count('@color/nav_tab_muted') == 3)
+check("geometry scales with screen width; re-applied on rotation / resume",
+      all(s in glass_kt for s in (
+          "fun geometry(", "SIDE_RATIO_PHONE = 0.06f",
+          "SIDE_RATIO_WIDE = 0.18f", "WIDE_BREAKPOINT_DP = 600f",
+          "SIDE_MIN_DP = 16f", "SIDE_MAX_DP = 256f",
+          "BAR_HEIGHT_DP = 56", "BAR_BOTTOM_DP = 8",
+          "widthDp >= WIDE_BREAKPOINT_DP",
+          "lp.marginStart = sidePx", "lp.marginEnd = sidePx",
+          "lp.bottomMargin", "Gravity.CENTER_HORIZONTAL",
+          "geometry(activity, bar)", "ELEVATION_DP = 6f"))
+      and "override fun onConfigurationChanged" in main_kt
+      and "NavGlass.apply(this, bottomTabs)" in main_kt
+      and "56dp" in read(RES / "values/strings.xml"))
 check("glass follows system night / high-contrast / reduced-motion settings",
       all(s in glass_kt for s in (
           "fun apply(", "fun selectTab(", "fun status(",
@@ -728,6 +849,96 @@ check("nav glass strings all defined", all(
                    "nav_glass_state_fixed", "nav_glass_state_night",
                    "nav_glass_state_contrast", "nav_glass_state_reduced",
                    "nav_glass_state_day")))
+
+# --- 主頁附近路線卡片 → 路線詳情（還原截圖，無地圖）-------------------------
+detail_kt = read(UI / "RouteDetailActivity.kt")
+detail_xml = read(RES / "layout/activity_route_detail.xml")
+detail_item = read(RES / "layout/item_detail_stop.xml")
+check("RouteDetailActivity registered in manifest",
+      'android:name=".ui.RouteDetailActivity"' in manifest_text
+      and 'android:parentActivityName=".ui.MainActivity"' in manifest_text
+      and 'android:label="@string/detail_title"' in manifest_text)
+# Strip XML comments first: the layout's own documentation deliberately names
+# the map SDK it replaces, which must not count as an actual map view.
+detail_markup = re.sub(r"<!--.*?-->", "", detail_xml, flags=re.S)
+check("route detail has NO map view / SDK / WebView at all",
+      'ROUTE_DETAIL_NO_MAP' in detail_xml
+      and 'NO_MAP_PANEL' in detail_xml
+      and 'bg_no_map' in detail_xml
+      and not any(x in detail_markup for x in (
+          "com.google.android.gms.maps", "MapView", "GoogleMap",
+          "WebView", "android.permission.ACCESS_FINE_LOCATION"))
+      and 'Google' not in detail_markup)
+check("route detail reproduces red header + side chips + timeline list",
+      all(s in detail_xml for s in (
+          'android:id="@+id/detailHeader"', 'android:id="@+id/tvDetailTitle"',
+          'android:id="@+id/btnDetailBack"', 'android:id="@+id/detailActionTrips"',
+          'android:id="@+id/detailActionFav"', 'android:id="@+id/detailActionDirection"',
+          'android:id="@+id/detailSideChips"', 'android:id="@+id/chipBoard"',
+          'android:id="@+id/chipNearby"', 'android:id="@+id/chipFav"',
+          'android:id="@+id/chipMore"', 'android:id="@+id/detailStopsRecycler"',
+          'android:id="@+id/tvStopBubble"', 'android:id="@+id/tvDetailFooter"'))
+      and '@color/brand' in detail_xml)
+check("item row shows 3 arrivals + honest fare / alighting placeholders",
+      all(f'android:id="@+id/tripRow{i}"' in detail_item for i in (1, 2, 3))
+      and all(f'android:id="@+id/tripMin{i}"' in detail_item for i in (1, 2, 3))
+      and all(s in detail_item for s in (
+          'android:id="@+id/detailDot"', 'android:id="@+id/tvFare"',
+          'android:id="@+id/tvAlight"', 'android:id="@+id/tvAlightTime"',
+          'android:id="@+id/tvNoEta"', '@drawable/bg_detail_dot_off',
+          '@color/detail_minutes'))
+      and '@string/detail_fare_na' in detail_item
+      and '@string/detail_na' in detail_item)
+check("no invented fare / alighting numbers; footer explains the dashes",
+      all(s in read(RES / "values/strings.xml") for s in (
+          "detail_fare_na", "detail_footer_honest", "$5.6", "15:31"))
+      and '車資 —' in read(RES / "values/strings.xml")
+      and 'name="detail_no_map_label"' in read(RES / "values/strings.xml"))
+check("BOTH Home cards and search rows open the NO-MAP RouteDetailActivity",
+      main_kt.count('Intent(this, RouteDetailActivity::class.java)') >= 2
+      and 'RouteDetailActivity.EXTRA_STOP_ID' in main_kt
+      and 'fun openResult(result: RouteSearch.Result)' in main_kt
+      and 'RouteDetailActivity.EXTRA_BOUND, result.bound' in main_kt
+      and 'result.dest.removePrefix("往 ").trim()' in main_kt
+      and 'vm.loadStops(result.route, result.company, result.bound)' not in main_kt)
+check("search home PRELOADS official catalogue rows before any keystroke",
+      'public static List<Result> preload()' in read(API / "RouteSearch.java")
+      and 'RouteSearch.preload()' in read(UI / "EtaViewModel.kt")
+      and 'if (q.isEmpty()) RouteSearch.preload() else RouteSearch.search(q)'
+      in read(UI / "EtaViewModel.kt")
+      and 'vm.searchRoutes("")' in main_kt
+      and 'R.string.search_preload_empty' in read(UI / "EtaViewModel.kt")
+      and 'name="search_preload_empty"' in read(RES / "values/strings.xml")
+      and 'name="search_empty"' in read(RES / "values/strings.xml"))
+check("preload uses official catalogues only; no invented destinations",
+      'public static List<Result> preload()' in read(API / "RouteSearch.java")
+      and all(s in read(API / "RouteSearch.java") for s in (
+          "kmbPreload", "ctbPreload", "nlbPreload", "gmbPreload",
+          "railPreload", "RouteDataStore.catalogueJson",
+          "MtrCatalog.LINE_CODES", "MtrCatalog.MTR_BUS_ROUTES",
+          "目錄預載（未查方向）"))
+      and 'new ArrayList<>(out.subList(0, 24))'
+      in read(API / "RouteSearch.java"))
+check("detail reuses open-data layer; every chip / header action has a real action",
+      all(s in detail_kt for s in (
+          "ViewModelProvider(this)[EtaViewModel::class.java]",
+          "vm.loadStops(route, company, requestedBound)", "vm.selectStop(", "vm.refresh()",
+          "vm.toggleDirection()", "vm.addCurrentFavorite()",
+          "App1933Format.cardsFrom", "App1933Format.stopLabel",
+          "class DetailStopAdapter", "fun submit(", "fun boardAt(",
+          "fun buildTitle(", "Intent(this, SettingsActivity::class.java)"))
+      and all(f'R.id.{n}' in detail_kt for n in (
+          "btnDetailBack", "detailActionTrips", "detailActionFav",
+          "detailActionDirection", "chipBoard", "chipNearby", "chipFav", "chipMore")))
+check("detail strings all defined", all(
+      f'<string name="{name}">' in read(RES / "values/strings.xml")
+      for name in ("detail_title", "detail_no_map_label", "detail_footer_honest",
+                   "detail_fare_na", "detail_alight", "detail_na", "detail_no_eta",
+                   "detail_chip_board", "detail_chip_nearby", "detail_chip_fav",
+                   "detail_chip_more", "detail_action_trips_cd",
+                   "detail_action_fav_cd", "detail_action_direction_cd",
+                   "detail_fav_ok", "detail_fav_need",
+                   "detail_trips_refreshed", "detail_no_stops")))
 
 check("default_github_repo is defined",
       "default_github_repo" in read(RES / "values/strings.xml"))
@@ -892,6 +1103,61 @@ check("pin script validates 64-hex fingerprint and rewrites resource",
       and 'KEY = "expected_signing_sha256"' in pin_script)
 check("expected_signing_sha256 resource defined",
       '<string name="expected_signing_sha256">' in settings_strings)
+
+# --- 正式版 APK 對應版本發布（Releases） ---------------------------------------
+release_script = read(ROOT / "scripts/verify_release_version.py")
+app_update_java = read(API / "AppUpdate.java")
+check("CI builds a SIGNED RELEASE (production) APK, not just debug",
+      all(s in workflow for s in (
+          "Assemble signed release APK", "gradle assembleRelease",
+          "app/build/outputs/apk/release/app-release.apk"))
+      and 'getByName("release")' in app_gradle
+      and 'isMinifyEnabled = false' in app_gradle)
+check("RELEASE_VERSION_GATE: tag == gradle version == actual APK badging",
+      all(s in workflow for s in (
+          "RELEASE_VERSION_GATE", "scripts/verify_release_version.py",
+          "dump badging", "build-tools/34.0.0/aapt", "apk-badging.txt",
+          "Verify release version matches tag", "VERSION_INFO.txt"))
+      and all(s in release_script for s in (
+          "RELEASE_VERSION_GATE", "def normalize_tag", "def parse_gradle",
+          "def parse_badging", "def signing_fingerprint", "def apk_sha256",
+          "tag 與 Gradle 版本唔對應", "APK 內容與 Gradle 版本唔對應",
+          "versionCode 唔對應", "EXPECTED_PACKAGE",
+          "hashlib.sha256", "GITHUB_STEP_SUMMARY"))
+      and "versionName" in release_script and "versionCode" in release_script)
+check("version gate runs AFTER signing check and BEFORE publishing",
+      workflow.index("Verify APK signing certificate")
+      < workflow.index("Verify release version matches tag")
+      < workflow.index("Attach signed release APK"))
+check("Release is explicitly tied to the matching tag/version",
+      all(s in workflow for s in (
+          "tag_name: ${{ github.ref_name }}",
+          "name: HK ETA ${{ github.ref_name }}",
+          "body_path: RELEASE_BODY.md",
+          "RELEASE_NOTES_${TAG}.md",
+          "Compose release body for this version",
+          "generate_release_notes: false",
+          "fail_on_unmatched_files: true",
+          "prerelease: ${{ contains(github.ref_name, '-') }}"))
+      and (ROOT / "RELEASE_NOTES_v1.0.0.md").is_file())
+check("exactly ONE .apk asset — the signed release — is attached",
+      "hketa-${{ github.ref_name }}-release.apk" in workflow
+      and "hketa-release-apk" in workflow
+      and "SIGNING_FINGERPRINT.txt" in workflow
+      and "VERSION_INFO.txt" in workflow
+      and 'cp "$APK" "hketa-${GITHUB_REF_NAME}-release.apk"' in workflow
+      and (lambda tail: len([
+          l for l in tail.split("files: |", 1)[1].splitlines()
+          if ".apk" in l and l.strip() and not l.strip().startswith("#")
+      ]) == 1)(workflow[workflow.index("Attach signed release APK"):]))
+check("in-app updater stays compatible: first .apk asset wins",
+      'endsWith(".apk")' in app_update_java
+      and "break;" in app_update_java
+      and 'public static int compareVersions' in app_update_java)
+check("gradle version fields are the single source of truth",
+      'versionCode = 1' in app_gradle
+      and 'versionName = "1.0.0"' in app_gradle
+      and "in-app updater compares" in app_gradle)
 check("signature strings all defined", all(
       name in settings_strings for name in ("signing_section", "signing_fingerprint",
                                             "signing_status_ok", "signing_status_fail",
