@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var companySpinner: Spinner
     private lateinit var titleText: TextView
     private lateinit var statusText: TextView
+    private lateinit var tvAutoRefreshStatus: TextView
     private lateinit var stopsHeader: TextView
     private lateinit var tvHomeEmpty: View
     private lateinit var tvFavEmpty: View
@@ -116,6 +117,7 @@ class MainActivity : AppCompatActivity() {
         companySpinner = findViewById(R.id.companySpinner)
         titleText = findViewById(R.id.titleText)
         statusText = findViewById(R.id.statusText)
+        tvAutoRefreshStatus = findViewById(R.id.tvAutoRefreshStatus)
         stopsHeader = findViewById(R.id.stopsHeader)
         tvHomeEmpty = findViewById(R.id.tvHomeEmpty)
         tvFavEmpty = findViewById(R.id.tvFavEmpty)
@@ -249,6 +251,9 @@ class MainActivity : AppCompatActivity() {
         tabMore.setOnClickListener { selectTab(3) }
 
         selectTab(0)
+        // 搜尋主頁預先載入官方路線目錄：未切去搜尋分頁已經開始背景下載，
+        // 撳入去即刻見到「12 往 海麗邨 ›」呢類列，唔係空白頁。
+        vm.searchRoutes("")
         // 懸浮液態玻璃：外觀跟隨系統深色／高對比／減少動態效果
         NavGlass.apply(this, bottomTabs)
         // 唔使撳掣：已有權限就自動定位；未有就先彈系統權限對話框，
@@ -269,6 +274,16 @@ class MainActivity : AppCompatActivity() {
             nearbyLoaded = true
             vm.loadNearbyRoutes(radius)
         }
+        // 由「應用程式設置」改咗 ETA 自動刷新開關／間隔返嚟：即時重啟輪詢；
+        // 若已經過咗一個完整間隔，順手補一次即時 ETA。
+        vm.onForeground()
+        renderAutoRefreshStatus()
+    }
+
+    override fun onPause() {
+        // 唔做背景靜默輪詢：離開 App 即刻停，返嚟 onResume 先重啟。
+        vm.onBackground()
+        super.onPause()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -277,23 +292,37 @@ class MainActivity : AppCompatActivity() {
         NavGlass.apply(this, bottomTabs)
     }
 
+    /**
+     * Home nearby-route card -> APP1933 route-detail screen (NO map).
+     * The search tab's own result rows still use the in-tab stop sequence.
+     */
     private fun openCard(card: RouteCard) {
-        inputBuffer.clear()
-        inputBuffer.append(card.route)
-        updateRouteInput()
-        routeEdit.setText(card.route)
-        companySpinner.setSelection(companyPosition(card.company))
-        vm.loadStops(card.route, card.company)
-        selectTab(2)
-        showSequence()
+        startActivity(Intent(this, RouteDetailActivity::class.java).apply {
+            putExtra(RouteDetailActivity.EXTRA_ROUTE, card.route)
+            putExtra(RouteDetailActivity.EXTRA_COMPANY, card.company)
+            putExtra(RouteDetailActivity.EXTRA_STOP_ID, card.stopId)
+            putExtra(RouteDetailActivity.EXTRA_STOP_NAME, card.stopName)
+            putExtra(RouteDetailActivity.EXTRA_DEST, card.dest)
+        })
     }
 
-    /** Tapping "1 往 尖沙咀碼頭" opens only that direction's stop sequence. */
+    /**
+     * Tapping "12 往 海麗邨 ›" opens the SAME full-screen route detail as a
+     * Home nearby card (red header + stop timeline + next three arrivals,
+     * NO map). The tapped row's direction is carried across so the timeline
+     * shows that bound first. The in-tab stop sequence is still reachable via
+     * the "← 返回路線搜尋" / direction controls on the detail screen.
+     */
     private fun openResult(result: RouteSearch.Result) {
-        routeEdit.setText(result.route)
-        companySpinner.setSelection(companyPosition(result.company))
-        vm.loadStops(result.route, result.company, result.bound)
-        showSequence()
+        startActivity(Intent(this, RouteDetailActivity::class.java).apply {
+            putExtra(RouteDetailActivity.EXTRA_ROUTE, result.route)
+            putExtra(RouteDetailActivity.EXTRA_COMPANY, result.company)
+            putExtra(RouteDetailActivity.EXTRA_DEST,
+                result.dest.removePrefix("往 ").trim())
+            putExtra(RouteDetailActivity.EXTRA_BOUND, result.bound)
+            putExtra(RouteDetailActivity.EXTRA_STOP_ID, "")
+            putExtra(RouteDetailActivity.EXTRA_STOP_NAME, "")
+        })
     }
 
     // ------------------------------------------------------- APP1933 搜尋鍵盤
@@ -552,5 +581,11 @@ class MainActivity : AppCompatActivity() {
         tvFavEmpty.visibility = if (favs.isEmpty()) View.VISIBLE else View.GONE
 
         swipe.isRefreshing = state.loading
+        renderAutoRefreshStatus()
+    }
+
+    /** Shared by render() and onResume() so the line never goes stale. */
+    private fun renderAutoRefreshStatus() {
+        tvAutoRefreshStatus.text = EtaRefreshPrefs.statusLabel(this)
     }
 }

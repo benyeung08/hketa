@@ -41,6 +41,12 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swNavGlass: SwitchCompat
     private lateinit var tvNavGlassStatus: TextView
 
+    // --- ⟳ ETA 自動刷新 -------------------------------------------------------
+    private lateinit var swEtaAutoRefresh: SwitchCompat
+    private lateinit var etaRefreshPickerRoot: View
+    private lateinit var etaRefreshPickerValue: TextView
+    private lateinit var tvEtaRefreshStatus: TextView
+
     // --- 定位附近路線嘅距離（對照截圖「50 ▼」）------------------------------
     private lateinit var radiusPickerRoot: View
     private lateinit var radiusPickerValue: TextView
@@ -112,6 +118,7 @@ class SettingsActivity : AppCompatActivity() {
 
         bindViews()
         setupNavGlassSection()
+        setupEtaRefreshSection()
         setupRadiusSection()
         setupCatalogueSection()
         setupAppUpdateSection()
@@ -129,6 +136,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         // 由系統設定改外觀返嚟：狀態文字同步
         renderNavGlassStatus()
+        renderEtaRefreshSection()
         // An automatic background update may have finished while this screen was paused.
         if (!RouteDataStore.refreshBusy()) render(RouteDataStore.meta())
     }
@@ -136,6 +144,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindViews() {
         swNavGlass = findViewById(R.id.swNavGlass)
         tvNavGlassStatus = findViewById(R.id.tvNavGlassStatus)
+
+        swEtaAutoRefresh = findViewById(R.id.swEtaAutoRefresh)
+        etaRefreshPickerRoot = findViewById(R.id.etaRefreshPickerRoot)
+        etaRefreshPickerValue = findViewById(R.id.etaRefreshPickerValue)
+        tvEtaRefreshStatus = findViewById(R.id.tvEtaRefreshStatus)
 
         radiusPickerRoot = findViewById(R.id.radiusPickerRoot)
         radiusPickerValue = findViewById(R.id.radiusPickerValue)
@@ -186,6 +199,56 @@ class SettingsActivity : AppCompatActivity() {
         tvNavGlassStatus.text = getString(
             R.string.nav_glass_status, NavGlass.status(this)
         )
+    }
+
+    // -------------------------------------------------- ⟳ ETA 自動刷新
+
+    private fun setupEtaRefreshSection() {
+        swEtaAutoRefresh.isChecked = EtaRefreshPrefs.enabled(this)
+        swEtaAutoRefresh.setOnCheckedChangeListener { _, on ->
+            EtaRefreshPrefs.setEnabled(this, on)
+            renderEtaRefreshSection()
+        }
+        etaRefreshPickerRoot.setOnClickListener {
+            if (!EtaRefreshPrefs.enabled(this)) {
+                Toast.makeText(
+                    this, R.string.eta_refresh_status_off, Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+            val labels = resources.getStringArray(
+                R.array.eta_refresh_interval_labels
+            )
+            val current = EtaRefreshPrefs.intervalIndex(this)
+            AlertDialog.Builder(this)
+                .setTitle(R.string.eta_refresh_interval_title)
+                .setSingleChoiceItems(labels, current) { dialog, which ->
+                    EtaRefreshPrefs.setIntervalMs(
+                        this, EtaRefreshPrefs.INTERVALS_MS[which]
+                    )
+                    renderEtaRefreshSection()
+                    dialog.dismiss()
+                    Toast.makeText(
+                        this,
+                        getString(
+                            R.string.eta_refresh_settings_on, labels[which]
+                        ),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .setNegativeButton(R.string.pill_cancel, null)
+                .show()
+        }
+        renderEtaRefreshSection()
+    }
+
+    private fun renderEtaRefreshSection() {
+        val on = EtaRefreshPrefs.enabled(this)
+        etaRefreshPickerValue.text =
+            (EtaRefreshPrefs.selectedIntervalMs(this) / 1000L).toString()
+        etaRefreshPickerRoot.alpha = if (on) 1f else 0.45f
+        etaRefreshPickerRoot.isEnabled = on
+        tvEtaRefreshStatus.text = EtaRefreshPrefs.settingsLabel(this)
     }
 
     // -------------------------------------------------- 定位附近路線嘅距離

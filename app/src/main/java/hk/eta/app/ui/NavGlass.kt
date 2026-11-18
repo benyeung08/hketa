@@ -29,7 +29,21 @@ object NavGlass {
 
     private const val BLUR_RADIUS_DAY = 18
     private const val BLUR_RADIUS_NIGHT = 26
-    private const val ELEVATION_DP = 10f
+    private const val ELEVATION_DP = 6f
+
+    // NAV_GEOMETRY: smaller, centred, bottom-hugging capsule. Phones keep a
+    // wider pill (6% inset per side) so four labels still fit; tablets and
+    // landscape screens switch to 18% per side, matching the narrow centred
+    // capsule in the reference instead of stretching to a full-width bar.
+    // Both are clamped 16..256dp. Height stays 56dp.
+    private const val BAR_HEIGHT_DP = 56
+    private const val BAR_TOP_DP = 4
+    private const val BAR_BOTTOM_DP = 8
+    private const val SIDE_MIN_DP = 16f
+    private const val SIDE_MAX_DP = 256f
+    private const val SIDE_RATIO_PHONE = 0.06f
+    private const val SIDE_RATIO_WIDE = 0.18f
+    private const val WIDE_BREAKPOINT_DP = 600f
 
     private fun isNight(context: Context): Boolean =
         (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -63,8 +77,36 @@ object NavGlass {
         }
     }
 
-    /** Applies the glass drawable, elevation and window blur to the bar. */
+    /**
+     * Size + position of the bar, re-computed on every apply() so rotating
+     * the device (or using a tablet) immediately re-centres the capsule.
+     * Called from MainActivity.onCreate / onResume / onConfigurationChanged.
+     */
+    fun geometry(activity: Activity, bar: View) {
+        val dm = activity.resources.displayMetrics
+        val density = dm.density
+        val widthDp = dm.widthPixels / density
+        val ratio = if (widthDp >= WIDE_BREAKPOINT_DP) {
+            SIDE_RATIO_WIDE
+        } else {
+            SIDE_RATIO_PHONE
+        }
+        val sidePx = (dm.widthPixels * ratio)
+            .coerceIn(SIDE_MIN_DP * density, SIDE_MAX_DP * density).toInt()
+        val lp = bar.layoutParams as? android.widget.LinearLayout.LayoutParams
+            ?: return
+        lp.height = (BAR_HEIGHT_DP * density).toInt()
+        lp.topMargin = (BAR_TOP_DP * density).toInt()
+        lp.bottomMargin = (BAR_BOTTOM_DP * density).toInt()
+        lp.marginStart = sidePx
+        lp.marginEnd = sidePx
+        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
+        bar.layoutParams = lp
+    }
+
+    /** Applies geometry, glass drawable, elevation and window blur to the bar. */
     fun apply(activity: Activity, bar: View) {
+        geometry(activity, bar)
         val follow = NavGlassPrefs.followSystem(activity)
         val night = follow && isNight(activity)
         val contrast = follow && highContrast(activity)
@@ -83,7 +125,10 @@ object NavGlass {
         backdropBlur(activity, !reduced && !contrast, night)
     }
 
-    /** Selected tab keeps a frosted pill instead of painting an opaque colour. */
+    /**
+     * NAV_GEOMETRY: the selected tab is ONE darker inner pill with a blue
+     * label (as in the reference), not a frosted highlight over the glass.
+     */
     fun selectTab(context: Context, tab: View, selected: Boolean) {
         if (selected) {
             tab.setBackgroundResource(R.drawable.bg_tab_glass_selected)
@@ -92,7 +137,7 @@ object NavGlass {
         }
         val color = ContextCompat.getColor(
             context,
-            if (selected) R.color.glass_tab_text else R.color.glass_tab_muted
+            if (selected) R.color.nav_tab_active else R.color.nav_tab_muted
         )
         (tab as? android.widget.TextView)?.setTextColor(color)
     }

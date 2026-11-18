@@ -18,6 +18,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -176,20 +177,22 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     fun searchRoutes(input: String) {
         val q = input.trim()
         searchJob?.cancel()
-        if (q.isEmpty()) {
-            patch { copy(searchResults = emptyList(), searchMessage = "") }
-            return
-        }
         searchJob = viewModelScope.launch {
             delay(180L)
-            val list = withContext(Dispatchers.IO) { RouteSearch.search(q) }
+            // Empty input is NOT a blank screen: the search home PRELOADS
+            // official catalogue rows so "12 往 海麗邨 ›" is visible on entry.
+            val list = withContext(Dispatchers.IO) {
+                if (q.isEmpty()) RouteSearch.preload() else RouteSearch.search(q)
+            }
             patch {
                 copy(
                     searchResults = list,
-                    searchMessage = if (list.isEmpty()) {
-                        getApplication<Application>().getString(R.string.search_no_result, q)
-                    } else {
-                        ""
+                    searchMessage = when {
+                        list.isEmpty() && q.isEmpty() ->
+                            getApplication<Application>().getString(R.string.search_preload_empty)
+                        list.isEmpty() ->
+                            getApplication<Application>().getString(R.string.search_no_result, q)
+                        else -> ""
                     }
                 )
             }
@@ -275,7 +278,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 selection = null
             )
         }
-        refreshJob?.cancel()
+        startAutoRefresh()
         viewModelScope.launch {
             try {
                 val fix = LocationHelper.current(getApplication<Application>())
@@ -322,25 +325,14 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 selection = null
             )
         }
-        refreshJob?.cancel()
+        startAutoRefresh()
         viewModelScope.launch {
             try {
                 val fix = LocationHelper.current(getApplication<Application>())
                 val stops = withContext(Dispatchers.IO) {
                     repo.nearbyStops(fix.lat, fix.lng, radiusMeters, 6)
                 }
-                val pairs = stops.mapIndexed { index, s ->
-                    safeEta(s, index) { repo.etaFor(s) }
-                }.awaitAll()
-                val cards = ArrayList<RouteCard>()
-                for (p in pairs) {
-                    val s = p.first
-                    cards.addAll(
-                        App1933Format.cardsFrom(
-                            p.second, s.stopName, s.stopId, s.note, p.third
-                        )
-                    )
-                }
+                val cards = fetchCards(stops)
                 patch {
                     copy(
                         loading = false,
@@ -354,6 +346,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     )
                 }
+                EtaRefreshPrefs.markAutoRefreshed(getApplication())
             } catch (e: Exception) {
                 patch { copy(loading = false, message = "附近路線載入失敗：${e.message}") }
             }
@@ -442,23 +435,97 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     )
                 }
+                EtaRefreshPrefs.markAutoRefreshed(getApplication())
             } catch (e: Exception) {
                 patch { copy(loading = false, message = "更新失敗：${e.message}") }
             }
         }
     }
 
+    /**
+     * AUTO_REFRESH_ETA — one foreground loop for EVERY visible ETA surface:
+     *   - a selected stop / favourite / route-detail boarding stop -> refresh()
+     *   - Home nearby-route cards -> re-query the CACHED stop list's ETA
+     *     (no re-location, no re-download of the stop catalogue)
+     *   - nothing loaded or location not granted -> no API call at all
+     * The interval and on/off switch come from 應用程式設置, never hard-coded.
+     */
     private fun startAutoRefresh() {
         refreshJob?.cancel()
+        val interval = EtaRefreshPrefs.intervalMs(getApplication())
+        if (interval <= 0L) return
         refreshJob = viewModelScope.launch {
             while (isActive) {
-                delay(30_000L)
-                if (_state.value?.selection != null) {
-                    refresh()
-                }
+                delay(interval)
+                refreshVisibleEta()
             }
         }
     }
+
+    private fun refreshVisibleEta() {
+        val state = _state.value ?: return
+        when {
+            state.selection != null -> refresh()
+            state.cards.isNotEmpty() && state.stops.isNotEmpty() ->
+                refreshNearbyCards(state.stops)
+            else -> return   // 未授權／未載入：唔打 API
+        }
+    }
+
+    /** Re-query ETA for the SAME cached stops; does NOT call LocationHelper. */
+    private fun refreshNearbyCards(stops: List<StopOption>) {
+        viewModelScope.launch {
+            try {
+                val cards = fetchCards(stops)
+                val app = getApplication<Application>()
+                patch {
+                    copy(
+                        cards = cards.sortedBy { it.rank },
+                        updatedAt = System.currentTimeMillis(),
+                        message = (if (cards.isEmpty()) {
+                            "暫無可用班次"
+                        } else {
+                            "${cards.size} 條路線 · 每條顯示未來三班次"
+                        }) + app.getString(R.string.eta_refresh_nearby_tag)
+                    )
+                }
+                EtaRefreshPrefs.markAutoRefreshed(app)
+            } catch (e: Exception) {
+                patch { copy(message = "ETA 自動更新失敗：${e.message}") }
+            }
+        }
+    }
+
+    /** Called from Activity.onResume(): re-read settings and restart the loop. */
+    fun onForeground() {
+        startAutoRefresh()
+        if (EtaRefreshPrefs.dueForForegroundRefresh(getApplication())) {
+            refreshVisibleEta()
+        }
+    }
+
+    /** Called from Activity.onPause(): no background polling, ever. */
+    fun onBackground() {
+        refreshJob?.cancel()
+    }
+
+    /** Shared by the initial nearby load and every automatic ETA refresh. */
+    private suspend fun fetchCards(stops: List<StopOption>): List<RouteCard> =
+        coroutineScope {
+            val pairs = stops.take(6).mapIndexed { index, s ->
+                safeEta(s, index) { repo.etaFor(s) }
+            }.awaitAll()
+            val cards = ArrayList<RouteCard>()
+            for (p in pairs) {
+                val s = p.first
+                cards.addAll(
+                    App1933Format.cardsFrom(
+                        p.second, s.stopName, s.stopId, s.note, p.third
+                    )
+                )
+            }
+            cards
+        }
 
     private fun patch(block: UiState.() -> UiState) {
         val current = _state.value ?: UiState()
@@ -466,7 +533,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        refreshJob?.cancel()
+        onBackground()
         searchJob?.cancel()
         super.onCleared()
     }
