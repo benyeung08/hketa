@@ -123,7 +123,8 @@
     <string name="search_title">路線搜尋</string>
     <string name="search_title_bar">搜尋</string>
     <string name="search_input_hint">輸入路線號碼</string>
-    <string name="search_empty">輸入路線號碼，即時列出各營運商嘅路線與方向。</string>
+    <string name="search_empty">已預先載入官方路線目錄 · 輸入路線號碼可即時篩選</string>
+    <string name="search_preload_empty">正在預先載入官方路線目錄；若一直空白，請到「應用程式設置 → 線路資料更新」按立即更新。</string>
     <string name="search_no_result">找不到路線「%1$s」。可試其他號碼，或到設定更新線路資料。</string>
     <string name="back_to_search">← 返回路線搜尋</string>
     <string name="direction_switch">⇄ 轉換路線方向</string>
@@ -143,7 +144,7 @@
     <!-- 懸浮液態玻璃導航欄：跟隨系統外觀 -->
     <string name="nav_glass_section">◌ 導航欄外觀（懸浮液態玻璃）</string>
     <string name="nav_glass_follow">跟隨系統外觀</string>
-    <string name="nav_glass_hint">預設跟隨系統：深色模式轉深玻璃、開啟高對比文字轉實色描邊、關閉動畫（減少動態效果）收起陰影與模糊；系統設定改變後返到主頁即時更新。關掉呢個開關會固定用標準玻璃。</string>
+    <string name="nav_glass_hint">導航欄係居中懸浮嘅深灰黑藥丸：高 56dp、全圓角、貼底 8dp；左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間，大屏都保持窄身；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色描邊、關閉動畫（減少動態效果）收起陰影與模糊；系統設定改變或旋轉螢幕後即時更新。關掉呢個開關會固定用標準玻璃，幾何不變。</string>
     <string name="nav_glass_status">目前：%1$s</string>
     <string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
     <string name="nav_glass_state_fixed">固定標準玻璃</string>
@@ -151,6 +152,47 @@
     <string name="nav_glass_state_contrast">高對比實色</string>
     <string name="nav_glass_state_reduced">減少動態（無陰影／模糊）</string>
     <string name="nav_glass_state_day">日間標準玻璃</string>
+
+    <!-- 主頁附近路線卡片 → 路線詳情（無地圖版） -->
+    <string name="detail_title">路線詳情</string>
+    <string name="detail_no_map_label">路線示意 · 不載入地圖</string>
+    <string name="detail_footer_honest">車資與預計落車時間：公開 ETA 數據唔包含呢兩項，故顯示「—」，唔會捏造 $5.6／15:31 呢類數字；三班次同站名全部嚟自官方即時 API。</string>
+    <string name="detail_fare_na">車資 —</string>
+    <string name="detail_alight">落車</string>
+    <string name="detail_na">—</string>
+    <string name="detail_no_eta">暫無到站班次（可能非服務時間、臨時改道或 API 暫停）</string>
+    <string name="detail_chip_board">上車</string>
+    <string name="detail_chip_nearby">鄰近</string>
+    <string name="detail_chip_fav">收藏</string>
+    <string name="detail_chip_more">更多</string>
+    <string name="detail_action_trips_cd">刷新未來三班次</string>
+    <string name="detail_action_fav_cd">收藏目前車站</string>
+    <string name="detail_action_direction_cd">轉換路線方向</string>
+    <string name="detail_fav_ok">已收藏 %1$s</string>
+    <string name="detail_fav_need">請先點選一個車站</string>
+    <string name="detail_trips_refreshed">已刷新未來三班次</string>
+    <string name="detail_no_stops">呢條路線暫時載唔到沿途車站，可返設定更新線路資料。</string>
+
+    <!-- ⟳ ETA 自動刷新（前景輪詢；設定頁開關 + 間隔） -->
+    <string name="eta_refresh_section">⟳ ETA 自動刷新</string>
+    <string name="eta_refresh_switch">自動刷新到站時間</string>
+    <string name="eta_refresh_unit">秒</string>
+    <string name="eta_refresh_cd">選擇 ETA 自動刷新間隔</string>
+    <string name="eta_refresh_hint">主頁附近路線卡片、已選車站、收藏同路線詳情頁嘅到站時間，會喺前景按呢個間隔自動向官方 API 重新查詢；唔會重新定位、唔會喺背景靜默輪詢。關掉之後仍可下拉頁面手動刷新。改完返到主頁即時生效。</string>
+    <string name="eta_refresh_interval_title">選擇自動刷新間隔</string>
+    <string name="eta_refresh_status_on">⟳ ETA 自動更新 · 每 %1$s · %2$s 已更新</string>
+    <string name="eta_refresh_status_never">⟳ ETA 自動更新 · 每 %1$s · 待首次更新</string>
+    <string name="eta_refresh_status_off">⟳ ETA 自動更新已關閉 · 可下拉頁面手動刷新</string>
+    <string name="eta_refresh_settings_on">已啟用 · 每 %1$s</string>
+    <string name="eta_refresh_settings_off">已關閉</string>
+    <string name="eta_refresh_auto_tag">· 自動更新</string>
+    <string name="eta_refresh_nearby_tag">· 附近路線已自動更新</string>
+    <string-array name="eta_refresh_interval_labels">
+        <item>15 秒</item>
+        <item>30 秒</item>
+        <item>45 秒</item>
+        <item>60 秒</item>
+    </string-array>
     <string name="header_subtitle">九巴 · 龍運 · 城巴 · 嶼巴 · 綠小巴 · 港鐵 · 輕鐵 | 非官方 · 開放數據</string>
 
     <string-array name="update_interval_labels">

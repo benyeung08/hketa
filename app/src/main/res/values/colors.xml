@@ -34,4 +34,9 @@
     <color name="disclaimer_text">#9AA9BC</color>
     <color name="glass_tab_text">#FFFFFF</color>
     <color name="glass_tab_muted">#C3CEDA</color>
+    <!-- 對照截圖：選中藍字／圖示，未選中淺灰 -->
+    <color name="nav_tab_active">#4A9EFF</color>
+    <color name="nav_tab_muted">#A8B0BA</color>
+    <!-- 路線詳情頁三班次分鐘（對照截圖深藍） -->
+    <color name="detail_minutes">#1A4E8C</color>
 </resources>
