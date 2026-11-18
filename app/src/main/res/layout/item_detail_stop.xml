@@ -7,6 +7,14 @@
     │       29  分鐘 15:55 預定班次
     │       54  分鐘 16:20 預定班次
   Only the selected (上車) stop expands the three arrivals.
+
+  DETAIL_STOP_BLACK / DETAIL_ALL_BLACK: this row sits on a fixed WHITE
+  background. ALL text — stop names, fare, alight, minutes unit, clock and
+  tags — is now PURE BLACK (detail_stop_text / detail_aux_text are both
+  #000000). Neither colour flips to a near-white value in values-night, so
+  the whole list stays readable in dark mode too. Do NOT switch these back
+  to the generic theme text / muted colours. Blue detail_minutes numbers are
+  an intentional accent and stay blue.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/detailStopRoot"
@@ -29,7 +37,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/detail_alight"
-            android:textColor="@color/muted"
+            android:textColor="@color/detail_aux_text"
             android:textSize="9sp" />
 
         <TextView
@@ -38,7 +46,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="@string/detail_na"
-            android:textColor="@color/muted"
+            android:textColor="@color/detail_aux_text"
             android:textSize="10sp" />
 
         <View
@@ -68,7 +76,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="1. 海麗邨巴士總站 (SS667)"
-            android:textColor="@color/text"
+            android:textColor="@color/detail_stop_text"
             android:textSize="19sp" />
 
         <TextView
@@ -77,7 +85,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="@string/detail_fare_na"
-            android:textColor="@color/muted"
+            android:textColor="@color/detail_aux_text"
             android:textSize="12sp" />
 
         <!-- 三班次：只喺上車站展開 -->
@@ -111,7 +119,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/unit_minutes"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -119,7 +127,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="14dp"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -127,7 +135,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:textColor="@color/muted"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -152,7 +160,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/unit_minutes"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -160,7 +168,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="14dp"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -168,7 +176,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:textColor="@color/muted"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -193,7 +201,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/unit_minutes"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -201,7 +209,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="14dp"
-                    android:textColor="@color/text"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="14sp" />
 
                 <TextView
@@ -209,7 +217,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:textColor="@color/muted"
+                    android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -219,7 +227,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="6dp"
                 android:text="@string/detail_no_eta"
-                android:textColor="@color/muted"
+                android:textColor="@color/detail_aux_text"
                 android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>

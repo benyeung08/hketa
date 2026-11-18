@@ -12,6 +12,14 @@
   Honest placeholders: fare and predicted alighting time are NOT in the
   public ETA APIs, so they render as "—" with an explicit footer note
   instead of invented numbers like "$5.6" or "15:31".
+
+  DETAIL_STOP_BLACK / DETAIL_ALL_BLACK: the whole screen has a fixed WHITE
+  background, so stop names AND every auxiliary label (fare / alight / minutes
+  / clock / map label / footer) use PURE BLACK colours (detail_stop_text /
+  detail_aux_text) that do NOT flip to near-white in values-night. The footer
+  background is pinned pale for the same reason. The red header and the four
+  dark chips keep their white-on-red / white-on-dark text; the big minute
+  numbers keep their blue detail_minutes colour.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -114,7 +122,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/detail_no_map_label"
-            android:textColor="@color/muted"
+            android:textColor="@color/detail_aux_text"
             android:textSize="10sp" />
 
         <LinearLayout
@@ -152,7 +160,7 @@
             android:paddingEnd="14dp"
             android:paddingBottom="7dp"
             android:text="海麗邨巴士總站 (SS667)"
-            android:textColor="@color/text"
+            android:textColor="@color/detail_stop_text"
             android:textSize="15sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -239,17 +247,22 @@
             android:paddingBottom="8dp" />
     </LinearLayout>
 
+    <!-- DETAIL_ALL_BLACK: the footer used @color/surface, which turns #0F1622
+         (near-black) in values-night. With the text now PURE BLACK that would
+         be black-on-black, so the footer background is pinned to the same
+         pale #F4F7FB as the day theme. The whole screen is now consistent
+         light-background / black-text in every system appearance. -->
     <TextView
         android:id="@+id/tvDetailFooter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
+        android:background="#F4F7FB"
         android:paddingStart="14dp"
         android:paddingTop="8dp"
         android:paddingEnd="14dp"
         android:paddingBottom="8dp"
         android:text="@string/detail_footer_honest"
-        android:textColor="@color/muted"
+        android:textColor="@color/detail_aux_text"
         android:textSize="10sp" />
 
 </LinearLayout>
