@@ -34,6 +34,13 @@
             android:label="@string/settings_title"
             android:parentActivityName=".ui.MainActivity" />
 
+        <!-- Home nearby-route card -> APP1933 route detail, NO map view. -->
+        <activity
+            android:name=".ui.RouteDetailActivity"
+            android:exported="false"
+            android:label="@string/detail_title"
+            android:parentActivityName=".ui.MainActivity" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="hk.eta.app.fileprovider"
