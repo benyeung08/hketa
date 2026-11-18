@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Selected tab gets a frosted pill INSIDE the glass bar instead of an opaque
-  solid colour, so the liquid-glass translucency is never painted over.
+  NAV_GEOMETRY / SELECTED TAB: the reference screenshot shows ONE darker
+  inner pill (首頁) sitting inside the charcoal capsule, with a blue icon
+  and blue label. Radius 24dp = inner pill slightly rounder than its own
+  height, inset from the 28dp outer capsule. No white rim (would break
+  the dark-on-dark look).
 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#55FFFFFF" />
-    <corners android:radius="22dp" />
-    <stroke
-        android:width="1dp"
-        android:color="#66FFFFFF" />
+    <solid android:color="#FF141416" />
+    <corners android:radius="24dp" />
 </shape>

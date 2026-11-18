@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Night-mode variant: deeper glass, brighter rim. -->
+<!-- NAV_GEOMETRY / NIGHT: even deeper charcoal pill, same 28dp radius. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:angle="270"
-        android:centerColor="#DD0C1420"
-        android:endColor="#EE070B12"
-        android:startColor="#CC1C2A3A"
+        android:centerColor="#F51E1E21"
+        android:endColor="#FA101012"
+        android:startColor="#F02B2B2F"
         android:type="linear" />
-    <corners android:radius="30dp" />
+    <corners android:radius="28dp" />
     <stroke
         android:width="1dp"
-        android:color="#A6FFFFFF" />
+        android:color="#26FFFFFF" />
     <padding
         android:bottom="4dp"
         android:left="6dp"

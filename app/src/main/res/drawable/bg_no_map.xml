@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pale map-like paper used INSTEAD of Google Maps. It is a plain gradient
+  drawable: no map SDK, no tiles, no network request, no Google attribution.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:centerColor="#F3F1EA"
+        android:endColor="#E9EDF2"
+        android:startColor="#F7F6F1"
+        android:type="linear" />
+</shape>
