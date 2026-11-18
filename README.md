@@ -242,7 +242,8 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 | `tag 與 Gradle 版本唔對應` / `APK 內容與 Gradle 版本唔對應` | 正式版發布閘門擋低：先 bump `app/build.gradle.kts` 嘅 `versionCode`／`versionName`，push 後重新打 tag |
 | `Release is explicitly tied to the matching tag/version` | checker 曾硬要求 `RELEASE_NOTES_v1.0.0.md` 存在，但 workflow 本身有 fallback —— **已修正為選用**；只需覆蓋 `scripts/check_api_fields.py` 一個檔。若 log 見到 `缺以下 N 項字串`，先再覆蓋 `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` | 全黑改動未同步：由完整 zip 覆蓋兩個詳情 layout ＋ `values/` 同 `values-night/` 嘅 `colors.xml`（共 4 個檔；合併包一次過包齊） |
-| `Could not resolve` / `Read timed out` / 5xx | 直接 **Re-run jobs** |
+| `Received status code 429 ... Too Many Requests`（例如 `jsr305-3.0.2.pom`） | **Maven Central 限流，唔係 code 錯、唔係上傳唔完整**：`setup-java` 已開 Gradle 依賴快取，兩個 assemble step 自動重試 3 次（30s／60s 退避）；若 3 次都失敗，等幾分鐘再 **Re-run jobs**，唔使改任何檔 |
+| `Could not resolve` / `Read timed out` / 5xx | 同屬暫時性依賴下載失敗：直接 **Re-run jobs** |
 | 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
 失敗時會多一個 `Show real Gradle error` step（用 `::error::` 印出真正錯誤＋針對性建議）同 Artifact `hketa-gradle-logs`。tag build 另會跑 `Verify release version matches tag`，通過先至建立／更新對應版本嘅 Release，並上傳 `hketa-release-apk` Artifact。
@@ -510,7 +511,8 @@ The first CI step is a **self-contained preflight** (it needs no repo `.py` file
 | `tag 與 Gradle 版本唔對應` / `APK 內容與 Gradle 版本唔對應` (version mismatch) | The release gate stopped it: bump `versionCode` / `versionName` in `app/build.gradle.kts`, push, then re-tag |
 | `Release is explicitly tied to the matching tag/version` | The checker used to hard-require `RELEASE_NOTES_v1.0.0.md`, contradicting the workflow's own fallback — **now optional**; just overwrite `scripts/check_api_fields.py`. If the log shows `缺以下 N 項字串`, also overwrite `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` (stale all-black detail colours) | Overwrite the two route-detail layouts plus `colors.xml` in both `values/` and `values-night/` (4 files) from the full zip / merged pack |
-| `Could not resolve` / `Read timed out` / 5xx | Simply **Re-run jobs** |
+| `Received status code 429 ... Too Many Requests` (e.g. `jsr305-3.0.2.pom`) | **Maven Central rate-limit, NOT a code / upload / signing bug**: `setup-java` now caches Gradle dependencies and both assemble steps retry 3 times (30s / 60s backoff). If all 3 fail, wait a few minutes and **Re-run jobs** — no file changes needed |
+| `Could not resolve` / `Read timed out` / 5xx | Same class of transient dependency-download failure: simply **Re-run jobs** |
 | Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
 
 On failure, an extra `Show real Gradle error` step prints the real cause as `::error::` annotations with a targeted hint, and the full log is uploaded as the `hketa-gradle-logs` artifact. Tag builds additionally run `Verify release version matches tag`; only after it passes is the matching Release created / updated and the `hketa-release-apk` artifact uploaded.
