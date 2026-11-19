@@ -144,7 +144,7 @@
     <!-- 懸浮液態玻璃導航欄：跟隨系統外觀 -->
     <string name="nav_glass_section">◌ 導航欄外觀（懸浮液態玻璃）</string>
     <string name="nav_glass_follow">跟隨系統外觀</string>
-    <string name="nav_glass_hint">導航欄係真正浮喺內容上面嘅深灰黑藥丸：高 56dp、全圓角、水平置中；位置由貼底 8dp 嘅佔位列改為離底約 12%（48–160dp）嘅懸浮 overlay，內容會同時出現喺膠囊後面同下面。左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色＋白邊、關閉動畫收起陰影同模糊。各捲動頁加咗底部預留，最後一筆資料仍捲得到。</string>
+    <string name="nav_glass_hint" formatted="false">導航欄係真正浮喺內容上面嘅深灰黑藥丸：高 56dp、全圓角、水平置中；位置由貼底 8dp 嘅佔位列改為離底約 12%（48–160dp）嘅懸浮 overlay，內容會同時出現喺膠囊後面同下面。左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色＋白邊、關閉動畫收起陰影同模糊。各捲動頁加咗底部預留，最後一筆資料仍捲得到。</string>
     <string name="nav_glass_status">目前：%1$s</string>
     <string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
     <string name="nav_glass_state_fixed">固定標準玻璃</string>
