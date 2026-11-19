@@ -6,19 +6,13 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
-import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.JointRoutes
 import hk.eta.app.api.RouteSearch
 
-private fun cardOperatorLabel(company: String): String = when (company) {
-    EtaRepository.KMB -> "九巴 / 龍運"
-    EtaRepository.CTB -> "城巴"
-    EtaRepository.NLB -> "嶼巴"
-    EtaRepository.GMB -> "綠色小巴"
-    EtaRepository.MTR -> "港鐵重鐵"
-    EtaRepository.LRT -> "輕鐵"
-    EtaRepository.MTRB -> "港鐵接駁巴士"
-    else -> company
-}
+// JOINT_KMB_CTB: one central label so card meta, search rows and the detail
+// screen all show the SAME "城巴/九巴" for a jointly-operated route.
+private fun cardOperatorLabel(company: String): String =
+    App1933Format.companyLabel(company)
 
 /** APP1933 home page: one row per route+stop, up to three arrivals. */
 class RouteCardAdapter(
@@ -43,7 +37,14 @@ class RouteCardAdapter(
         holder.route.text = card.route
         holder.dest.text = if (card.dest.isEmpty()) "往總站" else "往 " + card.dest
         holder.stop.text = App1933Format.stopLabel(card.stopName, card.stopId)
-        holder.meta.text = cardOperatorLabel(card.company) +
+        // CIRCULAR_DISPLAY: 九巴循環線 / 城巴循環線 badge, so the two
+        // operator ways are visible on the home card as well.
+        val style = if (card.circular && card.style.isNotEmpty()) {
+            " · " + card.style
+        } else {
+            ""
+        }
+        holder.meta.text = cardOperatorLabel(card.company) + style +
             if (card.distanceNote.isEmpty()) "" else " · " + card.distanceNote
 
         val chips = arrayOf(holder.trip1, holder.trip2, holder.trip3)
@@ -53,8 +54,10 @@ class RouteCardAdapter(
                 val numeric = t.label.isNotEmpty() && t.label.all { it.isDigit() }
                 val base = if (numeric) t.label + " 分鐘" else t.label
                 var text = if (t.tag.isEmpty()) base else base + " · " + t.tag
-                if (t.operator.isNotEmpty()) {
-                    text = text + " · " + cardOperatorLabel(t.operator)
+                // JOINT_KMB_CTB: "該班次：城巴" / "該班次：九巴" on joint routes.
+                val tripOp = App1933Format.tripOperatorText(t)
+                if (tripOp.isNotEmpty()) {
+                    text = text + " · " + tripOp
                 }
                 chips[i].text = text
                 chips[i].visibility = View.VISIBLE
@@ -163,8 +166,15 @@ class RouteResultAdapter(
         val item = items[position]
         holder.route.text = item.route
         holder.dest.text = item.dest
-        holder.note.text = item.note
-        holder.note.visibility = if (item.note.isEmpty()) View.GONE else View.VISIBLE
+        // JOINT_KMB_CTB: the joint label must never disappear even if the
+        // catalogue row has no attribution note of its own.
+        val note = if (item.joint && item.note.isEmpty()) {
+            JointRoutes.JOINT_LABEL
+        } else {
+            item.note
+        }
+        holder.note.text = note
+        holder.note.visibility = if (note.isEmpty()) View.GONE else View.VISIBLE
         holder.root.setOnClickListener { onClick(item) }
     }
 

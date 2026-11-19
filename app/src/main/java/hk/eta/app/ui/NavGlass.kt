@@ -31,11 +31,10 @@ object NavGlass {
     private const val BLUR_RADIUS_NIGHT = 26
     private const val ELEVATION_DP = 6f
 
-    // NAV_GEOMETRY: smaller, centred, bottom-hugging capsule. Phones keep a
-    // wider pill (6% inset per side) so four labels still fit; tablets and
-    // landscape screens switch to 18% per side, matching the narrow centred
-    // capsule in the reference instead of stretching to a full-width bar.
-    // Both are clamped 16..256dp. Height stays 56dp.
+    // NAV_GEOMETRY: smaller, centred capsule. Phones keep a wider pill (6%
+    // inset per side) so four labels still fit; tablets and landscape screens
+    // switch to 18% per side, matching the narrow centred capsule. Both are
+    // clamped 16..256dp. Height stays 56dp.
     private const val BAR_HEIGHT_DP = 56
     private const val BAR_TOP_DP = 4
     private const val BAR_BOTTOM_DP = 8
@@ -44,6 +43,16 @@ object NavGlass {
     private const val SIDE_RATIO_PHONE = 0.06f
     private const val SIDE_RATIO_WIDE = 0.18f
     private const val WIDE_BREAKPOINT_DP = 600f
+
+    // NAV_OVERLAY_POSITION: the bar is NO LONGER an occupying bottom row
+    // pinned 8dp from the edge. It is a real FrameLayout overlay, lifted off
+    // the bottom so content is visible behind AND below it (reference: the
+    // blue install buttons show through, and the next app row sits below).
+    // Bottom margin = 12% of screen height, clamped 48..160dp.
+    private const val BAR_BOTTOM_RATIO = 0.12f
+    private const val BAR_BOTTOM_MIN_DP = 48f
+    private const val BAR_BOTTOM_MAX_DP = 160f
+    private const val BAR_BOTTOM_DEFAULT_DP = 96
 
     private fun isNight(context: Context): Boolean =
         (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -77,15 +86,23 @@ object NavGlass {
         }
     }
 
+    /** Pure, offline-testable: lifted bottom margin in dp for a height in dp. */
+    fun bottomMarginDp(heightDp: Float): Float =
+        (heightDp * BAR_BOTTOM_RATIO)
+            .coerceIn(BAR_BOTTOM_MIN_DP, BAR_BOTTOM_MAX_DP)
+
     /**
      * Size + position of the bar, re-computed on every apply() so rotating
      * the device (or using a tablet) immediately re-centres the capsule.
-     * Called from MainActivity.onCreate / onResume / onConfigurationChanged.
+     * NAV_OVERLAY_POSITION: the bar now uses FrameLayout.LayoutParams as a
+     * true overlay (gravity BOTTOM|CENTER_HORIZONTAL) with a lifted bottom
+     * margin; a legacy LinearLayout parent still works with the old 8dp.
      */
     fun geometry(activity: Activity, bar: View) {
         val dm = activity.resources.displayMetrics
         val density = dm.density
         val widthDp = dm.widthPixels / density
+        val heightDp = dm.heightPixels / density
         val ratio = if (widthDp >= WIDE_BREAKPOINT_DP) {
             SIDE_RATIO_WIDE
         } else {
@@ -93,15 +110,32 @@ object NavGlass {
         }
         val sidePx = (dm.widthPixels * ratio)
             .coerceIn(SIDE_MIN_DP * density, SIDE_MAX_DP * density).toInt()
-        val lp = bar.layoutParams as? android.widget.LinearLayout.LayoutParams
-            ?: return
-        lp.height = (BAR_HEIGHT_DP * density).toInt()
-        lp.topMargin = (BAR_TOP_DP * density).toInt()
-        lp.bottomMargin = (BAR_BOTTOM_DP * density).toInt()
-        lp.marginStart = sidePx
-        lp.marginEnd = sidePx
-        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
-        bar.layoutParams = lp
+        val bottomPx = (heightDp * BAR_BOTTOM_RATIO)
+            .coerceIn(BAR_BOTTOM_MIN_DP, BAR_BOTTOM_MAX_DP)
+        val heightPx = (BAR_HEIGHT_DP * density).toInt()
+        val topPx = (BAR_TOP_DP * density).toInt()
+        when (val lp = bar.layoutParams) {
+            is android.widget.FrameLayout.LayoutParams -> {
+                lp.height = heightPx
+                lp.topMargin = topPx
+                lp.bottomMargin = (bottomPx * density).toInt()
+                lp.marginStart = sidePx
+                lp.marginEnd = sidePx
+                lp.gravity = android.view.Gravity.BOTTOM or
+                        android.view.Gravity.CENTER_HORIZONTAL
+                bar.layoutParams = lp
+            }
+            is android.widget.LinearLayout.LayoutParams -> {
+                lp.height = heightPx
+                lp.topMargin = topPx
+                lp.bottomMargin = (BAR_BOTTOM_DP * density).toInt()
+                lp.marginStart = sidePx
+                lp.marginEnd = sidePx
+                lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                bar.layoutParams = lp
+            }
+            else -> return
+        }
     }
 
     /** Applies geometry, glass drawable, elevation and window blur to the bar. */

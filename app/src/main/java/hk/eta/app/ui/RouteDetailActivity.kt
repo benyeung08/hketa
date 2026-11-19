@@ -13,6 +13,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
 import hk.eta.app.api.EtaModels.StopOption
+import hk.eta.app.api.CircularRoutes
+import hk.eta.app.api.JointRoutes
 
 /**
  * ROUTE_DETAIL_NO_MAP — opened when a nearby-route card on the Home page is
@@ -45,6 +47,7 @@ class RouteDetailActivity : AppCompatActivity() {
     private lateinit var tvTitle: TextView
     private lateinit var tvBubble: TextView
     private lateinit var tvFooter: TextView
+    private lateinit var tvNoMapLabel: TextView
 
     private var route = ""
     private var company = ""
@@ -55,6 +58,8 @@ class RouteDetailActivity : AppCompatActivity() {
     private var selectedId = ""
     private var autoSelected = false
     private var emptyNotified = false
+    private var circular = false
+    private var auditText = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,8 +76,21 @@ class RouteDetailActivity : AppCompatActivity() {
         tvTitle = findViewById(R.id.tvDetailTitle)
         tvBubble = findViewById(R.id.tvStopBubble)
         tvFooter = findViewById(R.id.tvDetailFooter)
+        tvNoMapLabel = findViewById(R.id.tvNoMapLabel)
+        // CIRCULAR_ROUTES: recognised from the OFFICIAL destination suffix.
+        circular = CircularRoutes.isCircularDest(dest)
+                && CircularRoutes.supports(company)
         tvTitle.text = buildTitle()
         tvBubble.text = App1933Format.stopLabel(stopName, stopId).ifEmpty { route }
+        // CIRCULAR_DISPLAY / JOINT_KMB_CTB: the caption names the exact way.
+        tvNoMapLabel.text = when {
+            circular -> getString(R.string.detail_no_map_label) +
+                    " · " + CircularRoutes.styleLabel(company) +
+                    " · " + CircularRoutes.displayBadge(company, dest)
+            JointRoutes.isJointCompany(company) ->
+                    getString(R.string.detail_no_map_label) + " · " + JointRoutes.JOINT_LABEL
+            else -> getString(R.string.detail_no_map_label)
+        }
 
         vm = ViewModelProvider(this)[EtaViewModel::class.java]
         adapter = DetailStopAdapter { stop -> boardAt(stop) }
@@ -108,12 +126,24 @@ class RouteDetailActivity : AppCompatActivity() {
 
     private fun renderFooter() {
         tvFooter.text = getString(R.string.detail_footer_honest) + "\n" +
-                EtaRefreshPrefs.statusLabel(this)
+                EtaRefreshPrefs.statusLabel(this) +
+                if (auditText.isEmpty()) "" else "\n" + auditText
     }
 
-    /** "12 往 尖沙咀東（麼地道）(YT927)" — same order as the screenshot. */
+    /**
+     * "12 往 尖沙咀東（麼地道）(YT927)" normally.
+     * CIRCULAR_DISPLAY: KMB shows "213X 往 尖沙咀(循環線) (KT123)" the
+     * App1933 way; Citybus shows "26 勵德邨 - 荷李活道(循環線) (002891)"
+     * the Citybus way. The suffix always comes from the official dest.
+     */
     private fun buildTitle(): String {
-        val head = if (dest.isNotEmpty()) "$route 往 $dest" else route
+        val head = if (circular && dest.isNotEmpty()) {
+            CircularRoutes.displayTitle(company, route, dest)
+        } else if (dest.isNotEmpty()) {
+            "$route 往 $dest"
+        } else {
+            route
+        }
         return if (stopId.isNotEmpty()) "$head ($stopId)" else head
     }
 
@@ -165,7 +195,14 @@ class RouteDetailActivity : AppCompatActivity() {
         } else {
             state.stops
         }
-        val cards = App1933Format.cardsFrom(state.etas, stopName, selectedId, "")
+        // CIRCULAR_NAME_CHECK: show the honest stop-name audit on this line.
+        if (circular && state.stopAudit.isNotEmpty()) {
+            auditText = state.stopAudit
+        }
+        renderFooter()
+        val cards = App1933Format.cardsFrom(
+            state.etas, stopName, selectedId, "", circularHint = circular
+        )
         val trips = (cards.firstOrNull { it.route == route } ?: cards.firstOrNull())
             ?.trips ?: emptyList()
 
@@ -267,8 +304,10 @@ class DetailStopAdapter(
                         holder.rows[i].visibility = View.VISIBLE
                         holder.mins[i].text = trip.label
                         holder.clocks[i].text = trip.clock.removeSuffix(" HKT")
-                        holder.tags[i].text = listOf(trip.tag, trip.operator)
-                            .filter { it.isNotEmpty() }.joinToString(" ")
+                        // JOINT_KMB_CTB: "該班次：城巴" / "該班次：九巴"
+                        holder.tags[i].text = listOf(
+                            trip.tag, App1933Format.tripOperatorText(trip)
+                        ).filter { it.isNotEmpty() }.joinToString(" ")
                     } else {
                         holder.rows[i].visibility = View.GONE
                     }

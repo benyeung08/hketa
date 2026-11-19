@@ -10,7 +10,9 @@ import hk.eta.app.R
 import hk.eta.app.api.EtaModels.EtaItem
 import hk.eta.app.api.EtaModels.StopOption
 import hk.eta.app.api.AppUpdate
+import hk.eta.app.api.CircularRoutes
 import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.JointRoutes
 import hk.eta.app.api.RouteDataStore
 import hk.eta.app.api.RouteSearch
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +42,8 @@ data class UiState(
     val selection: StopOption? = null,
     val loading: Boolean = false,
     val message: String = "輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。",
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    val stopAudit: String = ""   // CIRCULAR_NAME_CHECK summary for the detail page
 )
 
 /** Kotlin layer: concurrency, 30-second polling and UI state. */
@@ -232,18 +235,47 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             try {
-                val targets = if (company == EtaRepository.AUTO) {
-                    EtaRepository.OPERATORS.toList()
-                } else {
-                    listOf(company)
+                val targets = when {
+                    company == EtaRepository.AUTO -> EtaRepository.OPERATORS.toList()
+                    // JOINT_KMB_CTB: a 城巴/九巴 route queries BOTH bus
+                    // operators, but never drags in the other 5 modes.
+                    JointRoutes.isJointCompany(company) ->
+                        listOf(EtaRepository.KMB, EtaRepository.CTB)
+                    else -> listOf(company)
                 }
-                val result = withContext(Dispatchers.IO) {
+                val raw = withContext(Dispatchers.IO) {
                     val jobs = targets.map { c ->
                         safeStops { repo.stops(effectiveRoute, c) }
                     }
                     jobs.awaitAll().flatten().sortedWith(
                         compareBy<StopOption>({ it.company }, { it.bound }, { it.seq })
                     )
+                }
+                // CIRCULAR_ONLY: ONLY a circular line keeps EACH operator's
+                // OWN stop sequence / wording. A Citybus circular line is
+                // shown the Citybus way, a KMB circular line the App1933 way;
+                // they are never merged into one KMB-named joint sequence.
+                // Normal (non-circular) joint routes keep the previous rule.
+                val circular = CircularRoutes.isCircularSequence(raw)
+                        || CircularRoutes.anyCircularNote(raw)
+                val result = if (!circular && JointRoutes.isJointCompany(company)) {
+                    JointRoutes.preferKmbStops(raw)
+                } else {
+                    raw
+                }
+                // CIRCULAR_NAME_CHECK: verify displayed line stop names against
+                // the local official name table (best-effort, never invented).
+                val auditCompany = if (CircularRoutes.supports(company)) company
+                        else if (result.isNotEmpty()) result[0].company else company
+                val audit = if (circular) {
+                    withContext(Dispatchers.IO) {
+                        CircularRoutes.audit(
+                            result, auditCompany,
+                            CircularRoutes.officialNames(auditCompany)
+                        ).summary()
+                    }
+                } else {
+                    ""
                 }
                 patch {
                     copy(
@@ -253,7 +285,8 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                             "找不到資料。巴士請填路線號；港鐵重鐵填線路代碼（TML／ISL…）；輕鐵可留空顯示全部站；港鐵巴士填 K12／506 等。"
                         } else {
                             "找到 ${result.size} 個車站／月台，點選查看實時到站時間。"
-                        }
+                        },
+                        stopAudit = audit
                     )
                 }
             } catch (e: Exception) {
@@ -515,12 +548,57 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
             val pairs = stops.take(6).mapIndexed { index, s ->
                 safeEta(s, index) { repo.etaFor(s) }
             }.awaitAll()
+            // JOINT_KMB_CTB_MERGE: GeoStops 對同一個實體附近站會各出一個
+            // KMB / CTB StopOption（站號命名空間唔同）。先按中文站名併埋
+            // 兩份 ETA 再一次過交畀 cardsFrom，主頁卡片先至會顯示
+            // 「城巴/九巴」並逐班標「該班次：城巴／九巴」。
+            // 配唔到名就各自成組，原有行為完全唔變。
+            val buckets = LinkedHashMap<String, MutableList<Int>>()
+            val circularFlags = LinkedHashMap<String, Boolean>()
+            for (i in pairs.indices) {
+                val name = pairs[i].first.stopName.trim().ifEmpty {
+                    pairs[i].first.stopId
+                }
+                // CIRCULAR_ONLY: a circular route keeps its OWN operator's
+                // card, so KMB and Citybus circular rows never share a bucket.
+                val circular = pairs[i].second.any {
+                    CircularRoutes.isCircularDest(it.destTc)
+                }
+                val key = (if (circular) pairs[i].first.company + "|" else "") + name
+                buckets.getOrPut(key) { ArrayList() }.add(i)
+                circularFlags[key] = circular
+            }
             val cards = ArrayList<RouteCard>()
-            for (p in pairs) {
-                val s = p.first
+            for ((bucketKey, indices) in buckets) {
+                // JOINT_KMB_NAME: keep the KMB StopOption as the fallback
+                // (distance note / rank). Per-operator labels are resolved
+                // below by CTB_STOP_NAME so Citybus cards use Citybus names.
+                val preferred = indices.firstOrNull {
+                    pairs[it].first.company == EtaRepository.KMB
+                } ?: indices.first()
+                val first = pairs[preferred]
+                val s = first.first
+                val merged = indices.flatMap { pairs[it].second }
+                // CTB_STOP_NAME: one merged bucket can contain BOTH a KMB and
+                // a CTB StopOption for the same physical stop. Remember each
+                // operator's OWN official name / stop id, so a pure Citybus
+                // card shows 城巴站名 + 城巴站號 instead of inheriting the
+                // KMB wording. JOINT keeps the KMB label (previous request).
+                val displays = LinkedHashMap<String, App1933Format.StopDisplay>()
+                for (i in indices) {
+                    val own = pairs[i].first
+                    displays[own.company] = App1933Format.StopDisplay(
+                        own.stopName, own.stopId
+                    )
+                }
+                val kmbDisplay = displays[EtaRepository.KMB]
+                if (kmbDisplay != null && !displays.containsKey(JointRoutes.JOINT)) {
+                    displays[JointRoutes.JOINT] = kmbDisplay
+                }
                 cards.addAll(
                     App1933Format.cardsFrom(
-                        p.second, s.stopName, s.stopId, s.note, p.third
+                        merged, s.stopName, s.stopId, s.note, first.third,
+                        displays, circularFlags[bucketKey] == true
                     )
                 )
             }
