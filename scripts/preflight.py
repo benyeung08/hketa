@@ -531,6 +531,11 @@ def main() -> int:
          'CircularRoutes.displayTitle',
          'RouteDetailActivity.kt 仍係舊版（詳情頁未用各家循環線顯示方式）',
          '由完整 zip 覆蓋 RouteDetailActivity.kt'),
+        # KOTLIN_TOPLEVEL：真實 kotlinc 會爆 Unresolved reference: StopDisplay
+        ('app/src/main/java/hk/eta/app/ui/EtaViewModel.kt',
+         'LinkedHashMap<String, StopDisplay>()',
+         'EtaViewModel.kt 仍係舊版（App1933Format.StopDisplay 無法解析）',
+         '由完整 zip 覆蓋 EtaViewModel.kt（改用頂層 StopDisplay）'),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel

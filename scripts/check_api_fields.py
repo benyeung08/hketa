@@ -860,8 +860,10 @@ check("MainActivity re-applies glass on resume / config change; no opaque tabs",
       and "fun setupNavGlassSection" in settings_kt
       and "R.id.swNavGlass" in settings_kt
       and "NavGlass.status(this)" in settings_kt)
+nav_strings = read(RES / "values/strings.xml")
 check("nav glass strings all defined", all(
-      f'<string name="{name}">' in read(RES / "values/strings.xml")
+      (f'<string name="{name}">' in nav_strings
+       or f'<string name="{name}" ' in nav_strings)
       for name in ("nav_glass_section", "nav_glass_follow", "nav_glass_hint",
                    "nav_glass_status", "nav_glass_state_follow",
                    "nav_glass_state_fixed", "nav_glass_state_night",
@@ -1674,6 +1676,36 @@ check("CIRCULAR_ROUTES: wording resources + detail caption are wired",
                     "circular_name_check", "circular_name_hint"))
       and "CircularRoutes.displayBadge(company, dest)" in detail_kt
       and "renderFooter()" in detail_kt)
+# KOTLIN_TOPLEVEL — App1933Format.kt 有 3 個 TOP-LEVEL data class
+# (Trip / StopDisplay / RouteCard)，只有 object App1933Format 嘅成員先可以
+# 用 "App1933Format.xxx" 前綴。呢條 check 正正防止 CI 真實 kotlinc 先爆
+# "Unresolved reference: StopDisplay"。
+all_kt = "\n".join(read(p) for p in sorted(UI.glob("*.kt")))
+# 通用符號解析：任何 App1933Format.X 都要係 object 入面嘅 fun/val，
+# 唔可以係頂層 data class（真實 kotlinc 會報 Unresolved reference）。
+_obj = fmt_kt.split("object App1933Format {")[1]
+_members = set(re.findall(r"\bfun\s+(\w+)\s*\(", _obj)) | \
+           set(re.findall(r"\bval\s+(\w+)\s*=", _obj))
+_used = set()
+for _p in sorted(UI.glob("*.kt")):
+    _used |= set(re.findall(r"App1933Format\.(\w+)", read(_p)))
+check("KOTLIN_SYMBOLS: every App1933Format.* reference resolves to a member",
+      bool(_members) and bool(_used) and not (_used - _members),
+      "unresolved: " + ", ".join(sorted(_used - _members))
+      if (_used - _members) else "")
+check("KOTLIN_TOPLEVEL: no App1933Format.<top-level data class> misuse",
+      "App1933Format.StopDisplay" not in all_kt
+      and "App1933Format.Trip" not in all_kt
+      and "App1933Format.RouteCard" not in all_kt
+      and "data class StopDisplay(val name: String, val id: String)" in fmt_kt
+      and "data class Trip(" in fmt_kt
+      and "data class RouteCard(" in fmt_kt
+      and "object App1933Format {" in fmt_kt
+      and "LinkedHashMap<String, StopDisplay>()" in vm_kt
+      and "StopDisplay(" in vm_kt)
+check("AAPT_FMT: percent literals in non-format strings are marked",
+      '<string name="nav_glass_hint" formatted="false">' in read(RES / "values/strings.xml")
+      and "%1$" in read(RES / "values/strings.xml"))
 check("CTB_ONLY_NAME: ONLY pure-Citybus cards / stops use Citybus wording",
       "CTB_ONLY_NAME" in joint_java
       and "CTB_ONLY_NAME" in fmt_kt
@@ -1691,7 +1723,7 @@ check("CTB_ONLY_NAME: per-card stop label is resolved by ONE pure function",
       and "displays[EtaRepository.CTB]" not in fmt_kt)
 check("CTB_ONLY_NAME: JOINT keeps KMB, CTB-only sequence is returned untouched",
       "displays[JointRoutes.JOINT] = kmbDisplay" in vm_kt
-      and "displays[own.company] = App1933Format.StopDisplay(" in vm_kt
+      and "displays[own.company] = StopDisplay(" in vm_kt
       and "CTB_STOP_NAME" in vm_kt
       and "CTB_STOP_NAME" in fmt_kt)
 check("CTB_ONLY_NAME: no KMB wording is ever copied onto a Citybus-only stop",
@@ -1719,7 +1751,7 @@ check("CTB_STOP_NAME: Citybus cards use the CITYBUS stop name / stop id",
       and "display.name.ifEmpty { fallback.name }" in fmt_kt
       and "display.id.ifEmpty { fallback.id }" in fmt_kt
       and "CTB_STOP_NAME" in vm_kt
-      and "displays[own.company] = App1933Format.StopDisplay(" in vm_kt
+      and "displays[own.company] = StopDisplay(" in vm_kt
       and "displays[JointRoutes.JOINT] = kmbDisplay" in vm_kt)
 check("CTB_STOP_NAME: JOINT keeps the KMB label, other callers unchanged",
       "displays[EtaRepository.KMB]" in vm_kt
