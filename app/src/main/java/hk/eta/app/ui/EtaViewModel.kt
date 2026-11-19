@@ -584,10 +584,10 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 // operator's OWN official name / stop id, so a pure Citybus
                 // card shows 城巴站名 + 城巴站號 instead of inheriting the
                 // KMB wording. JOINT keeps the KMB label (previous request).
-                val displays = LinkedHashMap<String, App1933Format.StopDisplay>()
+                val displays = LinkedHashMap<String, StopDisplay>()
                 for (i in indices) {
                     val own = pairs[i].first
-                    displays[own.company] = App1933Format.StopDisplay(
+                    displays[own.company] = StopDisplay(
                         own.stopName, own.stopId
                     )
                 }
