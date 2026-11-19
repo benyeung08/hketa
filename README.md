@@ -27,6 +27,11 @@
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **🏷 正式版 APK 對應 Releases 版本**：`v1.0.0` tag 只會附 `hketa-v1.0.0-release.apk`；`tag ↔ build.gradle.kts ↔ 實際 APK` 三重校驗唔夾即擋低發布，並附 `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`
 - **⬛ 路線詳情全頁文字純黑**：詳情頁係固定白底，站名**同所有原本同色嘅輔助文字**（車資、落車、分鐘單位、時鐘、標記、路線示意標籤、頁底說明）一律改純黑 `#000000`；`values-night` 保持同一純黑值，頁底背景亦釘死淺色避免黑字落黑底。深色模式唔會再變近白色睇唔到；紅色頂欄／chip 白字同藍色分鐘數字唔變
+- **🚌 聯營路線顯示「城巴/九巴」**：同一路線號同時出現喺九巴／龍運同城巴兩份官方目錄先判定為聯營（**資料驅動，冇硬編路線號清單**）。主頁附近卡片、搜尋／預載結果、詳情頁「路線示意」一律顯示 `城巴/九巴`；KMB＋CTB 兩列合併成一張卡，未來三班次逐班標 `該班次：城巴`／`該班次：九巴`。主頁會按中文站名把同一實體站嘅兩家 ETA 先併埋（配唔到名就維持各自一張，行為唔變）；**聯營站名統一用九巴／龍運站名同站號**（詳情頁站序去重、主頁卡片優先用 KMB 嗰個 StopOption；完全冇 KMB 目錄先如實退回城巴名）；詳情頁只展開 KMB＋CTB 兩家，唔會撈埋其餘 5 種模式
+- **🚌 只有城巴路線用城巴站名（CTB_ONLY_NAME）**：純城巴（非聯營）路線嘅站序**完全唔會**經過九巴改名邏輯，一律保留城巴官方站名同站號；聯營詳情頁入面**城巴獨有、冇九巴對應**嘅站亦保留城巴名（唔會再抄九巴用字）。主頁合併 bucket 入面，`App1933Format.resolveStopDisplay()` 逐張卡揀站名：`CTB` 卡用城巴 `StopDisplay`、`JOINT` 卡仍用九巴名（上一輪要求）、`KMB` 卡用九巴名，其餘公司沿用原本 `StopOption`。**即係只有城巴嘅卡／站先改為城巴站名，聯營同九巴唔受影響**
+- **🔄 循環線各自顯示（CIRCULAR_ROUTES）**：循環線由**官方資料**判定 —— `dest_tc` 帶 `(循環線)`／`(Circular)`，或 route-stop 只有單一方向（冇 inbound）且首尾站相同，**冇硬編路線號清單**。只有循環線先套用「各家用自己站名」：城巴循環線用城巴站名＋城巴站號、九巴循環線用九巴站名＋九巴站號；**普通路線規則完全唔變**（聯營仍用九巴名、純城巴用城巴名）。循環線**唔會被合併成 `城巴/九巴` 聯營列**
+- **🔄 顯示方式＋站名核對**：九巴方式 `213X 往 尖沙咀(循環線)`（App1933，保留「往」）；城巴方式 `26 勵德邨 - 荷李活道(循環線)`（唔加「往」）；卡片／搜尋列／詳情頁都有 `九巴循環線`／`城巴循環線` badge。`CircularRoutes.audit()` 對照本機官方站名表，回報 `同官方一致／不一致／缺失／疑似混用`，**冇對照表時如實講「未載入」，唔會宣稱全部正確、亦唔會捏造或自動改官方名**
+- **🚌 城巴路線用城巴站名（CTB_STOP_NAME）**：同一個實體附近站可以同時有九巴同城巴兩份 `StopOption`，主頁合併 ETA 後**每張卡按自己所屬公司**顯示官方站名同站號 —— 純城巴卡顯示城巴站名／城巴站號，純九巴卡顯示九巴名，聯營卡仍按上一輪用九巴名。詳情頁標題跟返張卡嘅名，純城巴站序一律用 `safeNames(CTB)`，唔會被九巴名污染
 - **未來三班次**：標記 `-`（剛到站）、`—`（沒有服務）、「預定班次」、「改道」、聯營公司；取代舊嘅單班次列表
 - **路線站序＋方向切換**：輸入路線號列出沿途車站（含站編號），一鍵 `⇄` 切換去程／回程，並可即時篩選站名／站號
 - **8 種查詢模式**：自動（全部）、九巴／龍運、城巴、嶼巴、綠色小巴、港鐵重鐵、輕鐵、港鐵接駁巴士
@@ -132,13 +137,14 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### ◌ 懸浮液態玻璃導航欄
 
-- **大小與位置（對照截圖）**：由 `64dp` 高、四邊 `12dp` 嘅近滿寬藍灰條，改為 **高 `56dp`、水平置中、貼底 `8dp`、左右各 `28dp`** 嘅深灰黑**藥丸**；圓角 `28dp`（＝高度一半，真 capsule），elevation 降到 `6dp`，描邊改極淡
-- **按螢幕寬度自適應**：`NavGlass.geometry()` 每次 `apply()` 重算左右留白 —— 手機每邊約屏寬 `6%`（88% 闊，四個分頁仍放得落），平板／横屏 `≥600dp` 轉 `18%`（約 64% 闊，對應截圖嘅窄膠囊），夾喺 `16–256dp`；旋轉螢幕即時重新置中
+- **大小與位置（對照截圖，NAV_OVERLAY_POSITION）**：由 `64dp` 高、四邊 `12dp` 嘅近滿寬藍灰條，改為 **高 `56dp`、水平置中、左右各 `28dp`** 嘅深灰黑**藥丸**；圓角 `28dp`（＝高度一半，真 capsule），elevation 降到 `6dp`，描邊改極淡。**位置再改咗**：唔再係「貼底 `8dp` 嘅佔位列」，而係 `FrameLayout` 根布局上嘅**真正懸浮 overlay**（`layout_gravity=bottom|center_horizontal`），由 `NavGlass.geometry()` 按螢幕高度上移到**離底約 12%（48–160dp）**；所以藍色「安裝」掣會喺半透明膠囊後面透出，膠囊**下面仍然見到下一列內容**，同截圖一致。各捲動頁加咗 `180dp`／`200dp` 底部預留，最後一筆資料仍捲得到
+- **按螢幕寬度自適應**：`NavGlass.geometry()` 每次 `apply()` 重算左右留白 —— 手機每邊約屏寬 `6%`（88% 闊，四個分頁仍放得落），平板／横屏 `≥600dp` 轉 `18%`（約 64% 闊，對應截圖嘅窄膠囊），夾喺 `16–256dp`；旋轉螢幕即時重新置中；**離底距離同時按螢幕高度重算**（`heightDp × 0.12`，夾喺 `48–160dp`），旋轉／平板都唔會變返貼底
 - **選中態**：一個**內嵌深色 pill**（`#141416`、`24dp` 圓角）包住選中分頁，配**藍色字** `#4A9EFF`；其餘分頁淺灰 `#A8B0BA`，唔再係半透明白磨砂
 - **跟隨系統設定**：`NavGlass` 讀 `Configuration.uiMode`（深色 → 更深藥丸）、`Settings.Secure "high_text_contrast_enabled"`（高對比 → 實色＋`2dp` 白邊）、`Settings.Global ANIMATOR_DURATION_SCALE / TRANSITION_ANIMATION_SCALE`（減少動態 → 收起陰影同模糊）；三種外觀共用同一 `28dp` 幾何
 - **真背景模糊**：API 31+ 用 `Window.setBackgroundBlurRadius()`，全部 `runCatching` 包住；舊機／受限裝置退回純半透明 drawable，唔會 crash
 - **即時更新**：`onCreate`／`onResume`／`onConfigurationChanged` 都會重新 `apply()`（連幾何）；喺系統設定改完或旋轉螢幕返到 App 就見到
 - **用戶可覆蓋**：設定頁「導航欄外觀」有「跟隨系統外觀」開關（預設開），關掉只固定外觀，**大小與位置不變**，並顯示目前狀態
+- **只改位置、唔改功能**：四個分頁、選中態、玻璃外觀、跟隨系統設定、全螢幕搜尋時隱藏導航欄全部保留；`JOINT`／ETA／簽名／更新等資料層一行都冇郁
 
 ### 🚌 APP1933 版面對照
 
@@ -243,6 +249,7 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 | `Release is explicitly tied to the matching tag/version` | checker 曾硬要求 `RELEASE_NOTES_v1.0.0.md` 存在，但 workflow 本身有 fallback —— **已修正為選用**；只需覆蓋 `scripts/check_api_fields.py` 一個檔。若 log 見到 `缺以下 N 項字串`，先再覆蓋 `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` | 全黑改動未同步：由完整 zip 覆蓋兩個詳情 layout ＋ `values/` 同 `values-night/` 嘅 `colors.xml`（共 4 個檔；合併包一次過包齊） |
 | `Received status code 429 ... Too Many Requests`（例如 `jsr305-3.0.2.pom`） | **Maven Central 限流，唔係 code 錯、唔係上傳唔完整**：`setup-java` 已開 Gradle 依賴快取，兩個 assemble step 自動重試 3 次（30s／60s 退避）；若 3 次都失敗，等幾分鐘再 **Re-run jobs**，唔使改任何檔 |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `聯營站名未用九巴` / `導航欄仲係貼底佔位列` / `位置未改成按屏高上移` / `城巴卡會沿用九巴站名` / `附近站未傳各公司站名對照` / `城巴獨有站仍會被改成九巴站名` / `未逐張卡分辨城巴／聯營站名` / `循環線未標記` / `循環線站序仍會被九巴化` | 聯營／導航欄／城巴站名／循環線改動未同步：由完整 zip 覆蓋新檔 `JointRoutes.java` ＋其餘 8 個聯營相關檔（合併包一次過包齊），唔好逐個 upload |
 | `Could not resolve` / `Read timed out` / 5xx | 同屬暫時性依賴下載失敗：直接 **Re-run jobs** |
 | 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
@@ -299,6 +306,11 @@ Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compi
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **🏷 Production APK matches its Release version**: a `v1.0.0` tag attaches only `hketa-v1.0.0-release.apk`; a `tag ↔ build.gradle.kts ↔ actual APK` three-way gate blocks publishing on mismatch, with `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt` attached
 - **⬛ Every route-detail label is pure black**: the detail screen has a fixed white background, so stop names AND every label that used to share their colour (fare, alight, minutes unit, clock, tags, map-strip caption, footer note) are now pure `#000000`. `values-night` keeps the SAME pure black, and the footer background is pinned pale so black text is never on black. Dark mode no longer turns them into near-white invisible text; the red header / dark chips keep white text and the big minute numbers stay blue
+- **🚌 Joint routes show "城巴/九巴"**: a route is joint ONLY when the SAME route number appears in BOTH official catalogues (KMB/LWB and Citybus) — catalogue-driven, no hard-coded route-number list. Home nearby cards, search / preload rows and the detail-screen caption show `城巴/九巴`; the KMB + CTB rows collapse into ONE card and each of the next three trips is tagged `該班次：城巴` / `該班次：九巴`. Home merges both operators' ETA for the same physical stop by Chinese stop name (unmatched names keep the old per-stop behaviour); **joint routes always display the KMB / LWB stop name and stop id** (the detail sequence is de-duplicated and home cards prefer the KMB StopOption; only when KMB has no catalogue data at all does it honestly fall back to the CTB name); the detail page expands KMB + CTB only, never the other 5 modes
+- **🚌 ONLY Citybus routes use Citybus stop names (CTB_ONLY_NAME)**: a pure Citybus (non-joint) stop sequence never passes through the KMB-renaming logic at all — every stop keeps its official Citybus name and stop id. On a joint detail page, a stop that exists ONLY in the Citybus sequence also keeps the Citybus wording instead of copying any KMB name. Inside a merged home bucket, `App1933Format.resolveStopDisplay()` picks the label per card: a `CTB` card gets the Citybus `StopDisplay`, a `JOINT` card still gets the KMB label (previous request), a `KMB` card gets the KMB label, and every other company keeps its original `StopOption`. **Only Citybus cards / stops change to Citybus wording; joint and KMB routes are unaffected**
+- **🔄 Circular routes shown separately (CIRCULAR_ROUTES)**: a circular line is detected from OFFICIAL data — `dest_tc` carrying `(循環線)` / `(Circular)`, or route-stop data with a single bound (no inbound) and the same first/last terminus. **No hard-coded route-number list.** ONLY circular lines use each operator's OWN stop wording: a Citybus circular line uses Citybus names + stop ids, a KMB circular line uses KMB names + stop ids; **normal-route rules are unchanged** (joint still KMB, pure CTB still Citybus). Circular rows are **never collapsed into a `城巴/九巴` joint row**
+- **🔄 Operator ways + stop-name audit**: the KMB way is `213X 往 尖沙咀(循環線)` (App1933, keeps 往); the Citybus way is `26 勵德邨 - 荷李活道(循環線)` (no 往). Cards / search rows / the detail caption carry a `九巴循環線` / `城巴循環線` badge. `CircularRoutes.audit()` compares displayed stop names with the local official name table and reports `verified / mismatch / missing / foreign-suspect`; **with no table it honestly says so — it never claims everything is correct, never invents a name and never rewrites an official one**
+- **🚌 Citybus routes use Citybus stop names (CTB_STOP_NAME)**: one physical nearby stop may have BOTH a KMB and a Citybus `StopOption`. After the home page merges the two ETA lists, **each card shows the official name and stop id of its OWN operator** — a pure Citybus card shows the Citybus name / Citybus stop id, a pure KMB card keeps the KMB name, and a joint card still uses the KMB name (previous request). The detail-page title follows the card label; pure Citybus stop sequences always come from `safeNames(CTB)` and are never rewritten with KMB wording
 - **Next three arrivals**: markers for `-` (just arrived), `—` (no service), "預定班次" (scheduled), diversion and joint operators — replacing the old single-arrival list
 - **Stop sequence + direction switch**: route number lists all stops (with stop ids), one-tap `⇄` bound toggle, live stop-name / stop-id filter
 - **8 lookup modes**: Auto (all), KMB/LWB, Citybus, NLB, Green Minibus, MTR Heavy Rail, Light Rail, MTR Bus
@@ -404,13 +416,14 @@ Tapping any nearby-route card on the Home page opens a **full-screen route detai
 
 ### ◌ Floating liquid-glass navigation bar
 
-- **Size & position (from the screenshot)**: the old near-full-width `64dp` blue-grey bar with `12dp` margins on all sides becomes a **dark charcoal capsule `56dp` high, horizontally centred, `8dp` from the bottom, `28dp` inset on each side**; corners are `28dp` (half the height → a true pill), elevation drops to `6dp` and the rim becomes barely visible
-- **Scales with screen width**: `NavGlass.geometry()` recomputes the side inset on every `apply()` — phones use ~`6%` per side (88% wide, so four labels still fit), while tablets / landscape `≥600dp` switch to `18%` per side (~64% wide, matching the screenshot's narrow capsule), clamped to `16–256dp`; rotating the device re-centres it immediately
+- **Size & position (from the screenshot, NAV_OVERLAY_POSITION)**: the old near-full-width `64dp` blue-grey bar with `12dp` margins on all sides becomes a **dark charcoal capsule `56dp` high, horizontally centred, `28dp` inset on each side**; corners are `28dp` (half the height → a true pill), elevation drops to `6dp` and the rim becomes barely visible. **The position then changed again**: instead of an occupying bottom row `8dp` from the edge, it is now a **true overlay child of a `FrameLayout` root** (`layout_gravity=bottom|center_horizontal`), lifted by `NavGlass.geometry()` to **~12% of screen height above the bottom (clamped `48–160dp`)**. The blue install buttons therefore show through behind the translucent capsule and the next content row remains visible **below** it, matching the screenshot. Scrollable pages carry `180dp` / `200dp` bottom padding so the last item is still reachable
+- **Scales with screen width**: `NavGlass.geometry()` recomputes the side inset on every `apply()` — phones use ~`6%` per side (88% wide, so four labels still fit), while tablets / landscape `≥600dp` switch to `18%` per side (~64% wide, matching the screenshot's narrow capsule), clamped to `16–256dp`; rotating the device re-centres it immediately; the **bottom lift is recomputed from screen height too** (`heightDp × 0.12`, clamped `48–160dp`), so rotation / tablets never snap back to the bottom edge
 - **Selected state**: ONE darker inner pill (`#141416`, `24dp` corners) wraps the selected tab with a **blue label** `#4A9EFF`; the other tabs are light grey `#A8B0BA` — no more frosted white highlight
 - **Follows system settings**: `NavGlass` reads `Configuration.uiMode` (night → deeper charcoal), `Settings.Secure "high_text_contrast_enabled"` (high contrast → solid bar with a `2dp` white rim) and `Settings.Global ANIMATOR_DURATION_SCALE / TRANSITION_ANIMATION_SCALE` (reduced motion → no shadow, no blur); all three appearances share the same `28dp` geometry
 - **Real backdrop blur**: `Window.setBackgroundBlurRadius()` on API 31+, fully wrapped in `runCatching`; older or restricted devices fall back to the plain translucent drawable instead of crashing
 - **Live updates**: `onCreate` / `onResume` / `onConfigurationChanged` all re-`apply()` (geometry included); changing a system setting or rotating the screen is reflected on return
 - **User override**: the Settings page has a "Follow system appearance" switch (ON by default); turning it off pins only the appearance — **size and position are unchanged** — with the current state shown underneath
+- **Position-only change**: the four tabs, selected-state pill, glass variants, system-setting following and hiding the bar during full-screen search are all kept; the joint-route / ETA / signing / updater data layer is untouched
 
 ### 🚌 APP1933 layout mapping
 
@@ -512,6 +525,7 @@ The first CI step is a **self-contained preflight** (it needs no repo `.py` file
 | `Release is explicitly tied to the matching tag/version` | The checker used to hard-require `RELEASE_NOTES_v1.0.0.md`, contradicting the workflow's own fallback — **now optional**; just overwrite `scripts/check_api_fields.py`. If the log shows `缺以下 N 項字串`, also overwrite `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` (stale all-black detail colours) | Overwrite the two route-detail layouts plus `colors.xml` in both `values/` and `values-night/` (4 files) from the full zip / merged pack |
 | `Received status code 429 ... Too Many Requests` (e.g. `jsr305-3.0.2.pom`) | **Maven Central rate-limit, NOT a code / upload / signing bug**: `setup-java` now caches Gradle dependencies and both assemble steps retry 3 times (30s / 60s backoff). If all 3 fail, wait a few minutes and **Re-run jobs** — no file changes needed |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `導航欄仲係貼底佔位列` / `城巴獨有站仍會被改成九巴站名` / `循環線未標記` (stale joint / nav / CTB-name / circular files) | Overwrite the new `JointRoutes.java` plus the other 8 joint-related files from the full zip / merged pack; do not upload one by one |
 | `Could not resolve` / `Read timed out` / 5xx | Same class of transient dependency-download failure: simply **Re-run jobs** |
 | Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
 
