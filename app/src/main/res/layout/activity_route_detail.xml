@@ -118,7 +118,11 @@
         android:paddingEnd="16dp"
         android:paddingBottom="10dp">
 
+        <!-- JOINT_KMB_CTB: for a 城巴/九巴 route the Activity appends
+             " · 城巴/九巴" to this label, so the route-level operator is
+             visible even on the full-screen detail page. -->
         <TextView
+            android:id="@+id/tvNoMapLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/detail_no_map_label"

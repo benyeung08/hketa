@@ -5,11 +5,24 @@
   in-app updater and signature verification are ALL kept. Only the shell,
   the home cards and the arrival formatting change here.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/surface"
-    android:orientation="vertical">
+    android:clipChildren="false">
+
+    <!--
+      NAV_OVERLAY_POSITION: 內容填滿成個螢幕，液態玻璃導航欄係另一個
+      overlay 子View（見檔案最底）。咁樣 App 內容會同時出現喺膠囊
+      「後面」同「下面」，同參考截圖一致（藍色「安裝」掣被半透明遮住、
+      膠囊下面仍見到下一列 App）。各捲動頁加咗 bottom padding，
+      最后一筆資料仍然捲得到。
+    -->
+    <LinearLayout
+        android:id="@+id/mainContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
     <!-- KMB-red header, like the official app -->
     <LinearLayout
@@ -178,7 +191,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:clipToPadding="false"
-                    android:paddingBottom="12dp" />
+                    android:paddingBottom="180dp" />
 
             </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
@@ -231,7 +244,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:clipToPadding="false" />
+                android:clipToPadding="false"
+                android:paddingBottom="180dp" />
         </LinearLayout>
 
         <!-- ============ 搜尋（APP1933 全螢幕：紅 bar + 路線結果 + 自訂鍵盤） ============ -->
@@ -320,7 +334,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1"
-                    android:clipToPadding="false" />
+                    android:clipToPadding="false"
+                    android:paddingBottom="180dp" />
             </LinearLayout>
 
             <!-- 站序模式：保留原有 8 模式／站號／方向／篩選全部功能 -->
@@ -483,7 +498,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:paddingBottom="90dp"
+            android:paddingBottom="200dp"
             android:visibility="gone">
 
             <TextView
@@ -544,10 +559,17 @@
 
     </FrameLayout>
 
+    </LinearLayout>
+    <!-- /mainContent：以下係真正浮喺內容上面嘅導航欄 overlay -->
+
     <!--
-      NAV_GEOMETRY: 對照截圖嘅深灰黑「藥丸」導航欄 —— 更矮 (56dp)、
-      左右收窄 (28dp，並由 NavGlass.geometry() 按螢幕寬度動態調整)、
-      更貼底 (8dp)、水平置中，全圓角 (radius = 28dp = 高度一半)。
+      NAV_GEOMETRY / NAV_OVERLAY_POSITION: 對照截圖嘅深灰黑「藥丸」導航欄 ——
+      高 56dp、水平置中、左右收窄（NavGlass.geometry() 按屏寬動態調整）、
+      全圓角 (radius = 28dp = 高度一半)。
+      ★ 位置改咗：唔再係貼底 8dp 嘅「佔位列」，而係 FrameLayout 嘅
+        overlay（layout_gravity=bottom|center_horizontal），並由
+        NavGlass.geometry() 按螢幕高度上移到離底約 12%（48–160dp）。
+        所以膠囊後面同下面都見到內容，同截圖一致。
       選中 tab 係內嵌深色 pill + 藍色字，未選中係淺灰字。
       外觀（深色／高對比／減少動態）仍由 NavGlass 跟隨系統設定改變。
     -->
@@ -555,11 +577,11 @@
         android:id="@+id/bottomTabs"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:layout_gravity="center_horizontal"
+        android:layout_gravity="bottom|center_horizontal"
         android:layout_marginStart="28dp"
         android:layout_marginTop="4dp"
         android:layout_marginEnd="28dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="96dp"
         android:background="@drawable/bg_nav_glass"
         android:elevation="6dp"
         android:orientation="horizontal"
@@ -614,4 +636,4 @@
             android:textSize="10sp" />
     </LinearLayout>
 
-</LinearLayout>
+</FrameLayout>
