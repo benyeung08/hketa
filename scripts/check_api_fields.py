@@ -775,23 +775,34 @@ check("disclaimer card reproduces the dark rounded white-rim screenshot",
       and all(s in read(RES / "values/strings.xml") for s in (
           "disclaimer_lead", "disclaimer_excluded", "disclaimer_section",
           "AI 智能問路", "實時載客量", "九巴月票", "遊戲室", "街景")))
-check("navbar GEOMETRY: smaller, centred, bottom-hugging capsule",
+check("NAV_OVERLAY_POSITION: bar is a TRUE floating overlay, lifted off bottom",
       'NAV_GEOMETRY' in main_layout
+      and 'NAV_OVERLAY_POSITION' in main_layout
+      and '<FrameLayout xmlns' in main_layout
+      and 'android:id="@+id/mainContent"' in main_layout
+      and 'android:clipChildren="false"' in main_layout
       and '@drawable/bg_nav_glass' in main_layout
       and 'android:layout_height="56dp"' in main_layout
-      and 'android:layout_gravity="center_horizontal"' in main_layout
+      and 'android:layout_gravity="bottom|center_horizontal"' in main_layout
       and 'android:layout_marginStart="28dp"' in main_layout
       and 'android:layout_marginEnd="28dp"' in main_layout
-      and 'android:layout_marginBottom="8dp"' in main_layout
+      and 'android:layout_marginBottom="96dp"' in main_layout
       and 'android:elevation="6dp"' in main_layout
       and 'android:id="@+id/bottomTabs"' in main_layout
+      and main_layout.rstrip().endswith('</FrameLayout>')
       and all(old not in main_layout[main_layout.index('NAV_GEOMETRY'):]
               for old in ('android:layout_marginStart="12dp"',
                           'android:layout_marginBottom="12dp"',
+                          'android:layout_marginBottom="8dp"',
+                          'android:layout_gravity="center_horizontal"',
                           'android:layout_height="64dp"'))
       and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
           "bg_nav_glass", "bg_nav_glass_dark", "bg_nav_glass_contrast",
           "bg_tab_glass_selected")))
+check("NAV_OVERLAY_POSITION: scrollable pages keep last items reachable",
+      main_layout.count('android:paddingBottom="180dp"') >= 3
+      and 'android:paddingBottom="200dp"' in main_layout
+      and main_layout.count('android:clipToPadding="false"') >= 3)
 check("all three glass variants share the 28dp true-pill radius",
       all('android:radius="28dp"' in read(RES / f"drawable/{n}.xml")
           for n in ("bg_nav_glass", "bg_nav_glass_dark",
@@ -817,10 +828,17 @@ check("geometry scales with screen width; re-applied on rotation / resume",
           "SIDE_RATIO_WIDE = 0.18f", "WIDE_BREAKPOINT_DP = 600f",
           "SIDE_MIN_DP = 16f", "SIDE_MAX_DP = 256f",
           "BAR_HEIGHT_DP = 56", "BAR_BOTTOM_DP = 8",
+          "BAR_BOTTOM_RATIO = 0.12f", "BAR_BOTTOM_MIN_DP = 48f",
+          "BAR_BOTTOM_MAX_DP = 160f", "BAR_BOTTOM_DEFAULT_DP = 96",
+          "fun bottomMarginDp(heightDp: Float)",
+          "is android.widget.FrameLayout.LayoutParams",
+          "Gravity.BOTTOM or", "heightDp * BAR_BOTTOM_RATIO",
           "widthDp >= WIDE_BREAKPOINT_DP",
           "lp.marginStart = sidePx", "lp.marginEnd = sidePx",
           "lp.bottomMargin", "Gravity.CENTER_HORIZONTAL",
           "geometry(activity, bar)", "ELEVATION_DP = 6f"))
+      and '56dp' in read(RES / "values/strings.xml")
+      and '離底約 12%' in read(RES / "values/strings.xml")
       and "override fun onConfigurationChanged" in main_kt
       and "NavGlass.apply(this, bottomTabs)" in main_kt
       and "56dp" in read(RES / "values/strings.xml"))
@@ -1546,6 +1564,184 @@ check("route search wired into ViewModel and Activity",
           "showResults", "showSequence", "RouteResultAdapter",
           "vm.searchRoutes", "updateLetterKeys"))
       and "class RouteResultAdapter" in card_kt)
+
+# --- JOINT_KMB_CTB: 城巴/九巴 聯營路線 + 每班次公司 --------------------------
+joint_java = read(API / "JointRoutes.java")
+detail_layout = read(RES / "layout/activity_route_detail.xml")
+check("JOINT_KMB_CTB: joint routes are DETECTED FROM BOTH official catalogues",
+      "JOINT_KMB_CTB" in joint_java
+      and "RouteDataStore.KMB_ROUTES" in joint_java
+      and "RouteDataStore.CTB_ROUTES" in joint_java
+      and "public static boolean bothContain" in joint_java
+      and "public static boolean isJointRoute" in joint_java
+      and 'public static final String JOINT_LABEL = "城巴/九巴"' in joint_java
+      and 'public static final String TRIP_PREFIX = "該班次："' in joint_java)
+check("JOINT_KMB_CTB: JOINT is a UI marker only, NOT a new spinner operator",
+      'public static final String JOINT = "JOINT"' in joint_java
+      and "JointRoutes.JOINT" not in read(API / "EtaRepository.java")
+      and 'OPERATORS = {' in read(API / "EtaRepository.java")
+      and "JOINT" not in read(RES / "values/strings.xml").split(
+          '<string-array name="company_labels">')[1].split('</string-array>')[0])
+check("JOINT_KMB_CTB: search + preload collapse KMB/CTB rows into one label",
+      all(s in search_java for s in (
+          "public final boolean joint",
+          "private static List<Result> markJoint",
+          "JointRoutes.isJointRoute(r.route)",
+          "JointRoutes.JOINT_NOTE",
+          "return -1;"))
+      and search_java.count("List<Result> merged = markJoint(out);") == 2)
+check("JOINT_KMB_CTB: ETA layer best-effort merges the partner operator",
+      "JointRoutes.augment(primary, stop, this)" in read(API / "EtaRepository.java")
+      and "public static List<EtaItem> augment" in joint_java
+      and "repo.kmbEta(route" in joint_java
+      and "repo.ctbEta(route" in joint_java)
+check("JOINT_KMB_CTB: ONE card labelled 城巴/九巴, three per-trip labels",
+      all(s in fmt_kt for s in (
+          "val operatorText: String", "fun companyLabel",
+          "fun tripOperatorText", "contains(EtaRepository.KMB)",
+          "contains(EtaRepository.CTB)", "JointRoutes.JOINT"))
+      # grouping key must NOT include company any more
+      and 'e.company + "|" + e.route' not in fmt_kt)
+check("JOINT_KMB_CTB: card meta / chips / search note / detail label all wired",
+      "App1933Format.companyLabel" in card_kt
+      and "App1933Format.tripOperatorText(t)" in card_kt
+      and "item.joint" in card_kt
+      and "JointRoutes.JOINT_LABEL" in card_kt
+      and "JointRoutes.isJointCompany(company)" in detail_kt
+      and "App1933Format.tripOperatorText(trip)" in detail_kt
+      and 'android:id="@+id/tvNoMapLabel"' in detail_layout)
+check("JOINT_KMB_CTB: detail page queries KMB + CTB only (never all 8 modes)",
+      "JointRoutes.isJointCompany(company)" in vm_kt
+      and "listOf(EtaRepository.KMB, EtaRepository.CTB)" in vm_kt)
+check("JOINT_KMB_CTB_MERGE: nearby KMB/CTB stops merge into ONE home card",
+      "JOINT_KMB_CTB_MERGE" in vm_kt
+      and "buckets.getOrPut(key)" in vm_kt
+      and "indices.flatMap { pairs[it].second }" in vm_kt
+      and "val groupStop = if (stopId.isNotEmpty()) stopId else e.stopId" in fmt_kt
+      and 'e.route + "|" + groupStop + "|" + e.destTc' in fmt_kt)
+check("JOINT_KMB_CTB_MERGE: unmatched stop names keep the old per-stop behaviour",
+      "ifEmpty {" in vm_kt
+      and "for ((bucketKey, indices) in buckets)" in vm_kt
+      and "circularFlags[key]" in vm_kt
+      and "App1933Format.cardsFrom(" in vm_kt)
+circ_java = read(API / "CircularRoutes.java")
+check("CIRCULAR_ROUTES: detection is DATA-DRIVEN, no hard-coded route list",
+      Path(API / "CircularRoutes.java").is_file()
+      and "isCircularDest(" in circ_java
+      and "isCircularSequence(" in circ_java
+      and "anyCircularNote(" in circ_java
+      and "循環線" in circ_java
+      and "CIRCULAR" in circ_java
+      and "supports(" in circ_java
+      and "RouteDataStore.KMB_STOPS" in circ_java)
+check("CIRCULAR_DISPLAY: KMB shown the App1933 way, CTB the Citybus way",
+      "displayTitle(" in circ_java
+      and "styleLabel(" in circ_java
+      and "displayBadge(" in circ_java
+      and "九巴循環線" in circ_java
+      and "城巴循環線" in circ_java
+      and 'route + " 往 " + d' in circ_java
+      and 'route + " " + d' in circ_java
+      and "CircularRoutes.displayTitle(company, route, dest)" in detail_kt
+      and "CircularRoutes.styleLabel(company)" in detail_kt
+      and "card.style" in card_kt)
+check("CIRCULAR_ONLY: only circular lines keep EACH operator's OWN stop name",
+      "stopNameFor(" in circ_java
+      and "stopIdFor(" in circ_java
+      and "CircularRoutes.isCircularSequence(raw)" in vm_kt
+      and "!circular && JointRoutes.isJointCompany(company)" in vm_kt
+      and "val companyKey = if (circular) e.company" in fmt_kt
+      and "if (circular) CircularRoutes.styleLabel(cardCompany)" in fmt_kt
+      and "circularHint: Boolean = false" in fmt_kt)
+check("CIRCULAR_ONLY: circular rows are NOT collapsed into a joint row",
+      "markCircular(" in search_java
+      and "if (r.circular)" in search_java
+      and "List<Result> marked = markCircular(out)" in search_java
+      and 'r.circular' in search_java)
+check("CIRCULAR_NAME_CHECK: stop names are audited, never invented",
+      "public static final class Audit" in circ_java
+      and "public static Audit audit(" in circ_java
+      and "officialNames(" in circ_java
+      and "FOREIGN_SUSPECT" in circ_java
+      and "MISMATCH" in circ_java
+      and "未載入官方站名對照表" in circ_java
+      and "CircularRoutes.audit(" in vm_kt
+      and "stopAudit = audit" in vm_kt
+      and "state.stopAudit" in detail_kt)
+check("CIRCULAR_ROUTES: wording resources + detail caption are wired",
+      all(f'<string name="{n}">' in read(RES / "values/strings.xml")
+          for n in ("circular_kmb_style", "circular_ctb_style",
+                    "circular_name_check", "circular_name_hint"))
+      and "CircularRoutes.displayBadge(company, dest)" in detail_kt
+      and "renderFooter()" in detail_kt)
+check("CTB_ONLY_NAME: ONLY pure-Citybus cards / stops use Citybus wording",
+      "CTB_ONLY_NAME" in joint_java
+      and "CTB_ONLY_NAME" in fmt_kt
+      and "s.getStopName(), s.getServiceType()" in joint_java
+      and "kmbNameByBoundSeq" not in joint_java
+      and "kmbBySeq" not in joint_java
+      and "if (!hasKmb)" in joint_java
+      and "return stops;" in joint_java
+      and "JointRoutes.isJointCompany(company)" in vm_kt
+      and "JointRoutes.preferKmbStops(raw)" in vm_kt)
+check("CTB_ONLY_NAME: per-card stop label is resolved by ONE pure function",
+      "fun resolveStopDisplay(" in fmt_kt
+      and "displays[cardCompany] ?: fallback" in fmt_kt
+      and "resolveStopDisplay(cardCompany, displays, fallback)" in fmt_kt
+      and "displays[EtaRepository.CTB]" not in fmt_kt)
+check("CTB_ONLY_NAME: JOINT keeps KMB, CTB-only sequence is returned untouched",
+      "displays[JointRoutes.JOINT] = kmbDisplay" in vm_kt
+      and "displays[own.company] = App1933Format.StopDisplay(" in vm_kt
+      and "CTB_STOP_NAME" in vm_kt
+      and "CTB_STOP_NAME" in fmt_kt)
+check("CTB_ONLY_NAME: no KMB wording is ever copied onto a Citybus-only stop",
+      "String kmbName =" not in joint_java
+      and "? kmbName : s.getStopName()" not in joint_java
+      and "kmbNameByBoundSeq" not in joint_java
+      and "s.getStopId(), s.getStopName(), s.getServiceType()" in joint_java
+      and "return stops" in joint_java)
+check("JOINT_KMB_NAME: joint route stop labels use the KMB / LWB name",
+      "JOINT_KMB_NAME" in joint_java
+      and "public static List<StopOption> preferKmbStops" in joint_java
+      and "claimedSeq.contains(k)" in joint_java
+      and "kmbNames.contains" in joint_java
+      and "JointRoutes.preferKmbStops(raw)" in vm_kt
+      and "pairs[it].first.company == EtaRepository.KMB" in vm_kt)
+check("JOINT_KMB_NAME: no KMB data -> honest fallback, no invented names",
+      "if (!hasKmb)" in joint_java
+      and "return stops;" in joint_java
+      and "?: indices.first()" in vm_kt)
+check("CTB_STOP_NAME: Citybus cards use the CITYBUS stop name / stop id",
+      "CTB_STOP_NAME" in fmt_kt
+      and "data class StopDisplay(val name: String, val id: String)" in fmt_kt
+      and "displays: Map<String, StopDisplay> = emptyMap()" in fmt_kt
+      and "val display = resolveStopDisplay(cardCompany, displays, fallback)" in fmt_kt
+      and "display.name.ifEmpty { fallback.name }" in fmt_kt
+      and "display.id.ifEmpty { fallback.id }" in fmt_kt
+      and "CTB_STOP_NAME" in vm_kt
+      and "displays[own.company] = App1933Format.StopDisplay(" in vm_kt
+      and "displays[JointRoutes.JOINT] = kmbDisplay" in vm_kt)
+check("CTB_STOP_NAME: JOINT keeps the KMB label, other callers unchanged",
+      "displays[EtaRepository.KMB]" in vm_kt
+      and "cardsFrom(" in fmt_kt
+      and "rank: Int = 0," in fmt_kt
+      and "App1933Format.cardsFrom(state.etas" in main_kt
+      and "App1933Format.cardsFrom(" in detail_kt
+      and "state.etas" in detail_kt)
+check("CTB_STOP_NAME: pure CTB stop sequence is NOT rewritten to KMB names",
+      "JointRoutes.isJointCompany(company)" in vm_kt
+      and "JointRoutes.preferKmbStops(raw)" in vm_kt
+      and "else -> listOf(company)" in vm_kt
+      and "safeNames(CTB)" in read(API / "EtaRepository.java")
+      and "RouteDataStore.CTB_STOPS" in read(API / "EtaRepository.java")
+      and "case CTB:" in read(API / "EtaRepository.java"))
+check("JOINT_KMB_CTB: wording resources match the Java constants",
+      all(s in settings_strings for s in (
+          'name="joint_route_label"', 'name="joint_route_note"',
+          'name="joint_trip_prefix"', 'name="joint_operator_ctb"',
+          'name="joint_operator_kmb"'))
+      and "<string name=\"joint_route_label\">城巴/九巴</string>" in settings_strings
+      and "<string name=\"joint_trip_prefix\">該班次：</string>" in settings_strings)
 
 if failures:
     print(f"\n{len(failures)} check(s) failed: {', '.join(failures)}")
