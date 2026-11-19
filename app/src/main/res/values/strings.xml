@@ -144,7 +144,7 @@
     <!-- 懸浮液態玻璃導航欄：跟隨系統外觀 -->
     <string name="nav_glass_section">◌ 導航欄外觀（懸浮液態玻璃）</string>
     <string name="nav_glass_follow">跟隨系統外觀</string>
-    <string name="nav_glass_hint">導航欄係居中懸浮嘅深灰黑藥丸：高 56dp、全圓角、貼底 8dp；左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間，大屏都保持窄身；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色描邊、關閉動畫（減少動態效果）收起陰影與模糊；系統設定改變或旋轉螢幕後即時更新。關掉呢個開關會固定用標準玻璃，幾何不變。</string>
+    <string name="nav_glass_hint">導航欄係真正浮喺內容上面嘅深灰黑藥丸：高 56dp、全圓角、水平置中；位置由貼底 8dp 嘅佔位列改為離底約 12%（48–160dp）嘅懸浮 overlay，內容會同時出現喺膠囊後面同下面。左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色＋白邊、關閉動畫收起陰影同模糊。各捲動頁加咗底部預留，最後一筆資料仍捲得到。</string>
     <string name="nav_glass_status">目前：%1$s</string>
     <string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
     <string name="nav_glass_state_fixed">固定標準玻璃</string>
@@ -156,6 +156,19 @@
     <!-- 主頁附近路線卡片 → 路線詳情（無地圖版） -->
     <string name="detail_title">路線詳情</string>
     <string name="detail_no_map_label">路線示意 · 不載入地圖</string>
+    <!-- JOINT_KMB_CTB: route-level label and per-trip operator label.
+         The Java layer uses JointRoutes constants (no Android Context); these
+         strings keep the same wording for resources / documentation / tests. -->
+    <!-- CIRCULAR_ROUTES: operator-specific circular-line display + name check -->
+    <string name="circular_kmb_style">九巴循環線</string>
+    <string name="circular_ctb_style">城巴循環線</string>
+    <string name="circular_name_check">站名核對</string>
+    <string name="circular_name_hint">循環線站名依官方資料核對，唔會捏造或改用另一間公司嘅站名</string>
+    <string name="joint_route_label">城巴/九巴</string>
+    <string name="joint_route_note">聯營路線 · 城巴/九巴</string>
+    <string name="joint_trip_prefix">該班次：</string>
+    <string name="joint_operator_ctb">城巴</string>
+    <string name="joint_operator_kmb">九巴</string>
     <string name="detail_footer_honest">車資與預計落車時間：公開 ETA 數據唔包含呢兩項，故顯示「—」，唔會捏造 $5.6／15:31 呢類數字；三班次同站名全部嚟自官方即時 API。</string>
     <string name="detail_fare_na">車資 —</string>
     <string name="detail_alight">落車</string>
