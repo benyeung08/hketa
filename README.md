@@ -25,6 +25,7 @@
 - **🗺 點卡片開路線詳情**：紅色頂欄＋站序時間軸＋未來三班次，**完全冇地圖**；車資／預計落車時間如實顯示「—」
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
+- **📦 已發佈版本都可補正式版**：`workflow_dispatch` 揀一個**已發佈** Release，用該 tag 自己嘅 source 重建已簽名正式版 APK，清走衝突 `.apk` 後只留一個 `-release.apk`；唔新建 Release、唔改 tag／內文（PUBLISHED_RELEASE_BACKFILL）
 - **🏷 正式版 APK 對應 Releases 版本**：`v1.0.0` tag 只會附 `hketa-v1.0.0-release.apk`；`tag ↔ build.gradle.kts ↔ 實際 APK` 三重校驗唔夾即擋低發布，並附 `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`
 - **⬛ 路線詳情全頁文字純黑**：詳情頁係固定白底，站名**同所有原本同色嘅輔助文字**（車資、落車、分鐘單位、時鐘、標記、路線示意標籤、頁底說明）一律改純黑 `#000000`；`values-night` 保持同一純黑值，頁底背景亦釘死淺色避免黑字落黑底。深色模式唔會再變近白色睇唔到；紅色頂欄／chip 白字同藍色分鐘數字唔變
 - **🚌 聯營路線顯示「城巴/九巴」**：同一路線號同時出現喺九巴／龍運同城巴兩份官方目錄先判定為聯營（**資料驅動，冇硬編路線號清單**）。主頁附近卡片、搜尋／預載結果、詳情頁「路線示意」一律顯示 `城巴/九巴`；KMB＋CTB 兩列合併成一張卡，未來三班次逐班標 `該班次：城巴`／`該班次：九巴`。主頁會按中文站名把同一實體站嘅兩家 ETA 先併埋（配唔到名就維持各自一張，行為唔變）；**聯營站名統一用九巴／龍運站名同站號**（詳情頁站序去重、主頁卡片優先用 KMB 嗰個 StopOption；完全冇 KMB 目錄先如實退回城巴名）；詳情頁只展開 KMB＋CTB 兩家，唔會撈埋其餘 5 種模式
@@ -89,6 +90,17 @@ git tag v1.0.1 && git push origin v1.0.1
 - **同時上傳 Artifact** `hketa-release-apk`，方便喺 Actions 直接拎正式版；`generate_release_notes` 改為 `false`，想再加 GitHub 自動 "What's Changed" 可改回 `true`
 
 `AppUpdate.compareVersions()` 比較 `tag_name` 同已裝版本嘅 `versionName`；呢個閘門正正令 `v1.0.1` ↔ `1.0.1` 成立，唔會出現「tag 新但 APK 舊」嘅假更新。
+
+
+### 📦 為「已發佈嘅版本」補上正式版 APK（PUBLISHED_RELEASE_BACKFILL）
+
+之前嘅流程只喺**新打 tag** 時附正式版；但一個早前已發佈嘅 Release（例如 `v1.0.0`）可能得 debug APK、甚至冇 APK，而 App 內更新會攞最新 Release 嘅**第一個 `.apk`**，舊／debug asset 會靜靜贏。新增一個手動 workflow 專門補呢個位：
+
+- **點用**：GitHub → **Actions → Build HK ETA APK → Run workflow**；`tag` 留空＝自動揀最新已發佈 Release，亦可填 `v1.0.0`；`include_prerelease` 預設關
+- **用該 tag 自己嘅 source**：`git worktree` 由已發佈 tag 取出原始碼，CI 腳本則由 default branch 複製過去；**唔會用 main 嘅新 code 扮舊版本**。照樣跑 `RELEASE_VERSION_GATE`（`tag ↔ build.gradle.kts ↔ aapt badging`）同 `apksigner` 驗簽
+- **只留一個正式版**：先刪走其它衝突 `.apk` assets，再 `gh release upload --clobber` 上傳 `hketa-v1.0.0-release.apk` ＋ `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`，最後檢查 Release 得返**一個** `-release.apk`
+- **完全唔郁既有發布**：唔新建 Release、唔郁 tag、唔 bump 版本、**唔改 Release 內文**（`v1.0.0` 中英雙語說明原封不動）；非 `.apk` assets 亦保留
+- **失敗即停**：tag 唔存在／係 draft／只有 prerelease／JSON 解析失敗，都會 `::error::` 列出可用版本並停止，唔會上傳任何 APK
 
 ### ⚙️ 設定頁
 
@@ -250,7 +262,7 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 | `Release is explicitly tied to the matching tag/version` | checker 曾硬要求 `RELEASE_NOTES_v1.0.0.md` 存在，但 workflow 本身有 fallback —— **已修正為選用**；只需覆蓋 `scripts/check_api_fields.py` 一個檔。若 log 見到 `缺以下 N 項字串`，先再覆蓋 `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` | 全黑改動未同步：由完整 zip 覆蓋兩個詳情 layout ＋ `values/` 同 `values-night/` 嘅 `colors.xml`（共 4 個檔；合併包一次過包齊） |
 | `Received status code 429 ... Too Many Requests`（例如 `jsr305-3.0.2.pom`） | **Maven Central 限流，唔係 code 錯、唔係上傳唔完整**：`setup-java` 已開 Gradle 依賴快取，兩個 assemble step 自動重試 3 次（30s／60s 退避）；若 3 次都失敗，等幾分鐘再 **Re-run jobs**，唔使改任何檔 |
-| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `聯營站名未用九巴` / `導航欄仲係貼底佔位列` / `位置未改成按屏高上移` / `城巴卡會沿用九巴站名` / `附近站未傳各公司站名對照` / `城巴獨有站仍會被改成九巴站名` / `未逐張卡分辨城巴／聯營站名` / `循環線未標記` / `循環線站序仍會被九巴化` / `App1933Format.StopDisplay 無法解析` | 聯營／導航欄／城巴站名／循環線／Kotlin 符號改動未同步：由完整 zip 覆蓋新檔 `JointRoutes.java` ＋其餘 8 個聯營相關檔（合併包一次過包齊），唔好逐個 upload |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `聯營站名未用九巴` / `導航欄仲係貼底佔位列` / `位置未改成按屏高上移` / `城巴卡會沿用九巴站名` / `附近站未傳各公司站名對照` / `城巴獨有站仍會被改成九巴站名` / `未逐張卡分辨城巴／聯營站名` / `循環線未標記` / `循環線站序仍會被九巴化` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` | 聯營／導航欄／城巴站名／循環線／Kotlin 符號／backfill 改動未同步：由完整 zip 覆蓋新檔 `JointRoutes.java` ＋其餘 8 個聯營相關檔（合併包一次過包齊），唔好逐個 upload |
 | `Could not resolve` / `Read timed out` / 5xx | 同屬暫時性依賴下載失敗：直接 **Re-run jobs** |
 | 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
@@ -305,6 +317,7 @@ Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compi
 - **🗺 Tap a card for route detail**: red header + stop timeline + next three arrivals, **with no map at all**; fare / predicted alighting time honestly shown as "—"
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
+- **📦 Backfill an already-published Release**: a `workflow_dispatch` run rebuilds the signed production APK from THAT tag's own source, prunes conflicting `.apk` assets and leaves exactly one `-release.apk` — no new Release, no tag move, no body rewrite (PUBLISHED_RELEASE_BACKFILL)
 - **🏷 Production APK matches its Release version**: a `v1.0.0` tag attaches only `hketa-v1.0.0-release.apk`; a `tag ↔ build.gradle.kts ↔ actual APK` three-way gate blocks publishing on mismatch, with `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt` attached
 - **⬛ Every route-detail label is pure black**: the detail screen has a fixed white background, so stop names AND every label that used to share their colour (fare, alight, minutes unit, clock, tags, map-strip caption, footer note) are now pure `#000000`. `values-night` keeps the SAME pure black, and the footer background is pinned pale so black text is never on black. Dark mode no longer turns them into near-white invisible text; the red header / dark chips keep white text and the big minute numbers stay blue
 - **🚌 Joint routes show "城巴/九巴"**: a route is joint ONLY when the SAME route number appears in BOTH official catalogues (KMB/LWB and Citybus) — catalogue-driven, no hard-coded route-number list. Home nearby cards, search / preload rows and the detail-screen caption show `城巴/九巴`; the KMB + CTB rows collapse into ONE card and each of the next three trips is tagged `該班次：城巴` / `該班次：九巴`. Home merges both operators' ETA for the same physical stop by Chinese stop name (unmatched names keep the old per-stop behaviour); **joint routes always display the KMB / LWB stop name and stop id** (the detail sequence is de-duplicated and home cards prefer the KMB StopOption; only when KMB has no catalogue data at all does it honestly fall back to the CTB name); the detail page expands KMB + CTB only, never the other 5 modes
@@ -369,6 +382,17 @@ Every tag build runs **`RELEASE_VERSION_GATE`** so the APK inside a Release real
 - **Also uploaded as the `hketa-release-apk` Actions artifact**; `generate_release_notes` is now `false` — set it back to `true` if you want GitHub's automatic "What's Changed" section appended
 
 `AppUpdate.compareVersions()` compares `tag_name` with the installed `versionName`; this gate is what makes `v1.0.1` ↔ `1.0.1` hold, so a "new tag but stale APK" false update cannot happen.
+
+
+### 📦 Add the production APK to an ALREADY-PUBLISHED Release (PUBLISHED_RELEASE_BACKFILL)
+
+The tagged-release job only attaches the signed APK when a NEW `v*` tag is pushed. A Release published earlier (e.g. `v1.0.0`) may still carry only a debug APK — or none — and the in-app updater takes the FIRST `.apk` asset of the latest Release, so a stale/debug asset would silently win. A manual workflow closes that gap:
+
+- **How**: GitHub → **Actions → Build HK ETA APK → Run workflow**. Leave `tag` empty for the newest published Release, or type `v1.0.0`; `include_prerelease` is OFF by default
+- **Builds from THAT tag's own source**: a `git worktree` materialises the published tag while the CI scripts are copied from the default branch. **main's newer code is never built as v1.0.0.** The same `RELEASE_VERSION_GATE` (`tag ↔ build.gradle.kts ↔ aapt badging`) and `apksigner` check still run
+- **Exactly ONE production APK**: conflicting `.apk` assets are removed first, then `gh release upload --clobber` attaches `hketa-v1.0.0-release.apk` plus `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt`; a final audit asserts the Release has exactly one `-release.apk`
+- **Nothing else changes**: no new Release, no tag move, no version bump, **no rewrite of the Release body** (the bilingual v1.0.0 notes stay intact); non-`.apk` assets are preserved
+- **Fails closed**: unknown tag / draft / prerelease-only / malformed JSON prints `::error::` with the available tags and uploads nothing
 
 ### ⚙️ Settings
 
@@ -527,7 +551,7 @@ The first CI step is a **self-contained preflight** (it needs no repo `.py` file
 | `Release is explicitly tied to the matching tag/version` | The checker used to hard-require `RELEASE_NOTES_v1.0.0.md`, contradicting the workflow's own fallback — **now optional**; just overwrite `scripts/check_api_fields.py`. If the log shows `缺以下 N 項字串`, also overwrite `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` (stale all-black detail colours) | Overwrite the two route-detail layouts plus `colors.xml` in both `values/` and `values-night/` (4 files) from the full zip / merged pack |
 | `Received status code 429 ... Too Many Requests` (e.g. `jsr305-3.0.2.pom`) | **Maven Central rate-limit, NOT a code / upload / signing bug**: `setup-java` now caches Gradle dependencies and both assemble steps retry 3 times (30s / 60s backoff). If all 3 fail, wait a few minutes and **Re-run jobs** — no file changes needed |
-| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `導航欄仲係貼底佔位列` / `城巴獨有站仍會被改成九巴站名` / `循環線未標記` / `App1933Format.StopDisplay 無法解析` (stale joint / nav / CTB-name / circular / Kotlin files) | Overwrite the new `JointRoutes.java` plus the other 8 joint-related files from the full zip / merged pack; do not upload one by one |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `導航欄仲係貼底佔位列` / `城巴獨有站仍會被改成九巴站名` / `循環線未標記` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` (stale joint / nav / CTB-name / circular / Kotlin / backfill files) | Overwrite the new `JointRoutes.java` plus the other 8 joint-related files from the full zip / merged pack; do not upload one by one |
 | `Could not resolve` / `Read timed out` / 5xx | Same class of transient dependency-download failure: simply **Re-run jobs** |
 | Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
 
