@@ -1209,11 +1209,19 @@ def wpos(needle):
 
 
 def one_apk_asset():
+    """Count .apk lines ONLY inside step 23's `files: |` block.
+
+    The backfill job added later has its own `path: |` block with .apk lines;
+    scanning to EOF would wrongly count those too.
+    """
     start = wpos("Attach signed release APK")
-    if start < 0 or "files: |" not in workflow[start:]:
+    if start < 0:
         return False
-    tail = workflow[start:].split("files: |", 1)[1]
-    return len([l for l in tail.splitlines()
+    m = re.search(r"(?m)^[ ]{10}files: \|\n((?:[ ]{12,}[^\n]*\n)+)",
+                  workflow[start:])
+    if not m:
+        return False
+    return len([l for l in m.group(1).splitlines()
                 if ".apk" in l and l.strip()
                 and not l.strip().startswith("#")]) == 1
 
@@ -1231,12 +1239,12 @@ check("MAVEN_429_RETRY: BOTH assemble steps retry transient 429 / 5xx / timeout"
           "for attempt in 1 2 3; do", "Too Many Requests",
           "Received status code 5[0-9][0-9]", "delay=$((attempt * 30))",
           'if [ "$ok" -ne 1 ]; then exit 1; fi'))
-      and workflow.count("for attempt in 1 2 3; do") == 2
-      and workflow.count('if [ "$ok" -ne 1 ]; then exit 1; fi') == 2)
+      and workflow.count("for attempt in 1 2 3; do") >= 2
+      and workflow.count('if [ "$ok" -ne 1 ]; then exit 1; fi') >= 2)
 check("MAVEN_429_RETRY: non-network failures are NOT retried (real error shows)",
       "Gradle 失敗唔係依賴下載問題，唔重試" in workflow
       and "交畀下一個 step 顯示真正錯誤" in workflow
-      and workflow.count("Gradle 失敗唔係依賴下載問題，唔重試") == 2)
+      and workflow.count("Gradle 失敗唔係依賴下載問題，唔重試") >= 2)
 check("MAVEN_429_RETRY: distiller recognises 429 and says just Re-run jobs",
       "Received status code 429|Too Many Requests|status code 429" in distiller
       and "共享出口 IP 被限流" in distiller
@@ -1706,6 +1714,51 @@ check("KOTLIN_TOPLEVEL: no App1933Format.<top-level data class> misuse",
 check("AAPT_FMT: percent literals in non-format strings are marked",
       '<string name="nav_glass_hint" formatted="false">' in read(RES / "values/strings.xml")
       and "%1$" in read(RES / "values/strings.xml"))
+# --- 已發佈版本補正式版 APK（PUBLISHED_RELEASE_BACKFILL）---------------------
+published = read(ROOT / "scripts/published_release.py")
+check("PUBLISHED_RELEASE_BACKFILL: workflow_dispatch inputs + dedicated job",
+      "PUBLISHED_RELEASE_BACKFILL" in workflow
+      and "backfill-published-release:" in workflow
+      and "if: github.event_name == 'workflow_dispatch'" in workflow
+      and "inputs:" in workflow
+      and "include_prerelease:" in workflow
+      and "已發佈版本 tag" in workflow
+      and "scripts/published_release.py" in workflow)
+check("PUBLISHED_RELEASE_BACKFILL: builds from the TAG's own source, not main",
+      "git fetch origin tag" in workflow
+      and "git worktree add --detach" in workflow
+      and "cp -r scripts/." in workflow
+      and "Materialise the PUBLISHED tag source" in workflow
+      and "用 tag「{tag}」本身嘅 source 構建" in published)
+check("PUBLISHED_RELEASE_BACKFILL: reuses the SAME version + signing gates",
+      "Verify release version matches the PUBLISHED tag (backfill)" in workflow
+      and "Verify APK signing certificate (backfill)" in workflow
+      and "scripts/verify_release_version.py" in workflow
+      and "dump badging" in workflow
+      and "SIGNING_FINGERPRINT.txt" in workflow
+      and "VERSION_INFO.txt" in workflow)
+check("PUBLISHED_RELEASE_BACKFILL: only ONE production .apk, body/tag preserved",
+      "gh release upload" in workflow
+      and "--clobber" in workflow
+      and "scripts/published_release.py prune" in workflow
+      and "scripts/published_release.py final" in workflow
+      and "Release 內文／tag／published_at 不變" in workflow
+      and "def final_audit" in published
+      and "def prune_ids" in published
+      and "PRODUCTION_MARKER" in published
+      and "is_production_apk" in published)
+check("PUBLISHED_RELEASE_BACKFILL: never creates a Release or moves a tag",
+      "softprops/action-gh-release@v2" in workflow
+      and workflow.count("softprops/action-gh-release@v2") == 1
+      and "def select_target" in published
+      and "draft" in published
+      and "唔會新建 Release" in published)
+check("PUBLISHED_RELEASE_BACKFILL: pure functions are offline-testable",
+      all(s in published for s in (
+          "def parse_releases", "def is_published", "def is_prerelease",
+          "def tag_of", "def select_target", "def apk_assets",
+          "def prune_ids", "def final_audit", "def version_source_hint"))
+      and "argparse" in published and "json" in published)
 check("CTB_ONLY_NAME: ONLY pure-Citybus cards / stops use Citybus wording",
       "CTB_ONLY_NAME" in joint_java
       and "CTB_ONLY_NAME" in fmt_kt

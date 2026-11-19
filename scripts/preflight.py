@@ -41,6 +41,8 @@ REQUIRED = [
     "scripts/fix_drift.py",
     "scripts/show_build_error.py",
     "scripts/verify_release_version.py",
+    # PUBLISHED_RELEASE_BACKFILL
+    "scripts/published_release.py",
     # Resources
     "app/src/main/res/xml/file_paths.xml",
     "app/src/main/res/values/strings.xml",
@@ -536,6 +538,15 @@ def main() -> int:
          'LinkedHashMap<String, StopDisplay>()',
          'EtaViewModel.kt 仍係舊版（App1933Format.StopDisplay 無法解析）',
          '由完整 zip 覆蓋 EtaViewModel.kt（改用頂層 StopDisplay）'),
+        # PUBLISHED_RELEASE_BACKFILL
+        ('scripts/published_release.py',
+         'PUBLISHED_RELEASE_BACKFILL',
+         'published_release.py 唔見咗或仍係舊版（無法補已發佈版本正式版 APK）',
+         '由完整 zip 覆蓋 scripts/published_release.py'),
+        ('.github/workflows/build-apk.yml',
+         'backfill-published-release',
+         'build-apk.yml 仍係舊版（冇 workflow_dispatch 補正式版 job）',
+         '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel
