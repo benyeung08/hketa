@@ -5,7 +5,18 @@ on:
     branches: [ main, master ]
     tags: [ 'v*' ]
   pull_request:
+  # PUBLISHED_RELEASE_BACKFILL: manually add the signed production APK to a
+  # Release that has ALREADY been published (no new tag, no version bump).
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '已發佈版本 tag（留空＝最新已發佈 Release，例如 v1.0.0）'
+        required: false
+        default: ''
+      include_prerelease:
+        description: '容許補 prerelease 版本'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -52,6 +63,8 @@ jobs:
               'scripts/fix_drift.py',
               'scripts/show_build_error.py',
               'scripts/verify_release_version.py',
+              # PUBLISHED_RELEASE_BACKFILL
+              'scripts/published_release.py',
               'app/src/main/res/xml/file_paths.xml',
               'app/src/main/res/values/strings.xml',
               'app/src/main/res/values/colors.xml',
@@ -519,6 +532,15 @@ jobs:
                'LinkedHashMap<String, StopDisplay>()',
                'EtaViewModel.kt 仍係舊版（App1933Format.StopDisplay 無法解析）',
                '由完整 zip 覆蓋 EtaViewModel.kt（改用頂層 StopDisplay）'),
+              # PUBLISHED_RELEASE_BACKFILL
+              ('scripts/published_release.py',
+               'PUBLISHED_RELEASE_BACKFILL',
+               'published_release.py 唔見咗或仍係舊版（無法補已發佈版本正式版 APK）',
+               '由完整 zip 覆蓋 scripts/published_release.py'),
+              ('.github/workflows/build-apk.yml',
+               'backfill-published-release',
+               'build-apk.yml 仍係舊版（冇 workflow_dispatch 補正式版 job）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
           ]
           for path, needle, msg, fix in drift:
               p = R / path
@@ -885,3 +907,313 @@ jobs:
             hketa-${{ github.ref_name }}-release.apk
             VERSION_INFO.txt
             SIGNING_FINGERPRINT.txt
+
+  # =====================================================================
+  # PUBLISHED_RELEASE_BACKFILL
+  # ---------------------------------------------------------------------
+  # A Release published BEFORE this workflow existed may still have no APK,
+  # or only a debug APK. The in-app updater takes the FIRST .apk asset of
+  # the latest Release, so this job rebuilds the SIGNED PRODUCTION APK from
+  # THAT TAG'S OWN SOURCE, removes conflicting .apk assets and uploads
+  # exactly one `hketa-<tag>-release.apk`.
+  #
+  # Deliberately does NOT create a Release, move the tag, bump a version or
+  # rewrite the Release body (the bilingual v1.0.0 notes stay untouched).
+  # =====================================================================
+  backfill-published-release:
+    name: Add signed production APK to an ALREADY-PUBLISHED Release
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      # One checkout of the DEFAULT BRANCH gives us (a) the newest CI scripts
+      # and (b) full tag history. The tag source is materialised with a git
+      # worktree below, so Gradle never builds main's newer code as v1.0.0.
+      - name: Checkout default branch (CI tools + full tag history)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Resolve the already-published Release (PUBLISHED_RELEASE_BACKFILL)
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json
+          python3 scripts/published_release.py resolve \
+            --json releases.json \
+            --requested "${{ inputs.tag }}" \
+            --include-prerelease "${{ inputs.include_prerelease }}" \
+            --out "$GITHUB_OUTPUT"
+          echo "### 已發佈版本正式版補上" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 目標 Release：\`${{ steps.target.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Materialise the PUBLISHED tag source (not main)
+        id: src
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.target.outputs.tag }}"
+          git fetch origin tag "$TAG" --force
+          SRC="$RUNNER_TEMP/hketa-tag-src"
+          git worktree add --detach "$SRC" "$TAG"
+          # Newest CI scripts come from the default branch; the app source,
+          # gradle files and resources stay EXACTLY as published at that tag.
+          mkdir -p "$SRC/scripts"
+          cp -r scripts/. "$SRC/scripts/"
+          echo "src=$SRC" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          cd "$SRC"
+          echo "Tag source HEAD: $(git rev-parse HEAD)"
+          grep -E 'versionName|versionCode' app/build.gradle.kts | head -4
+
+      - name: JDK 17 (backfill)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Locate Android SDK (backfill)
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            for c in /usr/local/lib/android/sdk /usr/lib/android-sdk "$HOME/Android/Sdk"; do
+              [ -d "$c" ] && SDK="$c" && break
+            done
+          fi
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "::error::搵唔到 Android SDK（backfill）"
+            exit 1
+          fi
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          else
+            for c in "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+                     "$SDK/cmdline-tools/bin/sdkmanager" \
+                     "$SDK/tools/bin/sdkmanager"; do
+              [ -x "$c" ] && SDKMANAGER="$c" && break
+            done
+          fi
+          if [ -z "${SDKMANAGER:-}" ]; then
+            echo "::error::搵唔到 sdkmanager（backfill）"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+
+      - name: Accept licenses and install SDK 34 (backfill)
+        run: |
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
+
+      - name: Decode release keystore (backfill)
+        env:
+          HKETA_KEYSTORE_BASE64: ${{ secrets.HKETA_KEYSTORE_BASE64 }}
+          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+          HKETA_KEY_PASSWORD: ${{ secrets.HKETA_KEY_PASSWORD }}
+        run: |
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          if [ -n "$HKETA_KEYSTORE_BASE64" ]; then
+            echo "$HKETA_KEYSTORE_BASE64" | base64 -d > app/hketa-release.keystore
+            echo "HKETA_KEYSTORE_PASSWORD=$HKETA_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "HKETA_KEY_ALIAS=${HKETA_KEY_ALIAS:-hketa}" >> "$GITHUB_ENV"
+            echo "HKETA_KEY_PASSWORD=$HKETA_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "HKETA_CUSTOM_KEY=true" >> "$GITHUB_ENV"
+            echo "Using injected production keystore."
+          else
+            echo "No HKETA_KEYSTORE_BASE64 secret: falling back to the committed dev key (identical certificate)."
+          fi
+
+      - name: Pin expected signing fingerprint (backfill)
+        env:
+          HKETA_KEYSTORE_PASSWORD: ${{ secrets.HKETA_KEYSTORE_PASSWORD }}
+          HKETA_KEY_ALIAS: ${{ secrets.HKETA_KEY_ALIAS }}
+        run: |
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          if [ -f app/hketa-release.keystore ]; then
+            KS=app/hketa-release.keystore
+            PASS="${HKETA_KEYSTORE_PASSWORD:-hketa-dev-2026}"
+            ALIAS="${HKETA_KEY_ALIAS:-hketa}"
+          else
+            KS=app/hketa-debug.keystore
+            PASS=hketa-dev-2026
+            ALIAS=hketa
+          fi
+          FP=$(keytool -list -v -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" 2>/dev/null \
+               | grep -m1 'SHA256:' | cut -d: -f2- | tr -d ' ')
+          if grep -q 'expected_signing_sha256' app/src/main/res/values/strings.xml; then
+            python3 scripts/pin_signing_fingerprint.py "$FP"
+          else
+            echo "::warning::呢個已發佈 tag 嘅 strings.xml 未有 expected_signing_sha256；跳過 pin，下面只用 apksigner 實際憑證核對"
+          fi
+
+      - name: Gradle 8.7 (backfill)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gradle-8.7-bin.zip" \
+            https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q "$RUNNER_TEMP/gradle-8.7-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
+          echo "$RUNNER_TEMP/gradle-dist/gradle-8.7/bin" >> "$GITHUB_PATH"
+
+      - name: Assemble signed release APK (backfill)
+        run: |
+          set -o pipefail
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          ok=0
+          for attempt in 1 2 3; do
+            echo "::group::gradle assembleRelease (backfill attempt $attempt/3)"
+            : > build-release.log
+            if gradle assembleRelease --no-daemon --console=plain 2>&1 | tee build-release.log; then
+              echo "::endgroup::"
+              ok=1
+              break
+            fi
+            echo "::endgroup::"
+            if grep -qE '429|Too Many Requests|Could not GET|Could not resolve|Read timed out|Connection reset|Received status code 5[0-9][0-9]' build-release.log; then
+              if [ "$attempt" -lt 3 ]; then
+                delay=$((attempt * 30))
+                echo "::warning::Maven Central 429 / 5xx（backfill），${delay}s 後重試"
+                sleep "$delay"
+                continue
+              fi
+              echo "::error::連續 3 次依賴下載限流（backfill）；等幾分鐘再 Run workflow，唔使改任何檔"
+            else
+              echo "::error::Gradle 失敗唔係依賴下載問題，唔重試，交畀下一個 step 顯示真正錯誤"
+              break
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then exit 1; fi
+
+      - name: Show real Gradle error (backfill)
+        if: failure()
+        run: |
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          python3 scripts/show_build_error.py build-release.log || true
+
+      - name: Verify APK signing certificate (backfill)
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          TAG="${{ steps.target.outputs.tag }}"
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          APKSIGNER="$SDK/build-tools/34.0.0/apksigner"
+          APK="app/build/outputs/apk/release/app-release.apk"
+          "$APKSIGNER" verify --print-certs "$APK" | tee apksigner-output.txt
+          APK_FP=$(grep -m1 'SHA-256 digest' apksigner-output.txt \
+                   | cut -d: -f2- | tr -d ' ' | tr 'a-f' 'A-F')
+          PIN=$(python3 -c "import re,sys;m=re.search(r'<string name="expected_signing_sha256">([^<]*)</string>',open('app/src/main/res/values/strings.xml',encoding='utf-8').read());print(m.group(1) if m else '')")
+          echo "APK certificate : $APK_FP"
+          echo "Pinned value    : ${PIN:-(tag 版本無 pin 資源)}"
+          if [ -n "$PIN" ] && [ "$APK_FP" != "$PIN" ]; then
+            echo "::error::APK 簽章憑證同 pinned 指唔夾（backfill）"
+            exit 1
+          fi
+          {
+            echo "HK ETA APK signing certificate (published-release backfill)"
+            echo "Tag: $TAG"
+            echo "SHA-256: $APK_FP"
+          } > SIGNING_FINGERPRINT.txt
+          cp "$APK" "hketa-$TAG-release.apk"
+          echo "### Backfill 簽章 SHA-256: \`$APK_FP\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dump release APK badging (backfill)
+        run: |
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          AAPT="$SDK/build-tools/34.0.0/aapt"
+          if [ ! -x "$AAPT" ]; then
+            echo "::error::搵唔到 aapt（backfill）"
+            exit 1
+          fi
+          "$AAPT" dump badging \
+            "app/build/outputs/apk/release/app-release.apk" > apk-badging.txt
+          head -1 apk-badging.txt
+
+      # SAME version gate as a fresh tag: tag == tag's build.gradle.kts ==
+      # the ACTUAL APK badging. Using main's newer source would FAIL here,
+      # which is exactly what keeps a published version honest.
+      - name: Verify release version matches the PUBLISHED tag (backfill)
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          TAG="${{ steps.target.outputs.tag }}"
+          COMMIT="$(git rev-parse HEAD)"
+          python3 scripts/verify_release_version.py \
+            --tag "$TAG" \
+            --gradle app/build.gradle.kts \
+            --badging apk-badging.txt \
+            --apk "hketa-$TAG-release.apk" \
+            --signing apksigner-output.txt \
+            --out VERSION_INFO.txt \
+            --commit "$COMMIT" \
+            --keystore-source "${HKETA_CUSTOM_KEY:-}"
+          cat VERSION_INFO.txt
+
+      - name: Prune conflicting .apk assets (PUBLISHED_RELEASE_BACKFILL)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          TAG="${{ steps.target.outputs.tag }}"
+          APK_NAME="hketa-$TAG-release.apk"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" > release-before.json
+          python3 scripts/published_release.py prune \
+            --json release-before.json --keep "$APK_NAME" --out prune-ids.txt
+          while read -r ID; do
+            [ -z "$ID" ] && continue
+            echo "Removing old .apk asset id $ID"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/$ID"
+          done < prune-ids.txt
+          echo "[OK] 非 .apk assets 同 Release body 完全保留"
+
+      - name: Upload signed production APK to the ALREADY-PUBLISHED Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.src.outputs.src }}"
+          cd "$SRC"
+          TAG="${{ steps.target.outputs.tag }}"
+          APK_NAME="hketa-$TAG-release.apk"
+          # --clobber replaces a same-named asset; the Release itself, its
+          # tag, its published_at and its bilingual body are NOT touched.
+          gh release upload "$TAG" \
+            "$APK_NAME" VERSION_INFO.txt SIGNING_FINGERPRINT.txt --clobber
+          echo "::notice::已喺已發佈版本 $TAG 加入正式版 $APK_NAME（冇新建 Release、冇改 tag、冇改內文）"
+
+      - name: Verify final Release has exactly ONE production APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.target.outputs.tag }}"
+          APK_NAME="hketa-$TAG-release.apk"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" > release-after.json
+          python3 scripts/published_release.py final \
+            --json release-after.json --expect "$APK_NAME"
+          echo "### 已發佈版本 \`$TAG\` 正式版 ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Asset：\`$APK_NAME\`（唯一 .apk）" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release 內文／tag／published_at 不變" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backfill artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hketa-backfill-${{ steps.target.outputs.tag }}-release-apk
+          path: |
+            ${{ steps.src.outputs.src }}/hketa-${{ steps.target.outputs.tag }}-release.apk
+            ${{ steps.src.outputs.src }}/VERSION_INFO.txt
+            ${{ steps.src.outputs.src }}/SIGNING_FINGERPRINT.txt
+          if-no-files-found: error
+
