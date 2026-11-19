@@ -119,27 +119,40 @@ public final class EtaRepository {
     }
 
     public List<EtaItem> etaFor(StopOption stop) throws Exception {
+        // JOINT_KMB_CTB: primary operator first, then a best-effort partner
+        // lookup for jointly-operated routes so each arrival can be labelled
+        // 城巴 / 九巴. A failed partner lookup never hides the primary ETA.
+        List<EtaItem> primary;
         if (NEARBY.equals(stop.getBound())) {
-            return stopEta(stop);
+            primary = stopEta(stop);
+        } else {
+            switch (stop.getCompany()) {
+                case KMB:
+                    primary = kmbEta(stop.getRoute(), stop.getStopId(), stop.getServiceType());
+                    break;
+                case CTB:
+                    primary = ctbEta(stop.getRoute(), stop.getStopId());
+                    break;
+                case NLB:
+                    primary = nlbEta(stop);
+                    break;
+                case GMB:
+                    primary = gmbEta(stop);
+                    break;
+                case MTR:
+                    primary = mtrEta(stop);
+                    break;
+                case LRT:
+                    primary = lrtEta(stop);
+                    break;
+                case MTRB:
+                    primary = mtrBusEta(stop);
+                    break;
+                default:
+                    primary = Collections.emptyList();
+            }
         }
-        switch (stop.getCompany()) {
-            case KMB:
-                return kmbEta(stop.getRoute(), stop.getStopId(), stop.getServiceType());
-            case CTB:
-                return ctbEta(stop.getRoute(), stop.getStopId());
-            case NLB:
-                return nlbEta(stop);
-            case GMB:
-                return gmbEta(stop);
-            case MTR:
-                return mtrEta(stop);
-            case LRT:
-                return lrtEta(stop);
-            case MTRB:
-                return mtrBusEta(stop);
-            default:
-                return Collections.emptyList();
-        }
+        return JointRoutes.augment(primary, stop, this);
     }
 
     /** All-route ETA for one nearby stop (no route number required). */

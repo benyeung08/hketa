@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,9 +50,26 @@ public final class RouteSearch {
         public final int serviceType;
         public final String note;
         public final boolean exact;
+        /** JOINT_KMB_CTB: true when both official catalogues list this route. */
+        public final boolean joint;
+        /** CIRCULAR_ROUTES: only KMB / CTB circular rows set these. */
+        public final boolean circular;
+        public final String style;
 
         Result(String company, String route, String dest, String bound,
                int serviceType, String note, boolean exact) {
+            this(company, route, dest, bound, serviceType, note, exact, false);
+        }
+
+        Result(String company, String route, String dest, String bound,
+               int serviceType, String note, boolean exact, boolean joint) {
+            this(company, route, dest, bound, serviceType, note, exact, joint,
+                    false, "");
+        }
+
+        Result(String company, String route, String dest, String bound,
+               int serviceType, String note, boolean exact, boolean joint,
+               boolean circular, String style) {
             this.company = company;
             this.route = route;
             this.dest = dest;
@@ -58,7 +77,92 @@ public final class RouteSearch {
             this.serviceType = serviceType;
             this.note = note == null ? "" : note;
             this.exact = exact;
+            this.joint = joint;
+            this.circular = circular;
+            this.style = style == null ? "" : style;
         }
+    }
+
+    /**
+     * CIRCULAR_ROUTES — mark KMB / Citybus CIRCULAR rows from the OFFICIAL
+     * destination string (e.g. "尖沙咀(循環線)", "勵德邨 - 荷李活道(循環線)").
+     * Pure and offline-testable; no route-number list is hard-coded.
+     *
+     * CIRCULAR_DISPLAY: the row gets its OWN operator's style label and the
+     * official display title, so a Citybus circular line is shown the Citybus
+     * way and a KMB circular line the App1933 way. Circular rows are kept
+     * SEPARATE (see markJoint) so the two ways never mix.
+     */
+    static List<Result> markCircular(List<Result> in) {
+        List<Result> out = new ArrayList<>();
+        if (in == null) {
+            return out;
+        }
+        for (Result r : in) {
+            boolean circular = CircularRoutes.supports(r.company)
+                    && CircularRoutes.isCircularDest(r.dest);
+            if (!circular) {
+                out.add(r);
+                continue;
+            }
+            String style = CircularRoutes.styleLabel(r.company);
+            String badge = CircularRoutes.displayBadge(r.company, r.dest);
+            String dest = CircularRoutes.displayTitle(r.company, "", r.dest)
+                    .trim();
+            // dest keeps the official circular suffix; the "route" prefix is
+            // rendered separately by the adapter, so strip it here.
+            String note = r.note;
+            if (!note.contains(style)) {
+                note = note.isEmpty()
+                        ? badge
+                        : badge + " · " + note;
+            }
+            out.add(new Result(r.company, r.route, dest, r.bound,
+                    r.serviceType, note, r.exact, false, true, style));
+        }
+        return out;
+    }
+
+    /**
+     * JOINT_KMB_CTB — mark jointly-operated KMB/CTB routes and collapse the two
+     * catalogue rows that describe the SAME route + destination into one row
+     * labelled "城巴/九巴". Different destinations (two ends of a route) stay
+     * as two rows, both labelled. Detection is catalogue-driven, never a
+     * hard-coded route-number list.
+     */
+    private static List<Result> markJoint(List<Result> in) {
+        List<Result> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Result r : in) {
+            // CIRCULAR_ROUTES: a circular line is shown with ITS OWN
+            // operator's way and stop names, never collapsed into a
+            // "城巴/九巴" joint row.
+            if (r.circular) {
+                out.add(r);
+                continue;
+            }
+            boolean joint = (EtaRepository.KMB.equals(r.company)
+                    || EtaRepository.CTB.equals(r.company))
+                    && JointRoutes.isJointRoute(r.route);
+            String company = joint ? JointRoutes.JOINT : r.company;
+            String note = r.note;
+            if (joint && !note.contains(JointRoutes.JOINT_LABEL)) {
+                note = note.isEmpty()
+                        ? JointRoutes.JOINT_NOTE
+                        : JointRoutes.JOINT_LABEL + " · " + note;
+            }
+            if (joint) {
+                String key = company + "|"
+                        + r.route.trim().toUpperCase(Locale.US) + "|"
+                        + r.dest.replace("往 ", "").trim();
+                if (!seen.add(key)) {
+                    continue;
+                }
+            }
+            out.add(new Result(company, r.route, r.dest, r.bound,
+                    r.serviceType, note, r.exact, joint));
+        }
+        return out;
     }
 
     private RouteSearch() {
@@ -102,6 +206,14 @@ public final class RouteSearch {
             @Override public void run() throws Exception { gmbPreload(out); }
         });
         railPreload(out);
+        // CIRCULAR_ROUTES: mark circular rows first, then collapse only the
+        // NON-circular joint rows into one "城巴/九巴" row.
+        List<Result> marked = markCircular(out);
+        out.clear();
+        out.addAll(marked);
+        List<Result> merged = markJoint(out);
+        out.clear();
+        out.addAll(merged);
         Collections.sort(out, new Comparator<Result>() {
             @Override
             public int compare(Result a, Result b) {
@@ -288,6 +400,14 @@ public final class RouteSearch {
         safe(out, new Source() {
             @Override public void run() throws Exception { rail(out, q); }
         });
+        // CIRCULAR_ROUTES + JOINT_KMB_CTB: mark circular rows first, then
+        // collapse only the NON-circular joint rows.
+        List<Result> marked = markCircular(out);
+        out.clear();
+        out.addAll(marked);
+        List<Result> merged = markJoint(out);
+        out.clear();
+        out.addAll(merged);
         Collections.sort(out, new Comparator<Result>() {
             @Override
             public int compare(Result a, Result b) {
@@ -316,6 +436,10 @@ public final class RouteSearch {
     }
 
     private static int rank(String company) {
+        // JOINT_KMB_CTB: joint rows sort ahead of the single-operator rows.
+        if (JointRoutes.isJointCompany(company)) {
+            return -1;
+        }
         for (int i = 0; i < COMPANY_ORDER.length; i++) {
             if (COMPANY_ORDER[i].equals(company)) {
                 return i;
@@ -593,6 +717,10 @@ public final class RouteSearch {
 
     /** Exposed for the offline functional test. */
     public static String attribution(String company) {
+        if (JointRoutes.isJointCompany(company)) {
+            // The joint label lives in Result.note, not the attribution line.
+            return "";
+        }
         switch (company) {
             case "NLB": return "大嶼山巴士 (資料由DATA.GOV.HK提供)";
             case "GMB": return "綠色小巴 (資料由DATA.GOV.HK提供)";
