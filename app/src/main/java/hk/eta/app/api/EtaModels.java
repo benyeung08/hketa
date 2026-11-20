@@ -20,10 +20,21 @@ public final class EtaModels {
         private final int serviceType;  // KMB service type, others always 1
         private final String ref;       // operator-specific id: NLB/GMB routeId, MTR line, MTRB routeName
         private final String note;      // destination / platform / status hint
+        // GMB_CIRCULAR_ETA: stop_seq of the LAST stop of a circular route.
+        // 0 = not circular / unknown. Kept OUT of key() so favourites stay
+        // byte-for-byte compatible with earlier releases.
+        private final int loopLastSeq;
 
         public StopOption(String company, String route, String bound, int seq,
                           String stopId, String stopName, int serviceType,
                           String ref, String note) {
+            this(company, route, bound, seq, stopId, stopName, serviceType,
+                    ref, note, 0);
+        }
+
+        public StopOption(String company, String route, String bound, int seq,
+                          String stopId, String stopName, int serviceType,
+                          String ref, String note, int loopLastSeq) {
             this.company = company;
             this.route = route;
             this.bound = bound;
@@ -33,6 +44,11 @@ public final class EtaModels {
             this.serviceType = serviceType < 1 ? 1 : serviceType;
             this.ref = ref == null ? "" : ref;
             this.note = note == null ? "" : note;
+            this.loopLastSeq = loopLastSeq > 0 ? loopLastSeq : 0;
+        }
+
+        public int getLoopLastSeq() {
+            return loopLastSeq;
         }
 
         public String getCompany() {

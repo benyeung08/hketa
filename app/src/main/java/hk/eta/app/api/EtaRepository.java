@@ -643,6 +643,13 @@ public final class EtaRepository {
             if (stops == null) {
                 continue;
             }
+            // GMB_CIRCULAR_ETA: collect this direction's stop_seq values and
+            // the first / last stop_id first. A circular route is recognised
+            // from the OFFICIAL data (same terminus at both ends, or the
+            // "(循環線)" destination) — never a hard-coded route list.
+            List<Integer> seqs = new ArrayList<>();
+            List<String> ids = new ArrayList<>();
+            List<String> names = new ArrayList<>();
             for (int i = 0; i < stops.length(); i++) {
                 JSONObject o = stops.optJSONObject(i);
                 if (o == null) {
@@ -652,13 +659,28 @@ public final class EtaRepository {
                 if (id.isEmpty()) {
                     continue;
                 }
-                String name = HttpJson.firstNonEmpty(
+                seqs.add(o.optInt("stop_seq", i + 1));
+                ids.add(id);
+                names.add(HttpJson.firstNonEmpty(
                         HttpJson.str(o, "name_tc"),
                         HttpJson.str(o, "name_en"),
-                        HttpJson.str(o, "name_sc"));
-                int seq = o.optInt("stop_seq", i + 1);
-                out.add(new StopOption(GMB, route, String.valueOf(v.routeSeq), seq,
-                        id, name, 1, v.routeId, v.note));
+                        HttpJson.str(o, "name_sc")));
+            }
+            if (seqs.isEmpty()) {
+                continue;
+            }
+            int maxSeq = 0;
+            for (int s : seqs) {
+                maxSeq = Math.max(maxSeq, s);
+            }
+            boolean circular = CircularRoutes.isCircularDest(v.note)
+                    || (ids.size() >= 2
+                        && ids.get(0).equals(ids.get(ids.size() - 1)));
+            int loopLastSeq = circular ? maxSeq : 0;
+            for (int i = 0; i < seqs.size(); i++) {
+                out.add(new StopOption(GMB, route, String.valueOf(v.routeSeq),
+                        seqs.get(i), ids.get(i), names.get(i), 1,
+                        v.routeId, v.note, loopLastSeq));
             }
         }
         return out;
@@ -674,12 +696,19 @@ public final class EtaRepository {
             return out;
         }
         String generated = HttpJson.str(root, "generated_timestamp");
+        // GMB_CIRCULAR_ETA: collect raw lines WITH the OFFICIAL stop_seq of
+        // each occurrence, then let the pure selector de-duplicate and pick
+        // the disjoint first / last terminus trips. No EtaItem is emitted
+        // before selection, so a repeated physical trip can never appear
+        // three times on the first stop.
+        List<GmbCircularEta.Raw> raw = new ArrayList<>();
         for (int i = 0; i < occurrences.length(); i++) {
             JSONObject occurrence = occurrences.optJSONObject(i);
             if (occurrence == null || !occurrence.optBoolean("enabled", false)) {
                 continue;
             }
             int routeSeq = occurrence.optInt("route_seq", 0);
+            int stopSeq = occurrence.optInt("stop_seq", 0);
             JSONArray etas = occurrence.optJSONArray("eta");
             if (etas == null) {
                 continue;
@@ -701,10 +730,17 @@ public final class EtaRepository {
                         HttpJson.str(e, "remarks_tc"),
                         HttpJson.str(e, "remarks_en"),
                         "實時預計到站");
-                out.add(new EtaItem(GMB, stop.getRoute(), stop.getStopId(),
-                        stop.getNote(), iso, millis, e.optInt("eta_seq", j + 1),
-                        remark, String.valueOf(routeSeq), generated));
+                raw.add(new GmbCircularEta.Raw(
+                        stop.getRef(), routeSeq, stopSeq, iso, millis,
+                        e.optInt("eta_seq", j + 1), remark));
             }
+        }
+        List<GmbCircularEta.Raw> chosen = GmbCircularEta.select(
+                raw, stop.getSeq(), stop.getLoopLastSeq());
+        for (GmbCircularEta.Raw r : chosen) {
+            out.add(new EtaItem(GMB, stop.getRoute(), stop.getStopId(),
+                    stop.getNote(), r.etaIso, r.millis, r.etaSeq,
+                    r.remark, String.valueOf(r.routeSeq), generated));
         }
         return out;
     }
