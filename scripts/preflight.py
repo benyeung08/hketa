@@ -43,6 +43,8 @@ REQUIRED = [
     "scripts/verify_release_version.py",
     # PUBLISHED_RELEASE_BACKFILL
     "scripts/published_release.py",
+    # GMB_CIRCULAR_ETA
+    "app/src/main/java/hk/eta/app/api/GmbCircularEta.java",
     # Resources
     "app/src/main/res/xml/file_paths.xml",
     "app/src/main/res/values/strings.xml",
@@ -547,6 +549,19 @@ def main() -> int:
          'backfill-published-release',
          'build-apk.yml 仍係舊版（冇 workflow_dispatch 補正式版 job）',
          '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+        # GMB_CIRCULAR_ETA
+        ('app/src/main/java/hk/eta/app/api/GmbCircularEta.java',
+         'GMB_CIRCULAR_ETA',
+         'GmbCircularEta.java 唔見咗或仍係舊版（綠小巴循環線班次去重／首末站分離失效）',
+         '由完整 zip 覆蓋 app/src/main/java/hk/eta/app/api/GmbCircularEta.java'),
+        ('app/src/main/java/hk/eta/app/api/EtaRepository.java',
+         'GmbCircularEta.select(',
+         'EtaRepository.java 仍係舊版（gmbEta 未用選班次層，會顯示三個同一班次）',
+         '由完整 zip 覆蓋 EtaRepository.java'),
+        ('app/src/main/java/hk/eta/app/api/EtaModels.java',
+         'getLoopLastSeq()',
+         'EtaModels.java 仍係舊版（StopOption 缺 loopLastSeq，最後一站無法分離）',
+         '由完整 zip 覆蓋 EtaModels.java'),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel

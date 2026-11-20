@@ -256,6 +256,33 @@ SAMPLES = {
             }]
         }]
     },
+    # GMB_CIRCULAR_ETA: a circular route reports the SAME stop_id at two
+    # stop_seq positions (first / last terminus), each with its OWN eta[].
+    "gmb_eta_stop_circular": {
+        "type": "ETA-Route-Stop", "version": "1.0",
+        "generated_timestamp": "2020-12-28T15:15:35.698+08:00",
+        "data": [{
+            "enabled": True, "route_seq": 1, "stop_seq": 1,
+            "eta": [
+                {"eta_seq": 1, "diff": 4,
+                 "timestamp": "2020-12-28T15:20:00.000+08:00",
+                 "remarks_tc": None, "remarks_sc": None, "remarks_en": None},
+                {"eta_seq": 2, "diff": 14,
+                 "timestamp": "2020-12-28T15:30:00.000+08:00",
+                 "remarks_tc": None, "remarks_sc": None, "remarks_en": None}
+            ]
+        }, {
+            "enabled": True, "route_seq": 1, "stop_seq": 42,
+            "eta": [
+                {"eta_seq": 1, "diff": 24,
+                 "timestamp": "2020-12-28T15:40:00.000+08:00",
+                 "remarks_tc": None, "remarks_sc": None, "remarks_en": None},
+                {"eta_seq": 2, "diff": 34,
+                 "timestamp": "2020-12-28T15:50:00.000+08:00",
+                 "remarks_tc": None, "remarks_sc": None, "remarks_en": None}
+            ]
+        }]
+    },
     "mtr_next_train": {
         "sys_time": "2022-04-25 15:20:00", "curr_time": "2022-04-25 15:20:00",
         "data": {
@@ -1759,6 +1786,72 @@ check("PUBLISHED_RELEASE_BACKFILL: pure functions are offline-testable",
           "def tag_of", "def select_target", "def apk_assets",
           "def prune_ids", "def final_audit", "def version_source_hint"))
       and "argparse" in published and "json" in published)
+# --- 綠小巴循環線班次去重／首末站分離（GMB_CIRCULAR_ETA）---------------------
+gmb_circ = read(API / "GmbCircularEta.java")
+models_java = read(API / "EtaModels.java")
+check("GMB_CIRCULAR_ETA: pure, data-driven selector exists",
+      Path(API / "GmbCircularEta.java").is_file()
+      and "GMB_CIRCULAR_ETA" in gmb_circ
+      and "public static final class Raw" in gmb_circ
+      and "public static String tripKey(" in gmb_circ
+      and "public static List<Raw> distinct(" in gmb_circ
+      and "public static List<Raw> select(" in gmb_circ
+      and "public static String audit(" in gmb_circ
+      and "import java.util." in gmb_circ
+      and "import android." not in gmb_circ
+      and "import org.json." not in gmb_circ
+      and "2000410" not in gmb_circ)   # no hard-coded route ids
+check("GMB_CIRCULAR_ETA: circularity comes from OFFICIAL stop_seq, not route numbers",
+      all(s in gmb_circ for s in (
+          "public static List<Integer> stopSeqs(",
+          "public static boolean isCircularPayload(",
+          "public static List<Raw> forStop(",
+          "stopSeqs(all).size() >= 2",
+          "r.stopSeq == wantedSeq",
+          "isCircularPayload(all)"))
+      and "route.equals(" not in gmb_circ
+      and "route_code" not in gmb_circ)
+check("GMB_CIRCULAR_ETA: three DIFFERENT trips, repeated eta_seq is collapsed",
+      "etaSeq is excluded on purpose" in gmb_circ
+      and "public static final int MAX_TRIPS = 3" in gmb_circ
+      and "if (!seen.containsKey(k))" in gmb_circ
+      and "sortByMillis(" in gmb_circ)
+check("GMB_CIRCULAR_ETA: LAST terminus never reuses the FIRST terminus trips",
+      all(s in gmb_circ for s in (
+          "excludeFirstStopTrips(",
+          "excludeFirstStopTrips(lastPool, firstPool)",
+          "without(deduped, keys(firstPool))",
+          "boolean atLast",
+          "loopLastSeq"))
+      and "never fabricated" in gmb_circ)
+check("GMB_CIRCULAR_ETA: StopOption carries loopLastSeq, favourites stay compatible",
+      "private final int loopLastSeq" in models_java
+      and "public int getLoopLastSeq()" in models_java
+      and "public StopOption(String company, String route, String bound, int seq,"
+      in models_java
+      and "this(company, route, bound, seq, stopId, stopName, serviceType,"
+      in models_java
+      and "Kept OUT of key()" in models_java
+      and "COMPANY|ROUTE|STOP_ID" not in models_java)
+check("GMB_CIRCULAR_ETA: gmbStops sets loopLastSeq from official route-stop data",
+      all(s in repo_java for s in (
+          "CircularRoutes.isCircularDest(v.note)",
+          "int loopLastSeq = circular ? maxSeq : 0",
+          "v.routeId, v.note, loopLastSeq")))
+check("GMB_CIRCULAR_ETA: gmbEta selects BEFORE emitting any EtaItem",
+      all(s in repo_java for s in (
+          "new GmbCircularEta.Raw(",
+          "occurrence.optInt(\"stop_seq\", 0)",
+          "GmbCircularEta.select(",
+          "stop.getLoopLastSeq()",
+          "for (GmbCircularEta.Raw r : chosen)"))
+      and repo_java.find("GmbCircularEta.select(")
+      < repo_java.find("for (GmbCircularEta.Raw r : chosen)"))
+check("GMB_CIRCULAR_ETA: official circular ETA sample has two stop_seq occurrences",
+      len(SAMPLES["gmb_eta_stop_circular"]["data"]) == 2
+      and SAMPLES["gmb_eta_stop_circular"]["data"][0]["stop_seq"]
+      != SAMPLES["gmb_eta_stop_circular"]["data"][1]["stop_seq"]
+      and "eta_seq" in SAMPLES["gmb_eta_stop_circular"]["data"][1]["eta"][0])
 check("CTB_ONLY_NAME: ONLY pure-Citybus cards / stops use Citybus wording",
       "CTB_ONLY_NAME" in joint_java
       and "CTB_ONLY_NAME" in fmt_kt
