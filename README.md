@@ -26,6 +26,7 @@
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **📦 已發佈版本都可補正式版**：`workflow_dispatch` 揀一個**已發佈** Release，用該 tag 自己嘅 source 重建已簽名正式版 APK，清走衝突 `.apk` 後只留一個 `-release.apk`；唔新建 Release、唔改 tag／內文（PUBLISHED_RELEASE_BACKFILL）
+- **🔁 綠小巴循環線班次修正**：第一站顯示三個**唔同**班次而唔係三個同一班次；最後一站顯示**自己**嘅三個唔同班次、唔再同第一站重複（資料驅動、唔捏造班次）
 - **🏷 正式版 APK 對應 Releases 版本**：`v1.0.0` tag 只會附 `hketa-v1.0.0-release.apk`；`tag ↔ build.gradle.kts ↔ 實際 APK` 三重校驗唔夾即擋低發布，並附 `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`
 - **⬛ 路線詳情全頁文字純黑**：詳情頁係固定白底，站名**同所有原本同色嘅輔助文字**（車資、落車、分鐘單位、時鐘、標記、路線示意標籤、頁底說明）一律改純黑 `#000000`；`values-night` 保持同一純黑值，頁底背景亦釘死淺色避免黑字落黑底。深色模式唔會再變近白色睇唔到；紅色頂欄／chip 白字同藍色分鐘數字唔變
 - **🚌 聯營路線顯示「城巴/九巴」**：同一路線號同時出現喺九巴／龍運同城巴兩份官方目錄先判定為聯營（**資料驅動，冇硬編路線號清單**）。主頁附近卡片、搜尋／預載結果、詳情頁「路線示意」一律顯示 `城巴/九巴`；KMB＋CTB 兩列合併成一張卡，未來三班次逐班標 `該班次：城巴`／`該班次：九巴`。主頁會按中文站名把同一實體站嘅兩家 ETA 先併埋（配唔到名就維持各自一張，行為唔變）；**聯營站名統一用九巴／龍運站名同站號**（詳情頁站序去重、主頁卡片優先用 KMB 嗰個 StopOption；完全冇 KMB 目錄先如實退回城巴名）；詳情頁只展開 KMB＋CTB 兩家，唔會撈埋其餘 5 種模式
@@ -91,6 +92,19 @@ git tag v1.0.1 && git push origin v1.0.1
 
 `AppUpdate.compareVersions()` 比較 `tag_name` 同已裝版本嘅 `versionName`；呢個閘門正正令 `v1.0.1` ↔ `1.0.1` 成立，唔會出現「tag 新但 APK 舊」嘅假更新。
 
+
+
+### 🔁 綠色小巴循環線：三個不同班次 + 首末站唔重複（GMB_CIRCULAR_ETA）
+
+循環線嘅**第一站同最後一站係同一個實體站**（同一 `stop_id`，但官方 `stop_seq` 唔同）。舊版 `/eta/route-stop/{route_id}/{stop_id}` 嘅 URL 唔帶 `stop_seq`，程式又攤平晒所有 occurrence 冇去重，所以出现兩個問題：**第一站顯示三個一模一樣嘅班次**、**最後一站顯示同第一站完全相同嗰三班**。而家喺 Java 資料層加咗純函數選班次層：
+
+- **三個不同班次**：用 `route_id + route_seq + timestamp + 備註` 做班次身份，`eta_seq` 刻意唔計入（官方會把同一部車用 `eta_seq 1/2/3` 重複回報）。去重後按時間排序，最多顯示 3 班**唔同**班次
+- **最後一站唔重用第一站班次**：官方 ETA payload 若同時有兩個 `stop_seq`（例如 1 同 42），就各自取自己所屬 occurrence 嘅班次，並把第一站已顯示嘅班次由最後一站集合中移除
+- **循環判定係資料驅動**：由官方 `route-stop` 嘅首尾 `stop_id` 相同／目的地帶「(循環線)」／ETA payload 有兩個 `stop_seq` 判定，**冇硬編任何路線號**；`StopOption.loopLastSeq` 由 `gmbStops()` 用官方最大 `stop_seq` 填入
+- **誠實降級**：若官方只回報單一 `stop_seq`，最後一站取「扣除第一站後嘅下一組真實班次」；若官方實際只有 2 班，就顯示 2 班，**唔會捏造第 3 班**；收藏／直接輸入站號因得 `stop_id` 冇站序，退回純去重
+- **唔影響其它營運商**：只有 `company == GMB` 走呢條路；`JointRoutes.augment()` 本來就只處理 KMB／CTB
+
+`key()` 刻意唔包 `loopLastSeq`，已有收藏嘅 key 完全相容，唔使重新加入。
 
 ### 📦 為「已發佈嘅版本」補上正式版 APK（PUBLISHED_RELEASE_BACKFILL）
 
@@ -262,7 +276,7 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 | `Release is explicitly tied to the matching tag/version` | checker 曾硬要求 `RELEASE_NOTES_v1.0.0.md` 存在，但 workflow 本身有 fallback —— **已修正為選用**；只需覆蓋 `scripts/check_api_fields.py` 一個檔。若 log 見到 `缺以下 N 項字串`，先再覆蓋 `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` | 全黑改動未同步：由完整 zip 覆蓋兩個詳情 layout ＋ `values/` 同 `values-night/` 嘅 `colors.xml`（共 4 個檔；合併包一次過包齊） |
 | `Received status code 429 ... Too Many Requests`（例如 `jsr305-3.0.2.pom`） | **Maven Central 限流，唔係 code 錯、唔係上傳唔完整**：`setup-java` 已開 Gradle 依賴快取，兩個 assemble step 自動重試 3 次（30s／60s 退避）；若 3 次都失敗，等幾分鐘再 **Re-run jobs**，唔使改任何檔 |
-| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `聯營站名未用九巴` / `導航欄仲係貼底佔位列` / `位置未改成按屏高上移` / `城巴卡會沿用九巴站名` / `附近站未傳各公司站名對照` / `城巴獨有站仍會被改成九巴站名` / `未逐張卡分辨城巴／聯營站名` / `循環線未標記` / `循環線站序仍會被九巴化` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` | 聯營／導航欄／城巴站名／循環線／Kotlin 符號／backfill 改動未同步：由完整 zip 覆蓋新檔 `JointRoutes.java` ＋其餘 8 個聯營相關檔（合併包一次過包齊），唔好逐個 upload |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `聯營站名未用九巴` / `導航欄仲係貼底佔位列` / `位置未改成按屏高上移` / `城巴卡會沿用九巴站名` / `附近站未傳各公司站名對照` / `城巴獨有站仍會被改成九巴站名` / `未逐張卡分辨城巴／聯營站名` / `循環線未標記` / `循環線站序仍會被九巴化` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` / `綠小巴循環線班次去重／首末站分離失效` | 聯營／導航欄／城巴站名／循環線／Kotlin 符號／backfill／GMB 班次改動未同步：由完整 zip 覆蓋新檔 `JointRoutes.java` ＋其餘 8 個聯營相關檔（合併包一次過包齊），唔好逐個 upload |
 | `Could not resolve` / `Read timed out` / 5xx | 同屬暫時性依賴下載失敗：直接 **Re-run jobs** |
 | 仍然係 `at org.gradle.internal...` 收尾 | 新 workflow 已移除 `--stacktrace`；代表 `.github/workflows/build-apk.yml` 未上傳 |
 
@@ -318,6 +332,7 @@ Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compi
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **📦 Backfill an already-published Release**: a `workflow_dispatch` run rebuilds the signed production APK from THAT tag's own source, prunes conflicting `.apk` assets and leaves exactly one `-release.apk` — no new Release, no tag move, no body rewrite (PUBLISHED_RELEASE_BACKFILL)
+- **🔁 GMB circular trips fixed**: the first stop shows three DISTINCT trips instead of three copies of one, and the last stop shows its OWN three distinct trips instead of repeating the first (data-driven, never fabricated)
 - **🏷 Production APK matches its Release version**: a `v1.0.0` tag attaches only `hketa-v1.0.0-release.apk`; a `tag ↔ build.gradle.kts ↔ actual APK` three-way gate blocks publishing on mismatch, with `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt` attached
 - **⬛ Every route-detail label is pure black**: the detail screen has a fixed white background, so stop names AND every label that used to share their colour (fare, alight, minutes unit, clock, tags, map-strip caption, footer note) are now pure `#000000`. `values-night` keeps the SAME pure black, and the footer background is pinned pale so black text is never on black. Dark mode no longer turns them into near-white invisible text; the red header / dark chips keep white text and the big minute numbers stay blue
 - **🚌 Joint routes show "城巴/九巴"**: a route is joint ONLY when the SAME route number appears in BOTH official catalogues (KMB/LWB and Citybus) — catalogue-driven, no hard-coded route-number list. Home nearby cards, search / preload rows and the detail-screen caption show `城巴/九巴`; the KMB + CTB rows collapse into ONE card and each of the next three trips is tagged `該班次：城巴` / `該班次：九巴`. Home merges both operators' ETA for the same physical stop by Chinese stop name (unmatched names keep the old per-stop behaviour); **joint routes always display the KMB / LWB stop name and stop id** (the detail sequence is de-duplicated and home cards prefer the KMB StopOption; only when KMB has no catalogue data at all does it honestly fall back to the CTB name); the detail page expands KMB + CTB only, never the other 5 modes
@@ -383,6 +398,19 @@ Every tag build runs **`RELEASE_VERSION_GATE`** so the APK inside a Release real
 
 `AppUpdate.compareVersions()` compares `tag_name` with the installed `versionName`; this gate is what makes `v1.0.1` ↔ `1.0.1` hold, so a "new tag but stale APK" false update cannot happen.
 
+
+
+### 🔁 GMB circular routes: three distinct trips + disjoint termini (GMB_CIRCULAR_ETA)
+
+On a circular green-minibus route the **FIRST and LAST stop are the SAME physical stop** (identical `stop_id`, different official `stop_seq`). The old `/eta/route-stop/{route_id}/{stop_id}` URL carries no `stop_seq` and the code flattened every occurrence without de-duplicating, so the first stop showed **three copies of ONE trip** and the last stop showed **exactly the same three trips**. A pure selector in the Java data layer now fixes both:
+
+- **Three DIFFERENT trips**: trip identity is `route_id + route_seq + timestamp + remark`; `eta_seq` is deliberately excluded because the operator repeats one minibus under `eta_seq 1/2/3`. After de-duplication the list is sorted chronologically and capped at 3 distinct trips
+- **Last stop never reuses first-stop trips**: when the official ETA payload carries two `stop_seq` values (e.g. 1 and 42), each terminus takes its OWN occurrence and the first stop's trips are removed from the last stop's set
+- **Data-driven detection**: circularity comes from the official `route-stop` first/last `stop_id`, a "(循環線)" destination, or two `stop_seq` values in the ETA payload — **no hard-coded route numbers**. `StopOption.loopLastSeq` is filled by `gmbStops()` from the official maximum `stop_seq`
+- **Honest degradation**: with only one `stop_seq` in the payload the last stop takes the NEXT real arrivals after excluding the first stop's set; if the operator reports only 2 trips we show 2, **never inventing a 3rd**. Favourites / direct stop-id shortcuts have no sequence and degrade to plain de-duplication
+- **No impact on other operators**: only `company == GMB` uses this path; `JointRoutes.augment()` only ever handled KMB / CTB
+
+`loopLastSeq` is deliberately kept OUT of `key()`, so existing favourites stay byte-for-byte compatible.
 
 ### 📦 Add the production APK to an ALREADY-PUBLISHED Release (PUBLISHED_RELEASE_BACKFILL)
 
@@ -551,7 +579,7 @@ The first CI step is a **self-contained preflight** (it needs no repo `.py` file
 | `Release is explicitly tied to the matching tag/version` | The checker used to hard-require `RELEASE_NOTES_v1.0.0.md`, contradicting the workflow's own fallback — **now optional**; just overwrite `scripts/check_api_fields.py`. If the log shows `缺以下 N 項字串`, also overwrite `.github/workflows/build-apk.yml` |
 | `輔助文字未跟站名一齊改純黑` / `footer 黑底會令純黑字睇唔到` / `仍係深灰 #374151` (stale all-black detail colours) | Overwrite the two route-detail layouts plus `colors.xml` in both `values/` and `values-night/` (4 files) from the full zip / merged pack |
 | `Received status code 429 ... Too Many Requests` (e.g. `jsr305-3.0.2.pom`) | **Maven Central rate-limit, NOT a code / upload / signing bug**: `setup-java` now caches Gradle dependencies and both assemble steps retry 3 times (30s / 60s backoff). If all 3 fail, wait a few minutes and **Re-run jobs** — no file changes needed |
-| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `導航欄仲係貼底佔位列` / `城巴獨有站仍會被改成九巴站名` / `循環線未標記` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` (stale joint / nav / CTB-name / circular / Kotlin / backfill files) | Overwrite the new `JointRoutes.java` plus the other 8 joint-related files from the full zip / merged pack; do not upload one by one |
+| `JointRoutes.java 唔見咗` / `聯營會拆做兩張卡` / `班次 chip 無「該班次」` / `缺九巴站名優先邏輯` / `導航欄仲係貼底佔位列` / `城巴獨有站仍會被改成九巴站名` / `循環線未標記` / `App1933Format.StopDisplay 無法解析` / `無法補已發佈版本正式版 APK` / `綠小巴循環線班次去重／首末站分離失效` (stale joint / nav / CTB-name / circular / Kotlin / backfill / GMB-trip files) | Overwrite the new `JointRoutes.java` plus the other 8 joint-related files from the full zip / merged pack; do not upload one by one |
 | `Could not resolve` / `Read timed out` / 5xx | Same class of transient dependency-download failure: simply **Re-run jobs** |
 | Still ends with `at org.gradle.internal...` | The new workflow removed `--stacktrace`; this means `.github/workflows/build-apk.yml` was not uploaded |
 
