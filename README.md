@@ -17,7 +17,8 @@
 
 介面由 `v1.0.0` 起採用 **APP1933 風格**：九巴紅色標頭、主頁附近路線卡片、底部四分頁、每條路線顯示未來三班次。**資料層完全冇改**——八種營運商、線路資料更新、App 內更新同簽名一致性全部保留。
 
-版本 `v1.0.0`（`versionCode = 1`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
+目前版本 **`v1.0.1`**（`versionCode = 2`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
+中英雙語 Release 說明：[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（現行）、[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)（首版）。
 
 ### ✨ 功能
 
@@ -26,6 +27,13 @@
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **📦 已發佈版本都可補正式版**：`workflow_dispatch` 揀一個**已發佈** Release，用該 tag 自己嘅 source 重建已簽名正式版 APK，清走衝突 `.apk` 後只留一個 `-release.apk`；唔新建 Release、唔改 tag／內文（PUBLISHED_RELEASE_BACKFILL）
+- **🖼 本輪：搜尋頁定稿＋顏色唔變**：`activity_main.xml` 改為截圖分類式（8 tab／6 chips／書籤／紀錄），`MainActivity.kt` 由自訂鍵盤改接新介面；全部 `search_*` 色值一個都冇郁、`values-night` 唔覆寫，純 UI＋檢查同步
+- **📅 歷史單日說明檔（備用）**：`_day1_2026-11-19.md`（11-19 介面還原）／`_day2_2026-11-20.md`（20 號至最新改動）兩份可直接貼；純文字，唔被 workflow 自動選用、唔影響 CI
+- **📝 v1.0.0 雙語說明（截至 2026-11-19）**：`RELEASE_NOTES_v1.0.0.md` 中英各 5 章 33 條對稱，收錄 APP1933 搜尋／無地圖詳情／定位授權／懸浮導航欄／ETA 自動刷新，明確唔收 11-20 改動；純文字，唔使 push code
+- **📝 v1.0.1 雙語說明（本輪：2026-11-20 至最新）**：`RELEASE_NOTES_v1.0.1.md` 重寫為**只列 20 號至最新**，中英各 5 章 33 條對稱；移除「昨天／今天」舊分組同重複條目，完整收錄聯營／站名規則／正式版對應／backfill／CI 修正／GMB 循環線班次／說明分界／離線驗證
+- **🧩 兩份說明互補唔重複**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 至最新；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明唔郁 APK／tag、唔使重跑 CI
+- **📝 v1.0.1 中英雙語 Release 說明**：`RELEASE_NOTES_v1.0.1.md` 兩版各 5 章、33 條要點完全對稱，`RELEASE_NOTES_${TAG}.md` 自動對應 tag，唔會誤用 v1.0.0 內文
+- **🆕 本輪交付**：`HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` 可直接貼；另附最小包、合併包與完整專案 zip
 - **🔁 綠小巴循環線班次修正**：第一站顯示三個**唔同**班次而唔係三個同一班次；最後一站顯示**自己**嘅三個唔同班次、唔再同第一站重複（資料驅動、唔捏造班次）
 - **🏷 正式版 APK 對應 Releases 版本**：`v1.0.0` tag 只會附 `hketa-v1.0.0-release.apk`；`tag ↔ build.gradle.kts ↔ 實際 APK` 三重校驗唔夾即擋低發布，並附 `VERSION_INFO.txt`／`SIGNING_FINGERPRINT.txt`
 - **⬛ 路線詳情全頁文字純黑**：詳情頁係固定白底，站名**同所有原本同色嘅輔助文字**（車資、落車、分鐘單位、時鐘、標記、路線示意標籤、頁底說明）一律改純黑 `#000000`；`values-night` 保持同一純黑值，頁底背景亦釘死淺色避免黑字落黑底。深色模式唔會再變近白色睇唔到；紅色頂欄／chip 白字同藍色分鐘數字唔變
@@ -87,7 +95,7 @@ git tag v1.0.1 && git push origin v1.0.1
 - **三重校驗**：`tag`（`v1.0.1`）＝ `app/build.gradle.kts` 嘅 `versionName` ＝ **`aapt dump badging` 讀到嘅實際 APK `versionName`**；另外 `versionCode`、`package`、`minSdk`、`targetSdk` 亦要比對。任何一項唔夾，workflow **喺建立 Release 之前直接 fail**，唔會上傳錯版本 APK
 - **只附一個 `.apk`**：`hketa-v1.0.1-release.apk`（正式版、已簽名）。App 內更新會攞最新 Release 嘅第一個 `.apk` asset，所以開發版永遠唔會混入 Release
 - **隨附兩份清單**：`VERSION_INFO.txt`（tag／versionName／versionCode／minSdk／targetSdk／APK SHA-256／簽章指紋／keystore 來源／commit／構建時間）同 `SIGNING_FINGERPRINT.txt`
-- **說明對應版本**：`v1.0.0` 自動用 `RELEASE_NOTES_v1.0.0.md` 做 Release 內文；未有專屬 notes 嘅新版退回簡短說明，**唔會誤用其它版本**；`tag_name`／Release 標題顯式綁定 `github.ref_name`，tag 帶 `-` 後綴會標成 prerelease
+- **說明對應版本**：`v1.0.0`／`v1.0.1` 各自自動用 `RELEASE_NOTES_v${版本}.md` 中英雙語內文；未有專屬 notes 嘅新版退回簡短說明，**唔會誤用其它版本**；`tag_name`／Release 標題顯式綁定 `github.ref_name`，tag 帶 `-` 後綴會標成 prerelease
 - **同時上傳 Artifact** `hketa-release-apk`，方便喺 Actions 直接拎正式版；`generate_release_notes` 改為 `false`，想再加 GitHub 自動 "What's Changed" 可改回 `true`
 
 `AppUpdate.compareVersions()` 比較 `tag_name` 同已裝版本嘅 `versionName`；呢個閘門正正令 `v1.0.1` ↔ `1.0.1` 成立，唔會出現「tag 新但 APK 舊」嘅假更新。
@@ -179,26 +187,26 @@ git tag v1.0.1 && git push origin v1.0.1
 | --- | --- | --- |
 | **主頁** | 附近路線卡片：`路線號`／`往 目的地`／`站名 (KT123)`／右側大數字分鐘；每張卡三個班次 chip；**冇定位掣、冇刷新掣，授權後自動載入、下拉刷新** | `EtaRepository.nearbyStops()` ＋ `stopEta()` 並行查頭 6 個站 |
 | **收藏** | 收藏車站列表，點選查看、長按移除 | `Favorites` |
-| **搜尋** | 一入頁預載官方路線列、`12 往 海麗邨 ›` 結果列、自訂鍵盤；點列開**路線詳情（無地圖）**；站序模式保留 8 模式、`⇄` 方向、篩選、站號直接查 | `RouteSearch.preload()` / `search()` ＋ `RouteDetailActivity` |
+| **搜尋** | 截圖分類式：8 交通類別 tab＋6 營運商 chips＋綠框「路線號碼」＋我的書籤／搜尋紀錄；**固定深色＋綠，顏色唔隨主題改變**；點列開**路線詳情（無地圖）**；進階保留 8 模式、`⇄`、篩選、站號直接查 | `SearchAdapters.kt` / `SearchHistory.kt` ＋ `RouteSearch.preload()` / `search()` |
 | **應用程式設置** | ⚙ 設定入口＋六個區塊＋深色免責聲明卡 | `SettingsActivity` |
 
 **只換介面，唔換資料**：`App1933Format.kt` 係純格式化層，把同一份 `EtaItem` 依 `(company, route, stop, dest)` 分組、取最早三班；`CardAdapters.kt` 只負責畫卡片。全部 8 個營運商、10 份官方目錄、`RouteDataStore`、`ApkSignature` 一行都冇改。
 
 **明確不做**（需九巴私有 API／會員帳號／Play Services）：AI 智能問路、實時載客量、預計落車時間、九巴月票、club1933 會員、遊戲室、bot1933 實時對話、街景／步行導航、寵物巴士、廣告。**冇灰色佔位按鈕、冇假數據**。
 
-### 🔍 搜尋頁（APP1933 全螢幕）
+### 🔍 搜尋頁（截圖分類式・顏色固定）
 
-還原你提供嘅截圖版式，而唔係舊版「一個輸入框＋一堆按鈕」：
+依你提供嘅截圖定稿；**顏色一律唔改**，只係版面同互動接上：
 
-- **紅色標題列**置中「搜尋」，左下 `⌂` 返回主頁；全螢幕時隱藏共用標題與底部 4 分頁
-- **置中「輸入路線號碼」**輸入框，配 **自訂鍵盤**：左邊 3×4 白色圓角數字鍵（1–9、0、`⌫`、`↵`），右邊白色圓形字母鍵（`A B / C E`）連 `▲▼` 換頁；**完全唔彈系統 IME**
-- **一入搜尋主頁就預先載入路線**：原本深色空白＋「輸入路線號碼…」嗰格，而家由 `RouteSearch.preload()` 預載官方目錄列（最多 24 條），未撳任何鍵已經見到 `12 往 海麗邨 ›` 呢類結果；App 啟動時已開始背景下載，切去搜尋分頁即時有嘢
-- 預載同樣只用官方目錄：九巴／城巴路線＋方向、嶼巴兩端、綠小巴路線號（標明「目錄預載（未查方向）」）、港鐵線路代碼表＋港鐵接駁巴士代碼表；**目錄完全讀唔到先顯示更新提示**，唔會捏造目的地
-- 每按一鍵即時（180 ms debounce）改用 `RouteSearch.search()` 篩選，結果列係**大路線號＋「往 目的地」＋`›`**；嶼巴／綠小巴／港鐵等附細字 `大嶼山巴士 (資料由DATA.GOV.HK提供)`
-- 輸入 `1` 會列出 `往 尖沙咀碼頭`、`往 竹園邨`、`往 大澳 - 嶼巴`、`往 梅窩碼頭 - 嶼巴`；精確符合優先、前綴符合最多 4 條；清空輸入會返去預載清單
-- **點任一結果列 → 開同一個「路線詳情（無地圖）」全螢幕**（紅色頂欄＋站序時間軸＋未來三班次），並帶埋該列嘅 `O／I／1` 方向；同主頁附近路線卡片一致，`ALL` 會轉成「全部方向」
-- 原有 8 模式選擇、站號直接查、方向切換、站名／站號篩選保留喺站序模式；站序模式按「← 返回路線搜尋」切回鍵盤＋預載清單
-- 目的地全部讀 `RouteDataStore` 嘅官方目錄（本機快照優先、403 自動重試），**冇假數據、冇私有 API**；綠小巴方向會補一次官方 `/route/{region}/{route}`
+- **固定深色＋綠色，顏色唔變**：成頁 `#1D1D1F` 底、`#3DDC84` 綠重點；`values-night` 刻意唔覆寫 `@color/search_*`，系統切深／淺色都唔會變色，本輪**冇新增／冇改任何色值**
+- **頂部 8 個交通類別 tab**：港鐵／**巴士**（預設選中，綠字＋綠底線）／專線小巴／渡輪／電車／的士／非專線小巴／居民巴士服務，可橫向捲動；冇同類公開實時 ETA API 嘅類別如實提示、**唔捏造班次**
+- **第二排營運商 chips**：所有巴士類別（淺綠底深綠字）／城巴／九巴／龍運巴士／新大嶼山巴士／愉景灣/馬灣巴士；選中只切既有 drawable 同既有色，唔改色值
+- **綠框「路線號碼」輸入框**：放大鏡 icon＋灰 hint，用系統 IME 即時查（唔再係自訂鍵盤）；`keypad.xml` 保留作舊檔，但已**唔被 include**
+- **我的書籤／搜尋紀錄**：書籤空時顯示「沒有資料記錄」；紀錄列有營運商標記、綠色時鐘（第一條）、路線＋目的地＋備註、右側 ✕ 清除，寫入 `SearchHistoryPrefs`（最多 8 條、去重）
+- **一入頁預載官方目錄**：`RouteSearch.preload()` 背景載入；冇歷史時如實標「目錄預載」顯示（唔當係搜尋紀錄、唔俾刪除）；點列記入歷史並開「路線詳情（無地圖）」，帶埋 `O／I／1` 方向
+- **類別／chip 過濾只揀官方目錄已有公司**：港鐵→重鐵／輕鐵／接駁巴士、專線小巴→綠小巴、龍運共用九巴目錄並如實提示；愉景灣／馬灣冇 API 就留空
+- **全螢幕**：進搜尋分頁隱藏紅色共用標題、狀態列同底部懸浮導航欄，頂部直接係分類 tab；其他分頁外觀跟隨系統設定**唔變**
+- **進階保留原有功能**：8 模式、站號直接查、`⇄` 方向、站名／站號篩選收喺「進階」入口；「← 返回路線搜尋」返截圖式首頁；目的地全部讀官方目錄，**冇假數據、冇私有 API**
 
 ### 📍 定位權限與自動定位
 
@@ -258,7 +266,10 @@ hketa/
 │   └── verify_release_version.py     # tag ↔ gradle ↔ APK badging 三重校驗
 ├── LICENSE                           # MIT
 ├── README.md                         # 本檔（中英雙語）
-└── RELEASE_NOTES_v1.0.0.md           # v1.0.0 Release 中英雙語說明
+├── RELEASE_NOTES_v1.0.0.md           # v1.0.0 Release 中英雙語說明（收錄至 2026-11-19）
+├── RELEASE_NOTES_v1.0.1.md           # v1.0.1 Release 中英雙語說明（現行，2026-11-20 至最新）
+├── RELEASE_NOTES_v1.0.1_day1_2026-11-19.md  # 11-19 單日說明（備用，可直接貼）
+└── RELEASE_NOTES_v1.0.1_day2_2026-11-20.md  # 20 號至最新單日說明（備用，可直接貼）
 ```
 
 ### 🧪 CI 與疑難排解
@@ -302,7 +313,7 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 ### 🔗 相關
 
 - Repo：https://github.com/benyeung08/hketa
-- Release 說明：[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- Release 說明：[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（現行）／[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
 - 資料來源：[DATA.GOV.HK](https://data.gov.hk) 及各營運商開放數據、[MTR Open Data](https://opendata.mtr.com.hk)
 
 ### 📄 授權與聲明
@@ -323,7 +334,8 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 
 Since `v1.0.0` the shell follows the **APP1933** layout: KMB-red header, nearby-route cards, four bottom tabs, and the next three arrivals per route. **The data layer is untouched** — all eight operators, the catalogue updater, the in-app updater and signature consistency remain.
 
-Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
+Current version **`v1.0.1`** (`versionCode = 2`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
+Bilingual release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (current), [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) (first release).
 
 ### ✨ Features
 
@@ -332,6 +344,13 @@ Version `v1.0.0` (`versionCode = 1`) | Android 7.0+ (minSdk 24) | target / compi
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **📦 Backfill an already-published Release**: a `workflow_dispatch` run rebuilds the signed production APK from THAT tag's own source, prunes conflicting `.apk` assets and leaves exactly one `-release.apk` — no new Release, no tag move, no body rewrite (PUBLISHED_RELEASE_BACKFILL)
+- **🖼 This round: search page locked, colours unchanged**: `activity_main.xml` now matches the screenshot categories (8 tabs / 6 chips / bookmarks / history) and `MainActivity.kt` was rewired from the custom keypad; every `search_*` value is untouched, `values-night` never overrides them, UI + checks only
+- **📅 Historical single-day notes (standby)**: `_day1_2026-11-19.md` (11-19 layout work) / `_day2_2026-11-20.md` (20th-through-latest work) are paste-ready; plain text, never auto-selected by the workflow, no CI impact
+- **📝 Bilingual v1.0.0 notes (through 2026-11-19)**: `RELEASE_NOTES_v1.0.0.md` is fully symmetric at 5 sections / 33 bullets per language, covering the APP1933 search, map-free detail, location consent, floating nav bar and ETA auto-refresh, and explicitly excludes the 11-20 work; text-only, no code push needed
+- **📝 Bilingual v1.0.1 notes (this round: 2026-11-20 through the latest)**: `RELEASE_NOTES_v1.0.1.md` is rewritten to list **only 20th-through-latest**, fully symmetric at 5 sections / 33 bullets per language; the old "Yesterday / Today" split and duplicated bullets are removed, and joint routes / stop-name rules / version matching / backfill / CI fixes / the GMB circular-trip fix / the notes boundary / offline verification are all recorded
+- **🧩 The two notes are complementary, never duplicated**: `v1.0.0` stops at 11-19, `v1.0.1` starts at 11-20; `RELEASE_NOTES_${TAG}.md` picks the matching file per tag, and editing notes never touches the APK / tag or needs a CI re-run
+- **📝 Bilingual v1.0.1 release notes**: `RELEASE_NOTES_v1.0.1.md` is fully symmetric in both languages (5 sections, 33 bullets each); `RELEASE_NOTES_${TAG}.md` matches the tag automatically and never reuses the v1.0.0 body
+- **🆕 Delivered this round**: `HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` is paste-ready, plus a minimal pack, a merged pack and the full-project zip
 - **🔁 GMB circular trips fixed**: the first stop shows three DISTINCT trips instead of three copies of one, and the last stop shows its OWN three distinct trips instead of repeating the first (data-driven, never fabricated)
 - **🏷 Production APK matches its Release version**: a `v1.0.0` tag attaches only `hketa-v1.0.0-release.apk`; a `tag ↔ build.gradle.kts ↔ actual APK` three-way gate blocks publishing on mismatch, with `VERSION_INFO.txt` / `SIGNING_FINGERPRINT.txt` attached
 - **⬛ Every route-detail label is pure black**: the detail screen has a fixed white background, so stop names AND every label that used to share their colour (fare, alight, minutes unit, clock, tags, map-strip caption, footer note) are now pure `#000000`. `values-night` keeps the SAME pure black, and the footer background is pinned pale so black text is never on black. Dark mode no longer turns them into near-white invisible text; the red header / dark chips keep white text and the big minute numbers stay blue
@@ -393,7 +412,7 @@ Every tag build runs **`RELEASE_VERSION_GATE`** so the APK inside a Release real
 - **Three-way check**: `tag` (`v1.0.1`) = `versionName` in `app/build.gradle.kts` = **the actual APK's `versionName` read by `aapt dump badging`**; `versionCode`, `package`, `minSdk` and `targetSdk` are cross-checked too. Any mismatch **fails the workflow BEFORE the Release is created** — a wrong-version APK is never uploaded
 - **Exactly one `.apk` asset**: `hketa-v1.0.1-release.apk` (signed production). The in-app updater takes the first `.apk` asset of the latest Release, so a debug build can never slip into Releases
 - **Two manifests attached**: `VERSION_INFO.txt` (tag / versionName / versionCode / minSdk / targetSdk / APK SHA-256 / signing fingerprint / keystore source / commit / build time) and `SIGNING_FINGERPRINT.txt`
-- **Version-matched notes**: `v1.0.0` automatically uses `RELEASE_NOTES_v1.0.0.md` as the Release body; a newer tag without its own notes falls back to a short body instead of reusing another version's notes. `tag_name` and the Release title are explicitly bound to `github.ref_name`, and a tag with a `-` suffix is marked prerelease
+- **Version-matched notes**: `v1.0.0` and `v1.0.1` each automatically use their own bilingual `RELEASE_NOTES_v*.md` as the Release body; a newer tag without its own notes falls back to a short body instead of reusing another version's notes. `tag_name` and the Release title are explicitly bound to `github.ref_name`, and a tag with a `-` suffix is marked prerelease
 - **Also uploaded as the `hketa-release-apk` Actions artifact**; `generate_release_notes` is now `false` — set it back to `true` if you want GitHub's automatic "What's Changed" section appended
 
 `AppUpdate.compareVersions()` compares `tag_name` with the installed `versionName`; this gate is what makes `v1.0.1` ↔ `1.0.1` hold, so a "new tag but stale APK" false update cannot happen.
@@ -428,7 +447,7 @@ The fourth bottom tab is renamed from **More** to **App settings**. It opens six
 
 ### 🔄 Update application (version pill)
 
-The whole section now reproduces the screenshot's dark rounded bar: `v1.0.0 · 1　⟳　🕐　⧉`.
+The whole section now reproduces the screenshot's dark rounded bar: `v1.0.1 · 2　⟳　🕐　⧉`.
 
 - **Two numbers on the left**: `v1.0.0` is `versionName` (always prefixed with `v`), `1` is `versionCode` / build number — both read dynamically from `PackageInfo`, never hard-coded
 - **⟳ Re-check**: immediately calls `api.github.com/repos/{owner}/{repo}/releases/latest`; the icon dims while checking and the thin status line below updates on completion
@@ -492,19 +511,19 @@ Tapping any nearby-route card on the Home page opens a **full-screen route detai
 
 **Deliberately NOT implemented** (they need KMB private APIs / membership accounts / Play Services): AI route planning, real-time occupancy, predicted alighting time, KMB monthly pass, club1933 membership, game room, bot1933 chat, Street View / walking navigation, pet bus and ads. **No grey placeholder buttons, no fake data.**
 
-### 🔍 Search screen (APP1933 full-screen)
+### 🔍 Search screen (screenshot categories, fixed palette)
 
-Reproduces the supplied screenshot instead of the old "one input box plus a stack of buttons":
+Locked to the supplied screenshot; **no colour is changed**, only the layout and wiring:
 
-- **Red header** with a centred 搜尋 title; `⌂` on the left returns to Home. The shared header and the four bottom tabs are hidden in this mode.
-- **Centred 輸入路線號碼 field** driven by a **custom keypad**: a 3×4 grid of white rounded number keys (1–9, 0, `⌫`, `↵`) on the left and round white letter keys (`A B / C E`) with `▲▼` paging on the right. **The system IME never appears.**
-- **The search home PRELOADS routes on entry**: the dark empty area that used to show only "輸入路線號碼…" is filled by `RouteSearch.preload()` with official catalogue rows (capped at 24), so `12 往 海麗邨 ›` style rows are visible before a single key is pressed. Preloading starts in the background at app launch.
-- Preload uses the same official catalogues: KMB / CTB routes and directions, both NLB ends, GMB route codes (explicitly marked "目錄預載（未查方向）"), plus the project's MTR line-code and MTR Bus route-code tables. If no catalogue can be read, an update hint is shown instead of inventing destinations.
-- Every keystroke then switches to `RouteSearch.search()` (180 ms debounce). Rows show a **large route number + 往 destination + `›`**; NLB / GMB / MTR rows add a small `大嶼山巴士 (資料由DATA.GOV.HK提供)` attribution line.
-- Typing `1` lists `往 尖沙咀碼頭`, `往 竹園邨`, `往 大澳 - 嶼巴`, `往 梅窩碼頭 - 嶼巴`; exact matches first, at most four prefix matches. Clearing the input returns to the preloaded list.
-- **Tapping any row opens the same full-screen "route detail (no map)"** — red header + stop timeline + next three arrivals — carrying that row's `O / I / 1` direction across, exactly like a Home nearby card; `ALL` becomes "all directions".
-- The original 8 operator modes, direct stop-ID lookup, direction switch and stop-name/id filter stay in stop-sequence mode; 「← 返回路線搜尋」 returns to the keypad + preloaded list.
-- Destinations come only from the `RouteDataStore` official catalogues (local snapshot first, 403 retry). **No fake data, no private APIs**; GMB directions add one official `/route/{region}/{route}` lookup.
+- **Fixed dark + green, colours never change**: `#1D1D1F` page with a `#3DDC84` accent; `values-night` deliberately does NOT override `@color/search_*`, so switching system Dark / Light mode changes nothing — **no colour value was added or edited this round**
+- **8 transport category tabs on top**: 港鐵 / **巴士** (selected by default, green label + green underline) / 專線小巴 / 渡輪 / 電車 / 的士 / 非專線小巴 / 居民巴士服務, horizontally scrollable; categories without an equivalent public real-time ETA API show an honest notice and **never fabricate trips**
+- **Second row of operator chips**: 所有巴士類別 (light-green fill, dark-green text) / 城巴 / 九巴 / 龍運巴士 / 新大嶼山巴士 / 愉景灣/馬灣巴士; selecting one only swaps existing drawables and existing colours
+- **Green-outlined 路線號碼 field**: magnifier icon + grey hint, queried live with the system IME (the custom keypad is gone); `keypad.xml` is kept as a legacy file but is **no longer included**
+- **我的書籤 / 搜尋紀錄**: an empty bookmark list shows 「沒有資料記錄」; history rows carry an operator badge, a green clock (first row), route + destination + note and a right-hand ✕ to remove, persisted in `SearchHistoryPrefs` (max 8, de-duplicated)
+- **Official catalogues preload on entry**: `RouteSearch.preload()` runs in the background; with no history the rows are honestly tagged 「目錄預載」 (not treated as history, not removable); tapping one records it and opens "route detail (no map)" with its `O / I / 1` direction
+- **Category / chip filters only pick companies present in the official catalogues**: 港鐵 → heavy rail / Light Rail / MTR Bus, 專線小巴 → GMB, 龍運 shares the KMB catalogue with an honest hint; 愉景灣 / 馬灣 has no API so it stays empty
+- **Full-screen**: entering Search hides the shared red header, status lines and the floating bottom bar, so the category tabs sit right at the top; every other tab keeps its system-following appearance **unchanged**
+- **Advanced keeps every original control**: 8 modes, direct stop-ID lookup, `⇄` direction and stop-name/id filter live behind the "進階" entry; 「← 返回路線搜尋」 returns to the screenshot home; destinations come only from official catalogues, **no fake data, no private APIs**
 
 ### 📍 Location permission & auto-locate
 
@@ -561,7 +580,10 @@ hketa/
 │   └── verify_release_version.py     # tag ↔ gradle ↔ APK badging three-way gate
 ├── LICENSE                           # MIT
 ├── README.md                         # this file (bilingual)
-└── RELEASE_NOTES_v1.0.0.md           # v1.0.0 bilingual release notes
+├── RELEASE_NOTES_v1.0.0.md           # v1.0.0 bilingual release notes (through 2026-11-19)
+├── RELEASE_NOTES_v1.0.1.md           # v1.0.1 bilingual release notes (current, 2026-11-20 through the latest)
+├── RELEASE_NOTES_v1.0.1_day1_2026-11-19.md  # standalone 11-19 note (paste-ready)
+└── RELEASE_NOTES_v1.0.1_day2_2026-11-20.md  # standalone 20th-through-latest note (paste-ready)
 ```
 
 ### 🧪 CI & troubleshooting
@@ -605,7 +627,7 @@ On failure, an extra `Show real Gradle error` step prints the real cause as `::e
 ### 🔗 Related
 
 - Repo: https://github.com/benyeung08/hketa
-- Release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- Release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (current) / [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
 - Data sources: [DATA.GOV.HK](https://data.gov.hk), operator open-data feeds, [MTR Open Data](https://opendata.mtr.com.hk)
 
 ### 📄 License & disclaimer
