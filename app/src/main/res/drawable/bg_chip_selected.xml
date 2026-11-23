@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 選中營運商 chip：淺綠底＋深綠字（對照截圖「所有巴士類別」） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/search_green_soft" />
+    <corners android:radius="26dp" />
+</shape>
