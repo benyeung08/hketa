@@ -8,6 +8,9 @@
   - pillCopy     : copy "vX · build · owner/repo" to the clipboard
   All three actions are shortcuts; the full download / install / signature
   controls remain in the 進階設定 drawer below this pill.
+  The two texts below are DESIGN-TIME PREVIEWS only: SettingsActivity.kt
+  overwrites them at runtime from PackageInfo (versionName / versionCode),
+  so they must simply match the current bumped version for a sane preview.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/updatePill"
@@ -26,7 +29,7 @@
         android:id="@+id/tvAppVersion"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="v1.0.0"
+        android:text="v1.0.1"
         android:textColor="@color/pill_text"
         android:textSize="21sp"
         android:textStyle="bold" />
@@ -45,7 +48,7 @@
         android:id="@+id/tvAppBuild"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="1"
+        android:text="2"
         android:textColor="@color/pill_text"
         android:textSize="20sp" />
 

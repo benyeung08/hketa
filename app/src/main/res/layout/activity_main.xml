@@ -248,85 +248,392 @@
                 android:paddingBottom="180dp" />
         </LinearLayout>
 
-        <!-- ============ 搜尋（APP1933 全螢幕：紅 bar + 路線結果 + 自訂鍵盤） ============ -->
+        <!-- ============ 搜尋（SEARCH_UI_2026-11-23：對照截圖嘅深色分類式版面） ============
+             固定深色底＋綠色重點；頂部 8 個交通類別 tab、第二排營運商 chips、
+             綠框「路線號碼」、我的書籤／搜尋紀錄。
+             底層 8 種查詢模式、官方目錄預載、點列開詳情頁（帶方向）、
+             站序／方向／篩選全部保留，一個都無郁。 -->
         <LinearLayout
             android:id="@+id/pageSearch"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/card"
+            android:background="@color/search_bg"
             android:orientation="vertical"
             android:visibility="gone">
 
-            <!-- 紅色標題列：置中「搜尋」，左邊 ⌂ 返回主頁 -->
-            <LinearLayout
-                android:id="@+id/searchBar"
+            <!-- 頂部分類 tab：可橫向捲動；選中綠字＋綠色底線 -->
+            <HorizontalScrollView
+                android:id="@+id/searchCatScroll"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:background="@color/brand"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_height="58dp"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/searchCatRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
 
                 <TextView
-                    android:id="@+id/searchHome"
-                    android:layout_width="56dp"
-                    android:layout_height="match_parent"
-                    android:gravity="center"
-                    android:text="⌂"
-                    android:textColor="#FFFFFF"
-                    android:textSize="23sp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
+                    android:id="@+id/catMtr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="@string/search_title_bar"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:text="@string/search_cat_mtr"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catMtrUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
 
                 <TextView
-                    android:layout_width="56dp"
-                    android:layout_height="match_parent" />
+                    android:id="@+id/catBus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_bus" android:textStyle="bold"
+                    android:textColor="@color/search_green"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catBusUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="visible" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catGmb"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_gmb"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catGmbUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catFerry"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_ferry"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catFerryUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catTram"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_tram"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catTramUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catTaxi"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_taxi"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catTaxiUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catNplb"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_nplb"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catNplbUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp">
+
+                <TextView
+                    android:id="@+id/catResident"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/search_cat_resident"
+                    android:textColor="@color/search_text"
+                    android:textSize="17sp" />
+
+                <View
+                    android:id="@+id/catResidentUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="@drawable/bg_search_cat_underline"
+                    android:visibility="gone" />
             </LinearLayout>
 
-            <!-- 路線號輸入框：用自訂鍵盤，永遠唔彈系統 IME -->
+                </LinearLayout>
+            </HorizontalScrollView>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/search_divider" />
+
+            <!-- 營運商 chips：只喺「巴士」類別顯示，可橫向捲動 -->
+            <HorizontalScrollView
+                android:id="@+id/searchChipScroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="16dp"
+                android:paddingTop="16dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="14dp"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/searchChipRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
             <TextView
+                android:id="@+id/chipAll"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip_selected"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_all"
+                android:textColor="@color/search_green_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/chipCtb"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_ctb"
+                android:textColor="@color/search_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/chipKmb"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_kmb"
+                android:textColor="@color/search_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/chipLwb"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_lwb"
+                android:textColor="@color/search_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/chipNlb"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_nlb"
+                android:textColor="@color/search_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/chipDb"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="@string/search_chip_db"
+                android:textColor="@color/search_text"
+                android:textSize="16sp" />
+
+                </LinearLayout>
+            </HorizontalScrollView>
+
+            <!-- 非巴士類別：如實提示，唔捏造冇 API 嘅班次 -->
+            <TextView
+                android:id="@+id/tvCategoryNotice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="10dp"
+                android:text="@string/search_no_api"
+                android:textColor="@color/search_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <!-- 綠色描邊「路線號碼」輸入框（用系統 IME，取代舊自訂鍵盤） -->
+            <EditText
                 android:id="@+id/routeInput"
                 android:layout_width="match_parent"
                 android:layout_height="58dp"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginEnd="12dp"
-                android:layout_marginBottom="8dp"
-                android:background="@drawable/bg_input"
-                android:gravity="center"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:text="@string/search_input_hint"
-                android:textColor="@color/search_result_hint"
-                android:textSize="21sp" />
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="18dp"
+                android:background="@drawable/bg_search_field"
+                android:drawableStart="@drawable/ic_search"
+                android:drawablePadding="12dp"
+                android:hint="@string/search_route_hint"
+                android:imeOptions="actionSearch"
+                android:importantForAutofill="no"
+                android:inputType="textCapCharacters"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:singleLine="true"
+                android:textColor="@color/search_text"
+                android:textColorHint="@color/search_hint"
+                android:textSize="19sp" />
 
-            <!-- 結果模式：路線號 + 往 目的地 + 營運商細字 + › -->
+            <!-- 即時結果：輸入非空時顯示（精確／前綴符合，最多 4 條） -->
             <LinearLayout
                 android:id="@+id/searchResultsView"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:visibility="visible">
+                android:visibility="gone">
 
                 <TextView
                     android:id="@+id/searchEmpty"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingStart="18dp"
-                    android:paddingTop="14dp"
+                    android:paddingTop="10dp"
                     android:paddingEnd="18dp"
                     android:paddingBottom="10dp"
                     android:text="@string/search_empty"
-                    android:textColor="@color/muted"
-                    android:textSize="13sp"
+                    android:textColor="@color/search_muted"
+                    android:textSize="14sp"
                     android:visibility="gone" />
 
                 <androidx.recyclerview.widget.RecyclerView
@@ -337,6 +644,128 @@
                     android:clipToPadding="false"
                     android:paddingBottom="180dp" />
             </LinearLayout>
+
+            <!-- 輸入為空：我的書籤 ＋ 搜尋紀錄（對照截圖） -->
+            <LinearLayout
+                android:id="@+id/searchHomeView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:visibility="visible">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="10dp"
+                    android:text="@string/search_bookmark_title"
+                    android:textColor="@color/search_text"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="18dp"
+                    android:layout_marginEnd="18dp"
+                    android:background="@color/search_divider" />
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.26">
+
+                    <TextView
+                        android:id="@+id/tvBookmarkEmpty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingStart="18dp"
+                        android:paddingTop="14dp"
+                        android:paddingEnd="18dp"
+                        android:text="@string/search_bookmark_empty"
+                        android:textColor="@color/search_muted"
+                        android:textSize="17sp" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/bookmarkRecycler"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:clipToPadding="false"
+                        android:paddingBottom="180dp" />
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="10dp"
+                    android:text="@string/search_history_title"
+                    android:textColor="@color/search_text"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="18dp"
+                    android:layout_marginEnd="18dp"
+                    android:background="@color/search_divider" />
+
+                <TextView
+                    android:id="@+id/tvHistoryEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="18dp"
+                    android:paddingTop="12dp"
+                    android:paddingEnd="18dp"
+                    android:text="@string/search_history_empty"
+                    android:textColor="@color/search_muted"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.74">
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/historyRecycler"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:clipToPadding="false"
+                        android:paddingBottom="180dp" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/tvPreloadHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="18dp"
+                    android:paddingTop="4dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="8dp"
+                    android:text="@string/search_preload_hint"
+                    android:textColor="@color/search_muted"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- 進階：保留原有 8 模式／站號／方向／篩選 -->
+            <TextView
+                android:id="@+id/btnAdvanced"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:background="@color/search_field_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="@string/search_advanced"
+                android:textColor="@color/search_green"
+                android:textSize="14sp" />
 
             <!-- 站序模式：保留原有 8 模式／站號／方向／篩選全部功能 -->
             <LinearLayout
@@ -482,13 +911,6 @@
                     android:paddingEnd="12dp"
                     android:paddingBottom="12dp" />
             </LinearLayout>
-
-            <!-- 自訂鍵盤（只喺結果模式顯示） -->
-            <include
-                android:id="@+id/keypadRoot"
-                layout="@layout/keypad"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
 
         </LinearLayout>
 
