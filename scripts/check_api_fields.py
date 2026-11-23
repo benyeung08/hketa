@@ -988,10 +988,11 @@ check("DETAIL_ALL_BLACK: red header / chips keep white text, blue minutes stay b
 check("BOTH Home cards and search rows open the NO-MAP RouteDetailActivity",
       main_kt.count('Intent(this, RouteDetailActivity::class.java)') >= 2
       and 'RouteDetailActivity.EXTRA_STOP_ID' in main_kt
-      and 'fun openResult(result: RouteSearch.Result)' in main_kt
-      and 'RouteDetailActivity.EXTRA_BOUND, result.bound' in main_kt
-      and 'result.dest.removePrefix("往 ").trim()' in main_kt
-      and 'vm.loadStops(result.route, result.company, result.bound)' not in main_kt)
+      and 'fun openHistoryItem(item: SearchHistoryItem)' in main_kt
+      and 'RouteDetailActivity.EXTRA_BOUND, item.bound' in main_kt
+      and 'item.dest.removePrefix("往 ").trim()' in main_kt
+      and 'vm.loadStops(result.route, result.company, result.bound)' not in main_kt
+      and 'SearchHistoryPrefs.add(this' in main_kt)
 check("search home PRELOADS official catalogue rows before any keystroke",
       'public static List<Result> preload()' in read(API / "RouteSearch.java")
       and 'RouteSearch.preload()' in read(UI / "EtaViewModel.kt")
@@ -1761,6 +1762,46 @@ check("SEARCH_UI: activity wires the screenshot page, NOT the old keypad",
       and "class SearchHistoryAdapter" in search_adapters
       and "class BookmarkAdapter" in search_adapters
       and "object SearchHistoryPrefs" in search_history_kt)
+# SEARCH_UI_KOTLIN_FIX: 上一版 cut 走舊 APP1933 欄位區塊時，連仍被 7 處引用嘅
+# permissionHint 一齊移走 → Kotlin「Unresolved reference」令 assembleDebug 失敗。
+# Python checker 只查 R.id / 文字 needle，唔查 Kotlin 符號，所以加返兩條硬閘。
+check("SEARCH_UI_KOTLIN_FIX: permissionHint is DECLARED and BOUND (not just referenced)",
+      "private lateinit var permissionHint: TextView" in main_kt
+      and "permissionHint = findViewById(R.id.permissionHint)" in main_kt
+      and 'android:id="@+id/permissionHint"' in main_layout
+      and main_kt.count("permissionHint") >= 8)
+# 收窄版符號檢查：只驗 MainActivity 入面「單純 identifier.<member>」嘅 receiver，
+# 避開 holder.xxx / chips[i].xxx / import 行呢類複合或唔相干嘅寫法。
+_no_imports = "\n".join(
+    line for line in main_kt.splitlines() if not line.lstrip().startswith("import ")
+)
+_declared = set(re.findall(
+    r"^\s*private\s+(?:lateinit\s+)?(?:val|var)\s+([A-Za-z_]\w*)",
+    main_kt, re.M))
+_locals = set(re.findall(r"\b(?:val|var)\s+([A-Za-z_]\w*)\s*=", main_kt))
+_locals |= set(re.findall(r"\bfor\s*\(\s*([A-Za-z_]\w*)\s+in\b", main_kt))
+_locals |= set(re.findall(r"\{\s*([A-Za-z_]\w*)\s*->", main_kt))
+_locals |= set(re.findall(
+    r"^\s*private fun \w+\(\s*([A-Za-z_]\w*)\s*:", main_kt, re.M))
+_imports = set(re.findall(r"^import\s+[\w.]+\.([A-Za-z_]\w*)", main_kt, re.M))
+_builtin = {
+    "this", "it", "holder", "view", "parent", "s", "state", "item", "card",
+    "stop", "result", "key", "intent", "swipe", "vm", "chips", "catTabs",
+    "catUnderlines", "tabs", "pages", "rows", "favs", "history", "note",
+    "cards", "badge", "selection", "query", "visibleStops", "dirLabel",
+    "chips", "catTabs", "catUnderlines",
+}
+_receivers = set(re.findall(
+    r"(?<![.\w])([A-Za-z_]\w*)\s*\.\s*"
+    r"(?:visibility|text|hint|isRefreshing|submit|setOnClickListener|"
+    r"setOnLongClickListener|setBackgroundResource|setTextColor|"
+    r"addTextChangedListener|setColorSchemeResources|setOnRefreshListener|"
+    r"setDropDownViewResource|setEnabled)\b",
+    _no_imports, re.M))
+_undeclared = sorted(_receivers - _declared - _locals - _imports - _builtin)
+check("SEARCH_UI_KOTLIN_FIX: every bare <field>.<member> receiver is declared",
+      not _undeclared, f"undeclared={_undeclared}")
+
 check("SEARCH_UI: history rows show operator badge / clock / removable ✕",
       all(f'android:id="@+id/{n}"' in result_row for n in (
           "resultRoot", "resultClock", "resultBadge", "resultRoute",
