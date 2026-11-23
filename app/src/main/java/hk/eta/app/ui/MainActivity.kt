@@ -25,7 +25,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
-import hk.eta.app.api.RouteSearch
 import hk.eta.app.api.TimeUtils
 
 /**
@@ -70,6 +69,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCategoryNotice: TextView
     private lateinit var searchChipScroll: View
     private lateinit var btnAdvanced: View
+    // SEARCH_UI_KOTLIN_FIX: 呢個欄位喺舊 APP1933 區塊，改版時一併被 cut 走，
+    // 但 autoLocateIfAllowed / showPermissionHint / render 仍然用緊 →
+    // Kotlin 「Unresolved reference: permissionHint」令 assembleDebug 失敗。
+    // 必須連 findViewById 一齊保留，唔可以只加宣告。
+    private lateinit var permissionHint: TextView
     private lateinit var catTabs: List<TextView>
     private lateinit var catUnderlines: List<View>
     private lateinit var chips: List<TextView>
@@ -150,6 +154,7 @@ class MainActivity : AppCompatActivity() {
         tvCategoryNotice = findViewById(R.id.tvCategoryNotice)
         searchChipScroll = findViewById(R.id.searchChipScroll)
         btnAdvanced = findViewById(R.id.btnAdvanced)
+        permissionHint = findViewById(R.id.permissionHint)
         catTabs = listOf(
             R.id.catMtr, R.id.catBus, R.id.catGmb, R.id.catFerry,
             R.id.catTram, R.id.catTaxi, R.id.catNplb, R.id.catResident
@@ -352,25 +357,6 @@ class MainActivity : AppCompatActivity() {
             putExtra(RouteDetailActivity.EXTRA_STOP_ID, card.stopId)
             putExtra(RouteDetailActivity.EXTRA_STOP_NAME, card.stopName)
             putExtra(RouteDetailActivity.EXTRA_DEST, card.dest)
-        })
-    }
-
-    /**
-     * Tapping "12 往 海麗邨 ›" opens the SAME full-screen route detail as a
-     * Home nearby card (red header + stop timeline + next three arrivals,
-     * NO map). The tapped row's direction is carried across so the timeline
-     * shows that bound first. The in-tab stop sequence is still reachable via
-     * the "← 返回路線搜尋" / direction controls on the detail screen.
-     */
-    private fun openResult(result: RouteSearch.Result) {
-        startActivity(Intent(this, RouteDetailActivity::class.java).apply {
-            putExtra(RouteDetailActivity.EXTRA_ROUTE, result.route)
-            putExtra(RouteDetailActivity.EXTRA_COMPANY, result.company)
-            putExtra(RouteDetailActivity.EXTRA_DEST,
-                result.dest.removePrefix("往 ").trim())
-            putExtra(RouteDetailActivity.EXTRA_BOUND, result.bound)
-            putExtra(RouteDetailActivity.EXTRA_STOP_ID, "")
-            putExtra(RouteDetailActivity.EXTRA_STOP_NAME, "")
         })
     }
 
@@ -649,17 +635,6 @@ class MainActivity : AppCompatActivity() {
 
     /** Radius now comes from 應用設置, not a Home-page Spinner. */
     private fun selectedRadius(): Int = NearbyRadiusPrefs.radiusMeters(this)
-
-    private fun companyPosition(company: String): Int = when (company) {
-        EtaRepository.KMB -> 1
-        EtaRepository.CTB -> 2
-        EtaRepository.NLB -> 3
-        EtaRepository.GMB -> 4
-        EtaRepository.MTR -> 5
-        EtaRepository.LRT -> 6
-        EtaRepository.MTRB -> 7
-        else -> 0
-    }
 
     private fun render(state: UiState) {
         titleText.text = state.selection?.let {
