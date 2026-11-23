@@ -246,4 +246,34 @@
         <item>輕鐵路線號可篩選（如 505、751）；留空顯示全部站</item>
         <item>港鐵巴士路線，例如 K12、K51、506</item>
     </string-array>
+    <!-- SEARCH_UI_2026-11-23：對照截圖嘅分類式搜尋頁 -->
+    <string name="search_cat_mtr">港鐵</string>
+    <string name="search_cat_bus">巴士</string>
+    <string name="search_cat_gmb">專線小巴</string>
+    <string name="search_cat_ferry">渡輪</string>
+    <string name="search_cat_tram">電車</string>
+    <string name="search_cat_taxi">的士</string>
+    <string name="search_cat_nplb">非專線小巴</string>
+    <string name="search_cat_resident">居民巴士服務</string>
+    <string name="search_chip_all">所有巴士類別</string>
+    <string name="search_chip_ctb">城巴</string>
+    <string name="search_chip_kmb">九巴</string>
+    <string name="search_chip_lwb">龍運巴士</string>
+    <string name="search_chip_nlb">新大嶼山巴士</string>
+    <string name="search_chip_db">愉景灣/馬灣巴士</string>
+    <string name="search_route_hint">路線號碼</string>
+    <string name="search_bookmark_title">我的書籤</string>
+    <string name="search_bookmark_empty">沒有資料記錄</string>
+    <string name="search_history_title">搜尋紀錄</string>
+    <string name="search_history_empty">沒有搜尋紀錄，以下為官方目錄預載</string>
+    <string name="search_preload_hint">官方目錄預載 · 點列開路線詳情</string>
+    <string name="search_clear">清除</string>
+    <string name="search_advanced">進階：站序／方向／篩選 ›</string>
+    <string name="search_back">← 返回路線搜尋</string>
+    <string name="search_no_api">此類別暫無同類公開實時 ETA API，未納入（唔捏造班次）</string>
+    <string name="search_rail_hint">港鐵：重鐵／輕鐵／港鐵接駁巴士目錄</string>
+    <string name="search_gmb_hint">專線小巴：綠色小巴官方目錄</string>
+    <string name="search_lwb_hint">龍運巴士與九巴共用同一份官方路線目錄</string>
+    <string name="search_dest_prefix">往 </string>
+    <string name="search_preloaded_tag">目錄預載</string>
 </resources>

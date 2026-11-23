@@ -48,4 +48,17 @@
          black-on-white in EVERY system theme. -->
     <color name="detail_stop_text">#000000</color>
     <color name="detail_aux_text">#000000</color>
+    <!-- SEARCH_UI_2026-11-23: 對照截圖嘅固定深色搜尋頁。
+         刻意唔喺 values-night 覆寫：呢頁要同截圖一樣深灰黑＋綠色，
+         其餘分頁仍然跟隨系統深色／淺色。 -->
+    <color name="search_bg">#1D1D1F</color>
+    <color name="search_field_bg">#2C2C2E</color>
+    <color name="search_green">#3DDC84</color>
+    <color name="search_green_soft">#DDF5E7</color>
+    <color name="search_green_text">#1B6B3A</color>
+    <color name="search_text">#F2F2F7</color>
+    <color name="search_muted">#AEAEB2</color>
+    <color name="search_hint">#8E8E93</color>
+    <color name="search_divider">#48484A</color>
+    <color name="search_chip_border">#D9DEE4</color>
 </resources>
