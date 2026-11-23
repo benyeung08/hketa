@@ -37,6 +37,7 @@
 - **📝 中英雙語 Release 說明分界**：`RELEASE_NOTES_v1.0.0.md` 純文字更新至 2026-11-19、本檔收錄 **2026-11-20 至最新**；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明**唔郁 APK／tag、唔使重跑 CI**
 - **🧾 離線驗證與誠實降級**：新增純 Java 選班次層＋36 項離線 harness（首末站 disjoint、去重、無 `stop_seq` 降級、得 2 班唔捏造）；12 個 `.java` ECJ 17 實編譯、5 個既有 harness 與 38 項 backfill 檢查全過，收藏／直接查站號捷徑冇站序時退回純去重
 - **🖼 搜尋頁定稿・顏色唔變（本輪最新）**：`activity_main.xml` 改為截圖分類式（8 類別 tab／6 chips／綠框「路線號碼」／我的書籤／搜尋紀錄），`MainActivity.kt` 由自訂鍵盤改接 `SearchHistoryAdapter`／`BookmarkAdapter`／`SearchHistoryPrefs`；全部 `search_*` 色值一個都冇改、`values-night` 唔覆寫，系統切深／淺色都唔會令搜尋頁變色
+- **🐛 Kotlin 編譯修正（最後收尾）**：還原搜尋頁時誤刪仍被 7 處引用嘅 `permissionHint` 欄位，CI `assembleDebug` 報 `Unresolved reference`；已補回宣告＋綁定、清走兩個 dead function、並加 2 條符號檢查＋preflight／workflow drift 早期攔截
 
 ### ✨ 完整功能（v1.0.1 含繼承自 v1.0.0）
 
@@ -112,6 +113,7 @@ Java 17 資料層 + Kotlin 1.9.24 UI／協程｜AGP 8.5.2｜Gradle 8.7｜JDK 17�
 - **📝 Bilingual release-note boundary**: `RELEASE_NOTES_v1.0.0.md` was updated as plain text through 2026-11-19, while this file covers **from 2026-11-20 through the latest**; `RELEASE_NOTES_${TAG}.md` selects the matching file per tag, and editing notes **never touches the APK / tag and needs no CI re-run**
 - **🧾 Offline verification & honest degradation**: a pure-Java trip selector plus 36 offline harness checks (disjoint termini, de-duplication, missing-`stop_seq` fallback, never inventing a 3rd trip); all 12 `.java` files compile under ECJ 17, and the 5 existing harnesses plus 38 published-release checks pass. Favourites / direct stop-id shortcuts have no sequence and degrade to plain de-duplication
 - **🖼 Search page locked, colours unchanged (latest this round)**: `activity_main.xml` now matches the screenshot categories (8 tabs / 6 chips / green-outlined route field / bookmarks / search history) and `MainActivity.kt` was rewired from the custom keypad to `SearchHistoryAdapter` / `BookmarkAdapter` / `SearchHistoryPrefs`; not one `search_*` value was edited, `values-night` never overrides them, and switching system Dark / Light mode cannot recolour the search page
+- **🐛 Kotlin compile fix (final close-out)**: rewiring the search page accidentally removed the `permissionHint` field still used at 7 call sites, so CI `assembleDebug` failed with `Unresolved reference`; the declaration + binding are restored, two dead functions removed, and 2 symbol checks plus preflight / workflow drift rules now catch the same mistake early
 
 ### ✨ Full feature set (v1.0.1, including what is inherited from v1.0.0)
 

@@ -27,6 +27,7 @@
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **📦 已發佈版本都可補正式版**：`workflow_dispatch` 揀一個**已發佈** Release，用該 tag 自己嘅 source 重建已簽名正式版 APK，清走衝突 `.apk` 後只留一個 `-release.apk`；唔新建 Release、唔改 tag／內文（PUBLISHED_RELEASE_BACKFILL）
+- **🐛 CI 編譯修正（本輪最新）**：上一版改搜尋頁時，連仍被 7 處引用嘅 `permissionHint` 欄位一齊 cut 走，Kotlin 報 `Unresolved reference` 令 `assembleDebug` 失敗；已加返宣告＋`findViewById` 綁定，並新增 2 條符號檢查＋preflight drift，同類錯誤而家 0 秒報出
 - **🖼 本輪：搜尋頁定稿＋顏色唔變**：`activity_main.xml` 改為截圖分類式（8 tab／6 chips／書籤／紀錄），`MainActivity.kt` 由自訂鍵盤改接新介面；全部 `search_*` 色值一個都冇郁、`values-night` 唔覆寫，純 UI＋檢查同步
 - **📅 歷史單日說明檔（備用）**：`_day1_2026-11-19.md`（11-19 介面還原）／`_day2_2026-11-20.md`（20 號至最新改動）兩份可直接貼；純文字，唔被 workflow 自動選用、唔影響 CI
 - **📝 v1.0.0 雙語說明（截至 2026-11-19）**：`RELEASE_NOTES_v1.0.0.md` 中英各 5 章 33 條對稱，收錄 APP1933 搜尋／無地圖詳情／定位授權／懸浮導航欄／ETA 自動刷新，明確唔收 11-20 改動；純文字，唔使 push code
@@ -344,6 +345,7 @@ Bilingual release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (cur
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **📦 Backfill an already-published Release**: a `workflow_dispatch` run rebuilds the signed production APK from THAT tag's own source, prunes conflicting `.apk` assets and leaves exactly one `-release.apk` — no new Release, no tag move, no body rewrite (PUBLISHED_RELEASE_BACKFILL)
+- **🐛 CI compile fix (latest this round)**: rewiring the search page also cut the `permissionHint` field that 7 call sites still used, so Kotlin reported `Unresolved reference` and `assembleDebug` failed; the declaration + `findViewById` binding are restored, with 2 new symbol checks and a preflight drift rule so the same mistake is caught in 0 seconds
 - **🖼 This round: search page locked, colours unchanged**: `activity_main.xml` now matches the screenshot categories (8 tabs / 6 chips / bookmarks / history) and `MainActivity.kt` was rewired from the custom keypad; every `search_*` value is untouched, `values-night` never overrides them, UI + checks only
 - **📅 Historical single-day notes (standby)**: `_day1_2026-11-19.md` (11-19 layout work) / `_day2_2026-11-20.md` (20th-through-latest work) are paste-ready; plain text, never auto-selected by the workflow, no CI impact
 - **📝 Bilingual v1.0.0 notes (through 2026-11-19)**: `RELEASE_NOTES_v1.0.0.md` is fully symmetric at 5 sections / 33 bullets per language, covering the APP1933 search, map-free detail, location consent, floating nav bar and ETA auto-refresh, and explicitly excludes the 11-20 work; text-only, no code push needed
