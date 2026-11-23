@@ -9,7 +9,6 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
-import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
@@ -25,13 +24,16 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.JointRoutes
 import hk.eta.app.api.RouteSearch
 import hk.eta.app.api.TimeUtils
 
 /**
- * APP1933-style shell over the unchanged 8-operator data layer.
- * Four bottom tabs: 主頁 (nearby route cards) / 收藏 / 搜尋 (route stop
- * sequence + direction switch) / 更多 (Settings entry + disclaimer).
+ * SEARCH_UI_2026-11-23 — 搜尋分頁對照截圖：8 個交通類別 tab、營運商 chips、
+ * 綠框「路線號碼」、我的書籤／搜尋紀錄。顏色全部由既有 @color/search_*
+ * 同既有 drawable 決定，**呢輪冇新增／冇改任何色值**，亦唔跟隨系統深／淺色。
+ * 底層 8 種查詢模式、官方目錄預載、點列開無地圖詳情頁、站序／方向／篩選
+ * 全部保留；其餘分頁（主頁／收藏／設置）維持原本跟隨系統外觀。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -57,30 +59,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageMore: View
     private lateinit var mainHeader: View
     private lateinit var bottomTabs: View
-    private lateinit var searchBar: View
-    private lateinit var routeInput: TextView
+    private lateinit var routeInput: EditText
     private lateinit var searchResultsView: View
+    private lateinit var searchHomeView: View
     private lateinit var stopSequenceView: View
-    private lateinit var keypadRoot: View
     private lateinit var searchEmpty: TextView
-    private lateinit var permissionHint: TextView
-    private lateinit var letterKeys: List<TextView>
+    private lateinit var tvBookmarkEmpty: TextView
+    private lateinit var tvHistoryEmpty: TextView
+    private lateinit var tvPreloadHint: View
+    private lateinit var tvCategoryNotice: TextView
+    private lateinit var searchChipScroll: View
+    private lateinit var btnAdvanced: View
+    private lateinit var catTabs: List<TextView>
+    private lateinit var catUnderlines: List<View>
+    private lateinit var chips: List<TextView>
 
     private lateinit var cardAdapter: RouteCardAdapter
     private lateinit var stopAdapter: StopAdapter
     private lateinit var favoriteAdapter: FavoriteAdapter
-    private lateinit var searchAdapter: RouteResultAdapter
+    private lateinit var searchAdapter: SearchHistoryAdapter
+    private lateinit var historyAdapter: SearchHistoryAdapter
+    private lateinit var bookmarkAdapter: BookmarkAdapter
 
     private var currentTab = 0
-    // true = 站序模式（保留原有控制項）；false = APP1933 全螢幕路線結果 + 鍵盤
+    // true = 進階站序模式（保留原有 8 模式／站號／方向／篩選）
     private var inSequence = false
-    private val inputBuffer = StringBuilder()
-    private var letterPage = 0
-    private val letterPages = listOf(
-        listOf("A", "B", "C", "E"),
-        listOf("K", "M", "P", "S"),
-        listOf("X", "R", "T", "N")
-    )
+    // 0 港鐵 1 巴士（預設） 2 專線小巴 3 渡輪 4 電車 5 的士 6 非專線小巴 7 居民巴士服務
+    private var searchCategory = 1
+    // 0 所有巴士類別 1 城巴 2 九巴 3 龍運 4 嶼巴 5 愉景灣／馬灣
+    private var busChip = 0
     // 自動定位只喺「已授權」後發生；未授權唔會靜默用中環假定位。
     private var locationPromptShown = false
     private var nearbyLoaded = false
@@ -132,19 +139,30 @@ class MainActivity : AppCompatActivity() {
         pageMore = findViewById(R.id.pageMore)
         mainHeader = findViewById(R.id.mainHeader)
         bottomTabs = findViewById(R.id.bottomTabs)
-        searchBar = findViewById(R.id.searchBar)
         routeInput = findViewById(R.id.routeInput)
         searchResultsView = findViewById(R.id.searchResultsView)
+        searchHomeView = findViewById(R.id.searchHomeView)
         stopSequenceView = findViewById(R.id.stopSequenceView)
-        keypadRoot = findViewById(R.id.keypadRoot)
         searchEmpty = findViewById(R.id.searchEmpty)
-        permissionHint = findViewById(R.id.permissionHint)
-        letterKeys = listOf(
-            findViewById<TextView>(R.id.keyLetter0),
-            findViewById<TextView>(R.id.keyLetter1),
-            findViewById<TextView>(R.id.keyLetter2),
-            findViewById<TextView>(R.id.keyLetter3)
-        )
+        tvBookmarkEmpty = findViewById(R.id.tvBookmarkEmpty)
+        tvHistoryEmpty = findViewById(R.id.tvHistoryEmpty)
+        tvPreloadHint = findViewById(R.id.tvPreloadHint)
+        tvCategoryNotice = findViewById(R.id.tvCategoryNotice)
+        searchChipScroll = findViewById(R.id.searchChipScroll)
+        btnAdvanced = findViewById(R.id.btnAdvanced)
+        catTabs = listOf(
+            R.id.catMtr, R.id.catBus, R.id.catGmb, R.id.catFerry,
+            R.id.catTram, R.id.catTaxi, R.id.catNplb, R.id.catResident
+        ).map { findViewById<TextView>(it) }
+        catUnderlines = listOf(
+            R.id.catMtrUnderline, R.id.catBusUnderline, R.id.catGmbUnderline,
+            R.id.catFerryUnderline, R.id.catTramUnderline, R.id.catTaxiUnderline,
+            R.id.catNplbUnderline, R.id.catResidentUnderline
+        ).map { findViewById<View>(it) }
+        chips = listOf(
+            R.id.chipAll, R.id.chipCtb, R.id.chipKmb,
+            R.id.chipLwb, R.id.chipNlb, R.id.chipDb
+        ).map { findViewById<TextView>(it) }
 
         companySpinner.adapter = ArrayAdapter(
             this,
@@ -182,7 +200,23 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "已移除收藏", Toast.LENGTH_SHORT).show()
             }
         )
-        searchAdapter = RouteResultAdapter { result -> openResult(result) }
+        // 即時結果／搜尋紀錄／我的書籤全部重用截圖式紀錄列；
+        // 顏色由 item_route_result.xml / item_bookmark.xml 固定，程式唔改色值。
+        searchAdapter = SearchHistoryAdapter(
+            onClick = { item -> openHistoryItem(item) },
+            onRemove = { _ -> Unit }
+        )
+        historyAdapter = SearchHistoryAdapter(
+            onClick = { item -> openHistoryItem(item) },
+            onRemove = { item ->
+                SearchHistoryPrefs.remove(this, item)
+                refreshHistory()
+            }
+        )
+        bookmarkAdapter = BookmarkAdapter { key ->
+            vm.loadFavorite(key)
+            selectTab(0)
+        }
 
         findViewById<RecyclerView>(R.id.homeRecycler).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -199,6 +233,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.searchResultsRecycler).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = searchAdapter
+        }
+        findViewById<RecyclerView>(R.id.historyRecycler).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = historyAdapter
+        }
+        findViewById<RecyclerView>(R.id.bookmarkRecycler).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = bookmarkAdapter
         }
 
         swipe.setColorSchemeResources(R.color.brand, R.color.accent)
@@ -230,12 +272,19 @@ class MainActivity : AppCompatActivity() {
             favoriteAdapter.submit(vm.favorites())
         }
         findViewById<View>(R.id.btnFavList).setOnClickListener { selectTab(1) }
-        findViewById<View>(R.id.btnBackToSearch).setOnClickListener { showResults() }
-        findViewById<View>(R.id.searchHome).setOnClickListener { selectTab(0) }
+        findViewById<View>(R.id.btnBackToSearch).setOnClickListener { showSearchHome() }
+        btnAdvanced.setOnClickListener { showSequence() }
 
-        bindKeypad(keypadRoot)
-        updateLetterKeys()
-        updateRouteInput()
+        bindSearchCategories()
+        bindSearchChips()
+        // 系統 IME 直接輸入路線號碼；每鍵即時向官方目錄查詢（唔再係自訂鍵盤）。
+        routeInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                vm.searchRoutes(s?.toString() ?: "")
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
 
         etFilter.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -325,94 +374,179 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ------------------------------------------------------- APP1933 搜尋鍵盤
+    // -------------------------------- 截圖式分類搜尋（SEARCH_UI_2026-11-23）
+    // ★ 顏色約束：下面所有 setTextColor / setBackgroundResource 都只係
+    //   套用既有 @color/search_* 同既有 drawable，**冇新增、冇修改任何色值**；
+    //   values-night 亦刻意唔覆寫 search_*，所以系統切深／淺色都唔會變色。
 
-    /** One listener for every tagged key; no system soft keyboard is used. */
-    private fun bindKeypad(root: View) {
-        val tag = root.tag
-        if (tag is String && tag.isNotEmpty()) {
-            root.setOnClickListener { onKey(tag) }
-        }
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) {
-                bindKeypad(root.getChildAt(i))
-            }
+    private fun bindSearchCategories() {
+        for (i in catTabs.indices) {
+            catTabs[i].setOnClickListener { selectCategory(i) }
         }
     }
 
-    private fun onKey(tag: String) {
-        when (tag) {
-            "DEL" -> if (inputBuffer.isNotEmpty()) {
-                inputBuffer.deleteCharAt(inputBuffer.length - 1)
-            }
-            "ENTER" -> Unit   // 結果已逐鍵更新；↵ 只作確認，由尾部統一再查一次
-            "PREV" -> {
-                letterPage = (letterPage - 1 + letterPages.size) % letterPages.size
-                updateLetterKeys()
-            }
-            "NEXT" -> {
-                letterPage = (letterPage + 1) % letterPages.size
-                updateLetterKeys()
-            }
-            "L0", "L1", "L2", "L3" -> {
-                val index = tag.substring(1).toInt()
-                inputBuffer.append(letterPages[letterPage][index])
-            }
-            else -> if (tag.length == 1 && tag[0].isDigit()) {
-                inputBuffer.append(tag)
-            }
-        }
-        updateRouteInput()
-        vm.searchRoutes(inputBuffer.toString())
-    }
-
-    private fun updateLetterKeys() {
-        val page = letterPages[letterPage]
-        for (i in letterKeys.indices) {
-            letterKeys[i].text = page[i]
+    private fun bindSearchChips() {
+        for (i in chips.indices) {
+            chips[i].setOnClickListener { selectChip(i) }
         }
     }
 
-    private fun updateRouteInput() {
-        val empty = inputBuffer.isEmpty()
-        routeInput.text = if (empty) {
-            getString(R.string.search_input_hint)
-        } else {
-            inputBuffer.toString()
-        }
-        routeInput.setTextColor(
-            ContextCompat.getColor(
-                this,
-                if (empty) R.color.search_result_hint else R.color.text
+    /** 選中分類：綠字＋綠底線；其餘用既有 search_text。chips 只喺巴士顯示。 */
+    private fun selectCategory(index: Int) {
+        searchCategory = index
+        for (i in catTabs.indices) {
+            val on = i == index
+            catTabs[i].setTextColor(
+                ContextCompat.getColor(
+                    this,
+                    if (on) R.color.search_green else R.color.search_text
+                )
             )
-        )
+            catUnderlines[i].visibility = if (on) View.VISIBLE else View.GONE
+        }
+        val bus = index == 1
+        searchChipScroll.visibility = if (bus) View.VISIBLE else View.GONE
+        val note = when (index) {
+            0 -> getString(R.string.search_rail_hint)
+            2 -> getString(R.string.search_gmb_hint)
+            1 -> ""
+            else -> getString(R.string.search_no_api)
+        }
+        tvCategoryNotice.text = note
+        tvCategoryNotice.visibility =
+            if (bus || note.isEmpty()) View.GONE else View.VISIBLE
+        renderSearch()
     }
 
-    /** Full-screen result mode: red 搜尋 bar, input, result rows, keypad. */
-    private fun showResults() {
+    /** 選中營運商 chip：淺綠底深綠字／透明底白描邊，全部係既有 drawable。 */
+    private fun selectChip(index: Int) {
+        busChip = index
+        for (i in chips.indices) {
+            val on = i == index
+            chips[i].setBackgroundResource(
+                if (on) R.drawable.bg_chip_selected else R.drawable.bg_chip
+            )
+            chips[i].setTextColor(
+                ContextCompat.getColor(
+                    this,
+                    if (on) R.color.search_green_text else R.color.search_text
+                )
+            )
+        }
+        val note = when (index) {
+            3 -> getString(R.string.search_lwb_hint)
+            5 -> getString(R.string.search_no_api)
+            else -> ""
+        }
+        tvCategoryNotice.text = note
+        tvCategoryNotice.visibility = if (note.isEmpty()) View.GONE else View.VISIBLE
+        renderSearch()
+    }
+
+    /** 類別／chip 過濾只揀官方目錄已有嘅公司；冇 API 嘅類別如實留空。 */
+    private fun matchesCategory(company: String): Boolean = when (searchCategory) {
+        0 -> company == EtaRepository.MTR || company == EtaRepository.LRT ||
+            company == EtaRepository.MTRB
+        1 -> when (busChip) {
+            0 -> true
+            1 -> company == EtaRepository.CTB || company == JointRoutes.JOINT
+            2, 3 -> company == EtaRepository.KMB || company == JointRoutes.JOINT
+            4 -> company == EtaRepository.NLB
+            else -> false   // 愉景灣／馬灣巴士：官方冇同類實時 ETA API
+        }
+        2 -> company == EtaRepository.GMB
+        else -> false
+    }
+
+    /** 點任何一列：記入搜尋紀錄，再帶方向開同一個「路線詳情（無地圖）」。 */
+    private fun openHistoryItem(item: SearchHistoryItem) {
+        SearchHistoryPrefs.add(this, item.copy(removable = true, preloaded = false))
+        refreshHistory()
+        startActivity(Intent(this, RouteDetailActivity::class.java).apply {
+            putExtra(RouteDetailActivity.EXTRA_ROUTE, item.route)
+            putExtra(RouteDetailActivity.EXTRA_COMPANY, item.company)
+            putExtra(RouteDetailActivity.EXTRA_DEST, item.dest.removePrefix("往 ").trim())
+            putExtra(RouteDetailActivity.EXTRA_BOUND, item.bound)
+            putExtra(RouteDetailActivity.EXTRA_STOP_ID, "")
+            putExtra(RouteDetailActivity.EXTRA_STOP_NAME, "")
+        })
+    }
+
+    /** 同一份 state.searchResults，按輸入／類別／chip 渲染截圖式版面。 */
+    private fun renderSearch() {
+        val state = vm.state.value ?: return
+        val rows = state.searchResults
+            .filter { matchesCategory(it.company) }
+            .map { it.toHistoryItem(removable = false, preloaded = false) }
+        if (!routeInput.text.isNullOrBlank()) {
+            searchHomeView.visibility = View.GONE
+            searchResultsView.visibility = View.VISIBLE
+            searchAdapter.submit(rows)
+            searchEmpty.text = state.searchMessage.ifEmpty { getString(R.string.search_empty) }
+            searchEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
+        } else {
+            searchResultsView.visibility = View.GONE
+            searchHomeView.visibility = View.VISIBLE
+            refreshBookmarks()
+            refreshHistory(rows)
+        }
+    }
+
+    private fun refreshBookmarks() {
+        val favs = vm.favorites()
+        bookmarkAdapter.submit(favs)
+        tvBookmarkEmpty.visibility = if (favs.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    /** 有歷史就顯示歷史；冇就顯示官方目錄預載（標明「目錄預載」、唔俾刪除）。 */
+    private fun refreshHistory(preloaded: List<SearchHistoryItem>? = null) {
+        val history = SearchHistoryPrefs.list(this)
+        if (history.isNotEmpty()) {
+            historyAdapter.submit(history)
+            tvHistoryEmpty.visibility = View.GONE
+            tvPreloadHint.visibility = View.GONE
+        } else {
+            val rows = preloaded ?: (vm.state.value?.searchResults ?: emptyList())
+                .filter { matchesCategory(it.company) }
+                .map { it.toHistoryItem(removable = false, preloaded = false) }
+            historyAdapter.submit(
+                rows.take(6).map { it.copy(removable = false, preloaded = true) }
+            )
+            tvHistoryEmpty.visibility = View.VISIBLE
+            tvPreloadHint.visibility = View.VISIBLE
+        }
+    }
+
+    /** 截圖式搜尋首頁：頂部直接係分類 tab，唔顯示紅色 header／底部欄。 */
+    private fun showSearchHome() {
         inSequence = false
-        searchResultsView.visibility = View.VISIBLE
         stopSequenceView.visibility = View.GONE
-        keypadRoot.visibility = View.VISIBLE
-        mainHeader.visibility = View.GONE
-        statusText.visibility = View.GONE
-        bottomTabs.visibility = View.GONE
-        updateRouteInput()
-        vm.searchRoutes(inputBuffer.toString())
+        searchHomeView.visibility = View.VISIBLE
+        searchResultsView.visibility = View.GONE
+        hideChrome()
+        renderSearch()
     }
 
-    /** Stop-sequence mode keeps every original control and the bottom tabs. */
+    /** 進階：保留原有 8 模式／站序／方向／篩選。 */
     private fun showSequence() {
         inSequence = true
+        searchHomeView.visibility = View.GONE
         searchResultsView.visibility = View.GONE
         stopSequenceView.visibility = View.VISIBLE
-        keypadRoot.visibility = View.GONE
         restoreChrome()
+    }
+
+    private fun hideChrome() {
+        mainHeader.visibility = View.GONE
+        statusText.visibility = View.GONE
+        tvAutoRefreshStatus.visibility = View.GONE
+        bottomTabs.visibility = View.GONE
     }
 
     private fun restoreChrome() {
         mainHeader.visibility = View.VISIBLE
         statusText.visibility = View.VISIBLE
+        tvAutoRefreshStatus.visibility = View.VISIBLE
         bottomTabs.visibility = View.VISIBLE
     }
 
@@ -436,7 +570,7 @@ class MainActivity : AppCompatActivity() {
             NavGlass.selectTab(this, tabs[i], i == index)
         }
         if (index == 2) {
-            if (inSequence) showSequence() else showResults()
+            if (inSequence) showSequence() else showSearchHome()
         } else {
             restoreChrome()
         }
@@ -572,9 +706,8 @@ class MainActivity : AppCompatActivity() {
         val dirLabel = if (state.activeBound.isEmpty()) "全部方向" else state.activeBound
         stopsHeader.text = "車站／月台（${visibleStops.size}） · $dirLabel"
 
-        searchAdapter.submit(state.searchResults)
-        searchEmpty.text = state.searchMessage.ifEmpty { getString(R.string.search_empty) }
-        searchEmpty.visibility = if (state.searchResults.isEmpty()) View.VISIBLE else View.GONE
+        // 截圖式搜尋：同一份官方目錄結果，按類別／營運商 chip 過濾後渲染
+        renderSearch()
 
         val favs = vm.favorites()
         favoriteAdapter.submit(favs)
