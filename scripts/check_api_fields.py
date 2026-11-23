@@ -1223,11 +1223,16 @@ if missing_release_tokens:
     print("::error::新 checker 已傳、只係 yml 未同步；"
           "只需覆蓋 .github/workflows/build-apk.yml 呢一個檔即可。")
 
-release_notes_file = ROOT / "RELEASE_NOTES_v1.0.0.md"
-if not release_notes_file.is_file():
-    # 唔係錯誤：workflow 設計上容許新版未有專屬 notes，會自動產生簡短說明。
-    print("[INFO] RELEASE_NOTES_v1.0.0.md 未上傳；"
-          "workflow 會用版本對應嘅簡短 Release 內文（fallback），唔影響發布。")
+# Both published notes files are OPTIONAL: the workflow has an if/else
+# fallback that writes a short version-matched body when a tag has no notes.
+# v1.0.1 is the CURRENT release, so its bilingual notes SHOULD be present;
+# a missing / half-written (Chinese-only) file is reported as a drift below.
+release_notes_v100 = ROOT / "RELEASE_NOTES_v1.0.0.md"
+release_notes_v101 = ROOT / "RELEASE_NOTES_v1.0.1.md"
+for _f in (release_notes_v100, release_notes_v101):
+    if not _f.is_file():
+        print(f"[INFO] {_f.name} 未上傳；"
+              "workflow 會用版本對應嘅簡短 Release 內文（fallback），唔影響發布。")
 
 
 def wpos(needle):
@@ -1309,8 +1314,8 @@ check("version-matched release notes are OPTIONAL (fallback body always built)",
       "RELEASE_NOTES_${TAG}.md" in workflow
       and 'cp "RELEASE_NOTES_${TAG}.md" RELEASE_BODY.md' in workflow
       and "> RELEASE_BODY.md" in workflow
-      and (not release_notes_file.is_file()
-           or all(s in release_notes_file.read_text(encoding="utf-8")
+      and (not release_notes_v100.is_file()
+           or all(s in release_notes_v100.read_text(encoding="utf-8")
                   for s in ("HK ETA v1.0.0", "## English",
                             "hketa-v1.0.0-release.apk"))))
 check("exactly ONE .apk asset — the signed release — is attached",
@@ -1324,10 +1329,159 @@ check("in-app updater stays compatible: first .apk asset wins",
       'endsWith(".apk")' in app_update_java
       and "break;" in app_update_java
       and 'public static int compareVersions' in app_update_java)
+# RELEASE_NOTES_v1.0.1: gradle fields are the SINGLE SOURCE OF TRUTH.
+# Never hard-code the numbers here — bumping for v1.0.2 must not break CI.
+_cur_code = re.search(r"\bversionCode\s*=\s*(\d+)", app_gradle)
+_cur_name = re.search(r'\bversionName\s*=\s*"([^"]+)"', app_gradle)
+_cur_tag = "v" + (_cur_name.group(1) if _cur_name else "?")
 check("gradle version fields are the single source of truth",
-      'versionCode = 1' in app_gradle
-      and 'versionName = "1.0.0"' in app_gradle
+      bool(_cur_code) and bool(_cur_name)
       and "in-app updater compares" in app_gradle)
+# --- RELEASE_NOTES_v1.0.0：收錄至「昨天 2026-11-19」嘅已發佈首版說明 ---------
+_v100_text = release_notes_v100.read_text(encoding="utf-8") \
+    if release_notes_v100.is_file() else ""
+_v100_zh = _v100_text.split("## 中文（繁體）")[1].split("\n---\n")[0] \
+    if "## 中文（繁體）" in _v100_text else ""
+_v100_en = _v100_text.split("## English")[1].split("\n---\n")[0] \
+    if "## English" in _v100_text else ""
+check("RELEASE_NOTES_v1.0.0.md scope is THROUGH YESTERDAY 2026-11-19",
+      (not release_notes_v100.is_file()) or all(s in _v100_text for s in (
+          "收錄範圍：截至 2026-11-19（昨天）",
+          "scope: through 2026-11-19 (yesterday)",
+          "收錄至 2026-11-19", "Highlights through 2026-11-19",
+          "HK ETA v1.0.0", "## English",
+          "hketa-v1.0.0-release.apk")))
+check("RELEASE_NOTES_v1.0.0.md excludes the 2026-11-20 v1.0.1 work",
+      (not release_notes_v100.is_file()) or all(
+          s not in _v100_zh and s not in _v100_en
+          for s in ("GMB circular trip fix", "綠小巴循環線班次修正",
+                    "城巴/九巴", "已發佈 Release backfill")))
+check("RELEASE_NOTES_v1.0.0.md Chinese/English sections are symmetric",
+      (not release_notes_v100.is_file()) or (
+          len(re.findall(r"^### ", _v100_zh, re.M))
+          == len(re.findall(r"^### ", _v100_en, re.M))
+          and len(re.findall(r"^- ", _v100_zh, re.M))
+          == len(re.findall(r"^- ", _v100_en, re.M))
+          and len(re.findall(r"^- ", _v100_zh, re.M)) >= 20))
+check("RELEASE_NOTES_v1.0.0.md is TEXT-ONLY and states the tag-source caveat",
+      (not release_notes_v100.is_file()) or all(s in _v100_text for s in (
+          "唔使改任何程式碼", "唔會改 APK", "no code change",
+          "tag 當初嘅 source 係早期版本", "tag points at early source",
+          "versionCode = 2", "RELEASE_NOTES_v1.0.1.md")))
+# --- RELEASE_NOTES_v1.0.1：20 號至最新（2026-11-20 → latest）-----------------
+_day2_latest = ROOT / "RELEASE_NOTES_v1.0.1_day2_2026-11-20.md"
+_v101_text = release_notes_v101.read_text(encoding="utf-8") \
+    if release_notes_v101.is_file() else ""
+_v101_zh = _v101_text.split("## 中文（繁體）")[1].split("\n---\n")[0] \
+    if "## 中文（繁體）" in _v101_text else ""
+_v101_en = _v101_text.split("## English")[1].split("\n---\n")[0] \
+    if "## English" in _v101_text else ""
+check("RELEASE_NOTES_v1.0.1.md scope is 2026-11-20 THROUGH LATEST (bilingual)",
+      (not release_notes_v101.is_file()) or all(s in _v101_text for s in (
+          "收錄範圍：2026-11-20 至最新",
+          "scope: 2026-11-20 through the latest",
+          "2026-11-20 至最新嘅更新重點",
+          "Highlights from 2026-11-20 through the latest",
+          "版本分界", "Version boundary",
+          "RELEASE_NOTES_${TAG}.md")))
+check("RELEASE_NOTES_v1.0.1.md STARTS at 2026-11-20, no duplicated 11-19 highlights",
+      (not release_notes_v101.is_file()) or (
+          all(s in _v101_text for s in (
+              "#### 📅 2026-11-20", "#### 📅 最新", "#### 📅 Latest",
+              "APP1933", "GMB circular trip fix", "綠小巴循環線班次修正",
+              "RELEASE_NOTES_v1.0.0.md"))
+          and all(s not in _v101_text for s in (
+              "昨天（2026-11-19）", "Yesterday (2026-11-19)",
+              "2026-11-19 → 最新", "2026-11-19 → latest",
+              "由 11-19 起至最新"))
+          and len(re.findall(r"^#### 📅 ", _v101_text, re.M)) == 4
+          and _v101_text.count("#### 📅 2026-11-20") == 2))
+check("RELEASE_NOTES_v1.0.1.md stays symmetric after the 20-through-latest round",
+      (not release_notes_v101.is_file()) or (
+          len(re.findall(r"^### ", _v101_zh, re.M))
+          == len(re.findall(r"^### ", _v101_en, re.M))
+          and len(re.findall(r"^- ", _v101_zh, re.M))
+          == len(re.findall(r"^- ", _v101_en, re.M))
+          and len(re.findall(r"^- ", _v101_zh, re.M)) >= 20))
+check("v1.0.1 notes state that editing text never touches APK / tag / CI",
+      (not release_notes_v101.is_file()) or all(s in _v101_text for s in (
+          "唔郁 APK／tag", "唔使重跑 CI",
+          "never touches the APK / tag", "needs no CI re-run")))
+check("Standalone day2 note also carries the latest round, still symmetric",
+      (not _day2_latest.is_file()) or (
+          all(s in _day2_latest.read_text(encoding="utf-8") for s in (
+              "雙語 Release 說明分工", "Bilingual release-note split",
+              "GMB circular trip fix", "2026-11-20"))
+          and (lambda x, y: (
+              len(re.findall(r"^### ", x, re.M)) == len(re.findall(r"^### ", y, re.M))
+              and len(re.findall(r"^- ", x, re.M)) == len(re.findall(r"^- ", y, re.M))
+              and len(re.findall(r"^- ", x, re.M)) >= 19))(
+                  _day2_latest.read_text(encoding="utf-8").split("## 中文（繁體）")[1].split("---")[0],
+                  _day2_latest.read_text(encoding="utf-8").split("## English")[1].split("---")[0])))
+check("RELEASE_NOTES_v1.0.1.md exists and is BILINGUAL + symmetric",
+      release_notes_v101.is_file()
+      and all(s in release_notes_v101.read_text(encoding="utf-8")
+              for s in ("HK ETA v1.0.1", "## 中文（繁體）", "## English",
+                        "hketa-v1.0.1-release.apk", "versionCode = 2",
+                        "GMB circular trip fix", "綠小巴循環線班次修正",
+                        "FE:7B:35:E1", "RELEASE_NOTES_${TAG}.md")))
+check("RELEASE_NOTES_v1.0.1.md matches the BUMPED gradle tag/version",
+      bool(_cur_code) and bool(_cur_name)
+      and _cur_tag == "v1.0.1"
+      and _cur_code.group(1) == "2"
+      and _cur_name.group(1) == "1.0.1"
+      and ("`" + _cur_tag + "`") in release_notes_v101.read_text(encoding="utf-8"))
+# RELEASE_NOTES_v1.0.1 YESTERDAY/TODAY — two-day split + standalone day notes.
+_day1 = ROOT / "RELEASE_NOTES_v1.0.1_day1_2026-11-19.md"
+_day2 = ROOT / "RELEASE_NOTES_v1.0.1_day2_2026-11-20.md"
+# --- RELEASE_NOTES_v1.0.1：20 號至最新 + 兩份說明版本對應 ---------------------
+_v101_text = release_notes_v101.read_text(encoding="utf-8")
+check("RELEASE_NOTES_v1.0.1.md is the LATEST notes (2026-11-20 through the latest)",
+      all(s in _v101_text for s in (
+          "收錄範圍：2026-11-20 至最新",
+          "scope: 2026-11-20 through the latest",
+          "RELEASE_NOTES_v1.0.0.md", "GMB circular trip fix",
+          "綠小巴循環線班次修正", "hketa-v1.0.1-release.apk")))
+check("RELEASE_NOTES_v1.0.1.md records that BOTH published notes are version-matched",
+      all(s in _v101_text for s in (
+          "版本分界", "Version boundary",
+          "complementary", "never duplicated",
+          "RELEASE_NOTES_${TAG}.md",
+          "唔使 push code、唔使重跑 CI",
+          "no code push, no CI re-run")))
+check("RELEASE_NOTES_v1.0.1.md is grouped by 2026-11-20 / LATEST close-out",
+      all(s in release_notes_v101.read_text(encoding="utf-8")
+          for s in ("#### 📅 2026-11-20", "#### 📅 最新", "#### 📅 Latest",
+                    "實際 commit／push 時間以 GitHub 為準",
+                    "actual commit / push times are whatever GitHub shows"))
+      and len(re.findall(r"^#### 📅 ", release_notes_v101.read_text(encoding="utf-8"), re.M)) == 4)
+# 單日說明檔係「選用」純文字（workflow 只認 RELEASE_NOTES_${TAG}.md）。
+# 唔硬性要求存在：避免「新 checker 配未全量 push 嘅舊 repo」又再 FAIL；
+# 但只要檔存在，就必須係中英對稱、含正確日期同對應改動。
+_day_ok = lambda f: (not f.is_file()) or (
+    all(s in f.read_text(encoding="utf-8") for s in
+        ("## 中文（繁體）", "## English", "hketa-v1.0.1-release.apk",
+         "versionCode = 2", "FE:7B:35:E1", "RELEASE_NOTES_v1.0.1.md"))
+    and (lambda x, y: (
+        len(re.findall(r"^### ", x, re.M)) == len(re.findall(r"^### ", y, re.M))
+        and len(re.findall(r"^- ", x, re.M)) == len(re.findall(r"^- ", y, re.M))
+        and len(re.findall(r"^- ", x, re.M)) >= 19))(
+            f.read_text(encoding="utf-8").split("## 中文（繁體）")[1].split("---")[0],
+            f.read_text(encoding="utf-8").split("## English")[1].split("---")[0]))
+check("Standalone single-day bilingual notes are OPTIONAL but must be symmetric when present",
+      _day_ok(_day1) and _day_ok(_day2)
+      and (not _day1.is_file() or "2026-11-19" in _day1.read_text(encoding="utf-8"))
+      and (not _day2.is_file() or "2026-11-20" in _day2.read_text(encoding="utf-8"))
+      and (not _day1.is_file() or "APP1933" in _day1.read_text(encoding="utf-8"))
+      and (not _day2.is_file() or "GMB circular trip fix" in _day2.read_text(encoding="utf-8")))
+check("RELEASE_NOTES_v1.0.1.md Chinese/English sections are symmetric",
+      (lambda _t: (lambda zh, en: (
+          len(re.findall(r"^### ", zh, re.M)) == len(re.findall(r"^### ", en, re.M))
+          and len(re.findall(r"^- ", zh, re.M)) == len(re.findall(r"^- ", en, re.M))
+          and len(re.findall(r"^- ", zh, re.M)) >= 20))(
+              _t.split("## 中文（繁體）")[1].split("---")[0],
+              _t.split("## English")[1].split("---")[0]))(
+          release_notes_v101.read_text(encoding="utf-8")))
 check("signature strings all defined", all(
       name in settings_strings for name in ("signing_section", "signing_fingerprint",
                                             "signing_status_ok", "signing_status_fail",
@@ -1561,31 +1715,111 @@ check("8-operator data layer is unchanged", all(
        "case MTR:", "case LRT:", "case MTRB:"))
       and "new Dataset(" in read(API / "RouteDataStore.java"))
 
-# --- APP1933 搜尋頁：紅 bar / 路線結果 / 自訂鍵盤 -------------------------------
+# --- SEARCH_UI_2026-11-23：截圖式分類搜尋頁，顏色固定唔變 ---------------------
 search_java = read(API / "RouteSearch.java")
 result_row = read(RES / "layout/item_route_result.xml")
 keypad_xml = read(RES / "layout/keypad.xml")
-check("APP1933 route-search full screen (red bar + input + results + keypad)",
+search_colors = read(RES / "values/colors.xml")
+night_colors = read(RES / "values-night/colors.xml")
+search_adapters = read(UI / "SearchAdapters.kt")
+search_history_kt = read(UI / "SearchHistory.kt")
+bookmark_row = read(RES / "layout/item_bookmark.xml")
+search_strings = read(RES / "values/strings.xml")
+
+check("SEARCH_UI: screenshot-style category search page replaces the keypad",
       all(s in main_layout for s in (
-          'android:id="@+id/searchBar"', 'android:id="@+id/routeInput"',
-          'android:id="@+id/searchResultsRecycler"',
-          'android:id="@+id/stopSequenceView"',
-          'android:id="@+id/keypadRoot"', 'android:id="@+id/mainHeader"',
-          'android:id="@+id/bottomTabs"', 'android:id="@+id/btnBackToSearch"'))
-      and '@layout/keypad' in main_layout)
-check("APP1933 keypad: 1-9 / 0 / DEL / ENTER / 4 letter keys / page arrows",
+          'android:id="@+id/pageSearch"', 'android:id="@+id/searchCatScroll"',
+          'android:id="@+id/searchChipScroll"', 'android:id="@+id/routeInput"',
+          'android:id="@+id/searchHomeView"', 'android:id="@+id/searchResultsView"',
+          'android:id="@+id/bookmarkRecycler"', 'android:id="@+id/historyRecycler"',
+          'android:id="@+id/tvBookmarkEmpty"', 'android:id="@+id/tvHistoryEmpty"',
+          'android:id="@+id/tvCategoryNotice"', 'android:id="@+id/btnAdvanced"'))
+      and '@layout/keypad' not in main_layout
+      and 'android:id="@+id/searchBar"' not in main_layout
+      and 'android:id="@+id/keypadRoot"' not in main_layout)
+check("SEARCH_UI: 8 category tabs + 6 operator chips with exact screenshot labels",
+      all(f'android:id="@+id/{n}"' in main_layout for n in (
+          "catMtr", "catBus", "catGmb", "catFerry", "catTram", "catTaxi",
+          "catNplb", "catResident", "chipAll", "chipCtb", "chipKmb",
+          "chipLwb", "chipNlb", "chipDb"))
+      and all(s in search_strings for s in (
+          "港鐵", "巴士", "專線小巴", "渡輪", "電車", "的士", "非專線小巴",
+          "居民巴士服務", "所有巴士類別", "城巴", "九巴", "龍運巴士",
+          "新大嶼山巴士", "愉景灣/馬灣巴士", "路線號碼", "我的書籤",
+          "沒有資料記錄", "搜尋紀錄")))
+check("SEARCH_UI: activity wires the screenshot page, NOT the old keypad",
+      all(s in main_kt for s in (
+          "bindSearchCategories", "bindSearchChips", "selectCategory",
+          "selectChip", "matchesCategory", "renderSearch", "refreshHistory",
+          "refreshBookmarks", "openHistoryItem", "showSearchHome",
+          "showSequence", "hideChrome", "SearchHistoryAdapter",
+          "BookmarkAdapter", "SearchHistoryPrefs", "toHistoryItem",
+          "routeInput.addTextChangedListener", "vm.searchRoutes"))
+      and all(s not in main_kt for s in (
+           "bindKeypad", "keypadRoot", "searchBar", "keyLetter",
+           "inputBuffer", "updateLetterKeys", "R.id.searchHome)"))
+      and "class SearchHistoryAdapter" in search_adapters
+      and "class BookmarkAdapter" in search_adapters
+      and "object SearchHistoryPrefs" in search_history_kt)
+check("SEARCH_UI: history rows show operator badge / clock / removable ✕",
+      all(f'android:id="@+id/{n}"' in result_row for n in (
+          "resultRoot", "resultClock", "resultBadge", "resultRoute",
+          "resultDest", "resultNote", "resultRemove"))
+      and '@color/search_bg' in result_row
+      and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
+          "bg_search_badge", "ic_clock", "ic_close", "ic_search")))
+check("SEARCH_UI: bookmark row + empty state use the SAME fixed dark palette",
+      '@color/search_bg' in bookmark_row
+      and '@color/search_green' in bookmark_row
+      and "沒有資料記錄" in search_strings)
+check("SEARCH_UI: colours are LOCKED — no value changed, no night override",
+      all(f'<color name="{n}">{v}</color>' in search_colors for n, v in {
+          "search_bg": "#1D1D1F",
+          "search_field_bg": "#2C2C2E",
+          "search_green": "#3DDC84",
+          "search_green_soft": "#DDF5E7",
+          "search_green_text": "#1B6B3A",
+          "search_text": "#F2F2F7",
+          "search_muted": "#AEAEB2",
+          "search_hint": "#8E8E93",
+          "search_divider": "#48484A",
+          "search_chip_border": "#D9DEE4",
+      }.items())
+      and 'name="search_' not in night_colors
+      and "SEARCH_UI_2026-11-23" in search_colors
+      and "刻意唔喺 values-night 覆寫" in search_colors)
+check("SEARCH_UI: pageSearch uses ONLY the fixed search_* colours",
+      (lambda block: (
+          "@color/" in block
+          and all(c.startswith("search_") for c in
+                  re.findall(r'@color/([A-Za-z0-9_]+)', block))
+          and "search_bg" in block))(
+          main_layout[main_layout.index('android:id="@+id/pageSearch"'):
+                      main_layout.index('<!-- 進階：')]))
+check("SEARCH_UI: activity only APPLIES existing colours, never defines new ones",
+      all(s in main_kt for s in (
+          "R.color.search_green", "R.color.search_text",
+          "R.color.search_green_text", "R.drawable.bg_chip_selected",
+          "R.drawable.bg_chip"))
+      and "R.color.text" not in main_kt
+      and "setTextColor(0x" not in main_kt
+      and "setBackgroundColor(0x" not in main_kt
+      and "Color.parseColor" not in main_kt)
+check("SEARCH_UI: drawables keep their fixed fills / strokes",
+      all(s in read(RES / f"drawable/{n}.xml") for n, s in (
+          ("bg_search_field", "@color/search_field_bg"),
+          ("bg_search_field", "@color/search_green"),
+          ("bg_search_cat_underline", "@color/search_green"),
+          ("bg_chip", "@color/search_chip_border"),
+          ("bg_chip_selected", "@color/search_green_soft"),
+          ("bg_search_badge", "#3A3A3C"),
+          ("ic_clock", "#3DDC84"),
+          ("ic_close", "#8E8E93"),
+          ("ic_search", "#AEB4BC"))))
+check("legacy keypad.xml is kept as a file but NOT included by the search page",
       all(f'android:tag="{k}"' in keypad_xml for k in
-          ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-           "DEL", "ENTER", "L0", "L1", "L2", "L3", "PREV", "NEXT"))
-      and all(f'android:id="@+id/keyLetter{i}"' in keypad_xml
-              for i in range(4))
-      and '@drawable/bg_key' in keypad_xml
-      and '@drawable/bg_key_circle' in keypad_xml)
-check("route-search row shows big route no., 往 destination, attribution, chevron",
-      all(s in result_row for s in (
-          'android:id="@+id/resultRoute"', 'android:id="@+id/resultDest"',
-          'android:id="@+id/resultNote"', 'android:id="@+id/resultChevron"'))
-      and '往 尖沙咀碼頭' in result_row)
+          ("1", "DEL", "ENTER", "L0", "PREV"))
+      and '@layout/keypad' not in main_layout)
 check("route search uses official catalogues for all 7 operator modes",
       all(s in search_java for s in (
           "RouteDataStore.KMB_ROUTES", "RouteDataStore.CTB_ROUTES",
@@ -1593,13 +1827,9 @@ check("route search uses official catalogues for all 7 operator modes",
           "MtrCatalog.isLineCode", "EtaRepository.MTRB",
           "資料由DATA.GOV.HK提供", "public static List<Result> search"))
       and "HttpJson.getObject" in search_java)
-check("route search wired into ViewModel and Activity",
+check("route search still runs through the unchanged ViewModel",
       all(s in vm_kt for s in ("fun searchRoutes", "RouteSearch.search",
                                "onlyBound", "searchJob"))
-      and all(s in main_kt for s in (
-          "bindKeypad", "fun onKey", "fun openResult",
-          "showResults", "showSequence", "RouteResultAdapter",
-          "vm.searchRoutes", "updateLetterKeys"))
       and "class RouteResultAdapter" in card_kt)
 
 # --- JOINT_KMB_CTB: 城巴/九巴 聯營路線 + 每班次公司 --------------------------

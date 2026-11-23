@@ -45,6 +45,8 @@ REQUIRED = [
     "scripts/published_release.py",
     # GMB_CIRCULAR_ETA
     "app/src/main/java/hk/eta/app/api/GmbCircularEta.java",
+    # RELEASE_NOTES_v1.0.1
+    "RELEASE_NOTES_v1.0.1.md",
     # Resources
     "app/src/main/res/xml/file_paths.xml",
     "app/src/main/res/values/strings.xml",
@@ -88,8 +90,20 @@ REQUIRED = [
     "app/src/main/res/layout/item_route_card.xml",
     "app/src/main/res/layout/item_favorite.xml",
     # APP1933 搜尋頁：路線結果列 + 自訂鍵盤
+    # SEARCH_UI_2026-11-23：截圖式分類搜尋頁（顏色固定，唔跟隨深／淺色）
     "app/src/main/res/layout/item_route_result.xml",
-    "app/src/main/res/layout/keypad.xml",
+    "app/src/main/res/layout/item_bookmark.xml",
+    "app/src/main/res/layout/keypad.xml",        # 舊鍵盤檔保留，但已唔被 include
+    "app/src/main/java/hk/eta/app/ui/SearchAdapters.kt",
+    "app/src/main/java/hk/eta/app/ui/SearchHistory.kt",
+    "app/src/main/res/drawable/bg_chip.xml",
+    "app/src/main/res/drawable/bg_chip_selected.xml",
+    "app/src/main/res/drawable/bg_search_field.xml",
+    "app/src/main/res/drawable/bg_search_cat_underline.xml",
+    "app/src/main/res/drawable/bg_search_badge.xml",
+    "app/src/main/res/drawable/ic_clock.xml",
+    "app/src/main/res/drawable/ic_close.xml",
+    "app/src/main/res/drawable/ic_search.xml",
     "app/src/main/res/drawable/bg_route_badge.xml",
     "app/src/main/res/drawable/bg_trip_chip.xml",
     "app/src/main/res/drawable/bg_card.xml",
@@ -208,15 +222,23 @@ def main() -> int:
          "s.skipped",
          "SettingsActivity.kt 仍係舊版（選用來源會誤報失敗）",
          "由完整 zip 覆蓋 SettingsActivity.kt"),
-        # APP1933 全螢幕搜尋頁
-        ("app/src/main/res/layout/activity_main.xml",
-         'android:id="@+id/routeInput"',
-         "activity_main.xml 仍係舊搜尋頁（缺紅 bar／路線結果／鍵盤）",
-         "由完整 zip 覆蓋 activity_main.xml（同時要傳 item_route_result.xml、keypad.xml）"),
-        ("app/src/main/java/hk/eta/app/ui/MainActivity.kt",
-         "bindKeypad",
-         "MainActivity.kt 仍係舊版（缺自訂鍵盤與結果模式）",
-         "由完整 zip 覆蓋 MainActivity.kt"),
+        # SEARCH_UI_2026-11-23：截圖式分類搜尋頁（顏色固定）
+        ('app/src/main/res/layout/activity_main.xml',
+         'android:id="@+id/searchCatScroll"',
+         'activity_main.xml 仍係舊搜尋頁（缺分類 tab／營運商 chips／書籤／紀錄）',
+         '由完整 zip 覆蓋 activity_main.xml（同時要傳 item_route_result.xml、item_bookmark.xml）'),
+        ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+         'bindSearchCategories',
+         'MainActivity.kt 仍係舊版（仲係自訂鍵盤，未接上截圖式分類搜尋）',
+         '由完整 zip 覆蓋 MainActivity.kt'),
+        ('app/src/main/java/hk/eta/app/ui/SearchAdapters.kt',
+         'class SearchHistoryAdapter',
+         'SearchAdapters.kt 唔見咗或仍係舊版（搜尋紀錄／書籤 adapter 失效）',
+         '由完整 zip 覆蓋 SearchAdapters.kt'),
+        ('app/src/main/res/values/colors.xml',
+         'SEARCH_UI_2026-11-23',
+         'colors.xml 仍係舊版（缺固定深色搜尋頁色盤／顏色會被改）',
+         '由完整 zip 覆蓋 colors.xml（唔好改任何 search_* 色值）'),
         ("app/src/main/java/hk/eta/app/ui/EtaViewModel.kt",
          "fun searchRoutes",
          "EtaViewModel.kt 仍係舊版（缺即時路線搜尋）",
@@ -549,6 +571,24 @@ def main() -> int:
          'backfill-published-release',
          'build-apk.yml 仍係舊版（冇 workflow_dispatch 補正式版 job）',
          '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+        # RELEASE_NOTES_v1.0.1：20 號至最新（選用純文字；存在但舊先報）
+        ('RELEASE_NOTES_v1.0.1.md', '收錄範圍：2026-11-20 至最新',
+         'RELEASE_NOTES_v1.0.1.md 仍係舊版（未改成 20 號至最新／缺版本分界）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
+        ('RELEASE_NOTES_v1.0.1_day1_2026-11-19.md', '## 中文（繁體）',
+         '昨天單日說明檔內容唔完整', '由完整 zip 覆蓋單日說明檔'),
+        ('RELEASE_NOTES_v1.0.1_day2_2026-11-20.md', '## English',
+         '20 號至最新單日說明檔內容唔完整', '由完整 zip 覆蓋單日說明檔'),
+        ('RELEASE_NOTES_v1.0.1.md', '2026-11-20 至最新嘅更新重點',
+         'RELEASE_NOTES_v1.0.1.md 仍係舊版（缺 20 號至最新更新重點段落）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
+        ('RELEASE_NOTES_v1.0.1.md', 'scope: 2026-11-20 through the latest',
+         'RELEASE_NOTES_v1.0.1.md 仍係 19 號至最新舊口徑（版本分界未更新）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
+        # RELEASE_NOTES_v1.0.0：收錄至昨天（選用純文字；存在但舊先報）
+        ('RELEASE_NOTES_v1.0.0.md', '收錄至 2026-11-19',
+         'RELEASE_NOTES_v1.0.0.md 仍係舊版（未收錄至 2026-11-19／中英唔對稱）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.0.md'),
         # GMB_CIRCULAR_ETA
         ('app/src/main/java/hk/eta/app/api/GmbCircularEta.java',
          'GMB_CIRCULAR_ETA',
@@ -562,6 +602,13 @@ def main() -> int:
          'getLoopLastSeq()',
          'EtaModels.java 仍係舊版（StopOption 缺 loopLastSeq，最後一站無法分離）',
          '由完整 zip 覆蓋 EtaModels.java'),
+        # RELEASE_NOTES_v1.0.1
+        ('RELEASE_NOTES_v1.0.1.md', '## English',
+         'v1.0.1 Release 說明唔見咗或得中文（缺 English 對稱版）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
+        ('app/build.gradle.kts', 'versionName = "1.0.1"',
+         'build.gradle.kts 未 bump（仍係 1.0.0，打 v1.0.1 tag 會被版本閘門擋低）',
+         '改成 versionCode = 2 / versionName = "1.0.1" 並 push，先可打 tag'),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel
