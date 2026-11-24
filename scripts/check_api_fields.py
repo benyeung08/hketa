@@ -1522,7 +1522,7 @@ check("RELEASE_NOTES_v1.0.2.md covers TODAY's search / CI / location / card / lo
           "SameRouteOperators.partition", "different bus operators shown separately",
           "取消搜尋「進階」", '"Advanced" removed',
           "SearchLocalData.kt", "Local route data restored",
-          "357", "20 情境", "20 drift scenarios")))
+          "368", "24 情境", "24 drift scenarios", "KOTLIN_APP_SCOPE")))
 check("RELEASE_NOTES_v1.0.2.md does NOT duplicate the 11-19 / 11-20 historical highlights",
       all(s not in _v102_text for s in (
           "昨天（2026-11-19）", "Yesterday (2026-11-19)",
@@ -1842,6 +1842,52 @@ check("SEARCH_LOCAL_DATA: no Advanced restored, previous rounds all intact",
       and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
       and "SameRouteOperators.partition(list, circularHint)" in
           read(UI / "App1933Format.kt"))
+
+# --- KOTLIN_APP_SCOPE: 防止「建構參數當類別成員用」嘅 Unresolved reference ----
+# 真實 CI 教訓：EtaViewModel(app: Application) 嘅 `app` 無 `val`，只係建構參數，
+# 喺成員函數入面唔可見；loadNearbyRoutes() 直接用 app.getString(...) 令
+# compileReleaseKotlin 報 "Unresolved reference: app"。舊符號對照把 `app`
+# 放咗入白名單所以漏檢，呢度改做通用作用域掃描。
+def kotlin_app_scope_violations():
+    bad = []
+    for f in sorted((ROOT / "app/src/main/java").rglob("*.kt")):
+        lines = f.read_text(encoding="utf-8").splitlines()
+        fun_starts = [i for i, l in enumerate(lines)
+                      if re.match(r"^\s*(?:(?:private|public|internal|protected|"
+                                 r"override|suspend|inline|open|final|abstract)\s+)*"
+                                 r"fun\s+\w+", l)]
+        first_fun = fun_starts[0] if fun_starts else len(lines)
+        class_level = any(re.search(r"\b(?:val|var)\s+app\s*(?:=|:)", l)
+                          for l in lines[:first_fun])
+        bounds = [0] + fun_starts + [len(lines)]
+        for bi in range(len(bounds) - 1):
+            lo, hi = bounds[bi], bounds[bi + 1]
+            block = lines[lo:hi]
+            decl = [i for i, l in enumerate(block)
+                    if re.search(r"\b(?:val|var)\s+app\s*(?:=|:)", l)]
+            for i, l in enumerate(block):
+                if l.lstrip().startswith(("//", "*", "/*")):
+                    continue
+                if not re.search(r"(?<![A-Za-z0-9_.])app\s*\.", l):
+                    continue
+                if not class_level and (not decl or min(decl) > i):
+                    bad.append((f.name, lo + i + 1, l.strip()[:90]))
+                    break
+    return bad
+
+check("KOTLIN_APP_SCOPE: every app. receiver is declared in scope (no ctor-param leak)",
+      not kotlin_app_scope_violations(),
+      str(kotlin_app_scope_violations()))
+check("KOTLIN_APP_SCOPE: loadNearbyRoutes declares app before use, like refreshNearbyCards",
+      (lambda vm: (
+          "fun loadNearbyRoutes(radiusMeters: Int)" in vm
+          and vm.count("val app = getApplication<Application>()") >= 5
+          and (lambda block: "val app = getApplication<Application>()" in block
+               and block.index("val app = getApplication<Application>()")
+                   < block.index("app.getString(R.string.nearby_more_routes_tag)"))(
+                   vm[vm.index("fun loadNearbyRoutes(radiusMeters: Int)"):
+                      vm.index("fun queryDirect(")])))(
+          read(UI / "EtaViewModel.kt")))
 
 # --- SEARCH_NO_ADVANCED: 取消進階、導航欄移到主搜尋頁 ----------------------
 noadv_settings = read(RES / "layout/activity_settings.xml")
