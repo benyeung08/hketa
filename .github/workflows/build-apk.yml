@@ -436,6 +436,13 @@ jobs:
                'private fun renderLocalDataStatus(): Boolean',
                'MainActivity.kt 仍係舊版（搜尋頁未顯示／未重新載入本機資料）',
                '由完整 zip 覆蓋 MainActivity.kt'),
+              # KOTLIN_APP_SCOPE: 真實 CI compileReleaseKotlin 回報
+              ('app/src/main/java/hk/eta/app/ui/EtaViewModel.kt',
+               'KOTLIN_APP_SCOPE',
+               'EtaViewModel.kt 仍係舊版（loadNearbyRoutes 未宣告 app → '
+               'compileReleaseKotlin 報 Unresolved reference: app）',
+               '由完整 zip 覆蓋 EtaViewModel.kt（或喺 loadNearbyRoutes 補 '
+               'val app = getApplication<Application>()）'),
               # SEARCH_NO_ADVANCED
               ('app/src/main/res/layout/activity_main.xml',
                'SEARCH_NO_ADVANCED',
