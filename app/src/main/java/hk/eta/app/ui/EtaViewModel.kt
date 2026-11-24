@@ -362,20 +362,27 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val fix = LocationHelper.current(getApplication<Application>())
-                val stops = withContext(Dispatchers.IO) {
-                    repo.nearbyStops(fix.lat, fix.lng, radiusMeters, 6)
+                // MORE_ROUTES_PER_STOP: 攞多啲候選，再按「實體站名」保留最近
+                // 6 個站嘅全部公司別名（KMB／CTB 同站唔再被 6 個配額 cut 走）。
+                // 資料層一個都冇改，只係改咗 limit 參數 + 純 Kotlin 選擇層。
+                val candidates = withContext(Dispatchers.IO) {
+                    repo.nearbyStops(fix.lat, fix.lng, radiusMeters,
+                        NearbyMoreRoutes.CANDIDATE_LIMIT)
                 }
-                val cards = fetchCards(stops)
+                val stops = NearbyMoreRoutes.select(candidates)
+                val cards = NearbyMoreRoutes.sortCards(fetchCards(stops))
+                val entities = NearbyMoreRoutes.entityCount(stops)
                 patch {
                     copy(
                         loading = false,
                         stops = stops,
-                        cards = cards.sortedBy { it.rank },
+                        cards = cards,
                         updatedAt = System.currentTimeMillis(),
                         message = if (cards.isEmpty()) {
                             "${fix.source} · ${radiusMeters} m 內沒有可用班次，可加大半徑或到「搜尋」查路線。"
                         } else {
-                            "${fix.source} · ${radiusMeters} m 內 ${cards.size} 條路線 · 每條顯示未來三班次"
+                            "${fix.source} · ${radiusMeters} m 內 ${entities} 個站 · ${cards.size} 條路線" +
+                                app.getString(R.string.nearby_more_routes_tag)
                         }
                     )
                 }
@@ -509,16 +516,19 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshNearbyCards(stops: List<StopOption>) {
         viewModelScope.launch {
             try {
-                val cards = fetchCards(stops)
+                // 重用已 expanded 嘅快取站點：自動 ETA 刷新都維持「同站更多路線」，
+                // 唔重新定位、唔重新下載站點清單（既有設計唔變）。
+                val cards = NearbyMoreRoutes.sortCards(fetchCards(stops))
                 val app = getApplication<Application>()
                 patch {
                     copy(
-                        cards = cards.sortedBy { it.rank },
+                        cards = cards,
                         updatedAt = System.currentTimeMillis(),
                         message = (if (cards.isEmpty()) {
                             "暫無可用班次"
                         } else {
-                            "${cards.size} 條路線 · 每條顯示未來三班次"
+                            "${NearbyMoreRoutes.entityCount(stops)} 個站 · ${cards.size} 條路線" +
+                                app.getString(R.string.nearby_more_routes_tag)
                         }) + app.getString(R.string.eta_refresh_nearby_tag)
                     )
                 }
@@ -545,7 +555,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     /** Shared by the initial nearby load and every automatic ETA refresh. */
     private suspend fun fetchCards(stops: List<StopOption>): List<RouteCard> =
         coroutineScope {
-            val pairs = stops.take(6).mapIndexed { index, s ->
+            val pairs = stops.take(NearbyMoreRoutes.MAX_QUERIES).mapIndexed { index, s ->
                 safeEta(s, index) { repo.etaFor(s) }
             }.awaitAll()
             // JOINT_KMB_CTB_MERGE: GeoStops 對同一個實體附近站會各出一個

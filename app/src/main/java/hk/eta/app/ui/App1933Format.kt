@@ -88,9 +88,11 @@ object App1933Format {
 
     /**
      * Group a flat ETA list by (route, stop, destination) — deliberately NOT
-     * by company — keep the three earliest arrivals, and turn them into cards.
-     * A group containing BOTH KMB and CTB is a joint route: one card labelled
-     * 城巴/九巴 with per-trip operator labels.
+     * by company — then hand EACH group to SameRouteOperators:
+     * ONLY an exact KMB+CTB non-circular pair becomes one 城巴/九巴 joint card;
+     * EVERY OTHER company combination is SPLIT into one card per operator,
+     * so the same route number served by different bus companies never shares
+     * a card. Each card keeps the three earliest arrivals of ITS OWN company.
      */
     fun cardsFrom(
         etas: List<EtaItem>,
@@ -101,59 +103,65 @@ object App1933Format {
         displays: Map<String, StopDisplay> = emptyMap(),
         circularHint: Boolean = false
     ): List<RouteCard> {
-        // CIRCULAR_ROUTES: a circular line is recognised from the OFFICIAL
-        // destination suffix or the caller's hint. ONLY then do we keep each
-        // operator's OWN card, style and stop wording.
-        val circular = circularHint
-            || etas.any { CircularRoutes.isCircularDest(it.destTc) }
         val groups = LinkedHashMap<String, MutableList<EtaItem>>()
         for (e in etas) {
             // JOINT_KMB_CTB: KMB 同 CTB 嘅 stopId 屬兩個唔同命名空間。
             // 用呼叫方傳入嘅「同一實體站」站號做分組鍵，兩家公司嘅班次
-            // 先可以歸入同一張「城巴/九巴」卡；未提供時退回原本 e.stopId。
+            // 先可以歸入同一個 group；未提供時退回原本 e.stopId。
             val groupStop = if (stopId.isNotEmpty()) stopId else e.stopId
-            // CIRCULAR_ONLY: never merge the two operators' circular routes.
-            val companyKey = if (circular) e.company + "|" else ""
-            val key = companyKey + e.route + "|" + groupStop + "|" + e.destTc
+            val key = e.route + "|" + groupStop + "|" + e.destTc
             groups.getOrPut(key) { ArrayList() }.add(e)
         }
         val out = ArrayList<RouteCard>()
         for ((_, list) in groups) {
-            val sorted = list.sortedBy { it.etaMillis }
-            val first = sorted.firstOrNull() ?: continue
-            val companies = sorted.map { it.company }.toHashSet()
-            val joint = !circular
-                && companies.contains(EtaRepository.KMB)
-                && companies.contains(EtaRepository.CTB)
-            val cardCompany = if (joint) JointRoutes.JOINT else first.company
-            // CIRCULAR_ONLY: a Citybus circular card shows the Citybus way,
-            // a KMB circular card the App1933 way. Normal routes unchanged.
-            val style = if (circular) CircularRoutes.styleLabel(cardCompany) else ""
-            val trips = sorted.take(3).map { tripOf(it, cardCompany, joint) }
-            // CTB_STOP_NAME: pick the stop label of THE OPERATOR OF THIS CARD.
-            // displays[JOINT] is the KMB label (joint routes keep KMB naming);
-            // displays[CTB] is the Citybus label; everything else keeps the
-            // caller's original stopName / stopId, so the detail page, the
-            // selected-stop list and the favourites list are unchanged.
-            val fallbackId = if (stopId.isEmpty()) first.stopId else stopId
-            val fallback = StopDisplay(stopName, fallbackId)
-            val display = resolveStopDisplay(cardCompany, displays, fallback)
-            out.add(
-                RouteCard(
-                    rank,
-                    cardCompany,
-                    first.route,
-                    first.destTc,
-                    display.name.ifEmpty { fallback.name },
-                    display.id.ifEmpty { fallback.id },
-                    note,
-                    trips,
-                    circular,
-                    style
+            // SEPARATE_OPERATORS: 同路線號碼唔同營運商各自成卡；
+            // 只有剛好 KMB+CTB 且兩邊都非循環先合併做既有聯營卡。
+            for (group in SameRouteOperators.partition(list, circularHint)) {
+                val sorted = group.etas.sortedBy { it.etaMillis }
+                val first = sorted.firstOrNull() ?: continue
+                val cardCompany = group.company
+                val joint = cardCompany == JointRoutes.JOINT
+                // CIRCULAR_ONLY: a Citybus circular card shows the Citybus way,
+                // a KMB circular card the App1933 way —判定用自己嘅班次。
+                val style = if (group.circular) {
+                    CircularRoutes.styleLabel(cardCompany)
+                } else {
+                    ""
+                }
+                val trips = sorted.take(3).map { tripOf(it, cardCompany, joint) }
+                // CTB_STOP_NAME: pick the stop label of THE OPERATOR OF THIS CARD.
+                // displays[JOINT] is the KMB label (joint routes keep KMB naming);
+                // displays[CTB] is the Citybus label. A split single-company card
+                // falls back to ITS OWN first.stopId, never the bucket's KMB id.
+                val fallbackId = if (stopId.isEmpty() || !joint) {
+                    first.stopId
+                } else {
+                    stopId
+                }
+                val fallback = StopDisplay(stopName, fallbackId)
+                val display = resolveStopDisplay(cardCompany, displays, fallback)
+                out.add(
+                    RouteCard(
+                        rank,
+                        cardCompany,
+                        first.route,
+                        first.destTc,
+                        display.name.ifEmpty { fallback.name },
+                        display.id.ifEmpty { fallback.id },
+                        note,
+                        trips,
+                        group.circular,
+                        style
+                    )
                 )
-            )
+            }
         }
-        return out.sortedBy { it.route }
+        // 同號唔同公司排埋一齊，方便一眼睇到「分開顯示」。
+        return out.sortedWith(
+            compareBy<RouteCard> { it.route }
+                .thenBy { it.company }
+                .thenBy { it.dest }
+        )
     }
 
     private fun tripOf(e: EtaItem, cardCompany: String, joint: Boolean): Trip {

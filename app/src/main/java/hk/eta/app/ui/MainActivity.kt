@@ -25,6 +25,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.RouteDataStore
 import hk.eta.app.api.TimeUtils
 
 /**
@@ -67,8 +68,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHistoryEmpty: TextView
     private lateinit var tvPreloadHint: View
     private lateinit var tvCategoryNotice: TextView
+    private lateinit var tvLocalDataStatus: TextView
     private lateinit var searchChipScroll: View
-    private lateinit var btnAdvanced: View
+    // SEARCH_NO_ADVANCED: 「進階：站序／方向／篩選 ›」掣已取消，
+    // 對應欄位、綁定同點擊監聽一併移除。
     // SEARCH_UI_KOTLIN_FIX: 呢個欄位喺舊 APP1933 區塊，改版時一併被 cut 走，
     // 但 autoLocateIfAllowed / showPermissionHint / render 仍然用緊 →
     // Kotlin 「Unresolved reference: permissionHint」令 assembleDebug 失敗。
@@ -86,8 +89,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bookmarkAdapter: BookmarkAdapter
 
     private var currentTab = 0
-    // true = 進階站序模式（保留原有 8 模式／站號／方向／篩選）
-    private var inSequence = false
+    // SEARCH_LOCAL_DATA: 上一級本機資料指紋；由設定頁更新／清除返嚟要比對。
+    private var lastLocalSignature = ""
+    // SEARCH_NO_ADVANCED: 進階模式狀態旗標已取消；搜尋分頁永遠係截圖式主頁。
     // 0 港鐵 1 巴士（預設） 2 專線小巴 3 渡輪 4 電車 5 的士 6 非專線小巴 7 居民巴士服務
     private var searchCategory = 1
     // 0 所有巴士類別 1 城巴 2 九巴 3 龍運 4 嶼巴 5 愉景灣／馬灣
@@ -97,6 +101,9 @@ class MainActivity : AppCompatActivity() {
     private var nearbyLoaded = false
     // 由設定頁改咗半徑返嚟：onResume 要重新載入附近路線
     private var lastRadius = -1
+    // LOCATION_AUTO_UPDATE：前景位置更新狀態。用既有 tvAutoRefreshStatus 顯示，
+    // 刻意唔加新 View、唔加「📍 重新定位」掣（上一輪已取消）。
+    private var locationUpdatesRunning = false
 
     private val locationPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -108,9 +115,11 @@ class MainActivity : AppCompatActivity() {
             statusText.text = getString(R.string.location_auto)
             nearbyLoaded = true
             vm.loadNearbyRoutes(selectedRadius())
+            startLocationUpdates()
         } else {
             // 拒絕：唔打 API、唔 fallback 中環，只顯示可點嘅授權提示
             nearbyLoaded = false
+            stopLocationUpdates()
             vm.awaitLocationPermission()
             showPermissionHint()
             statusText.text = getString(R.string.location_permission_denied)
@@ -152,8 +161,8 @@ class MainActivity : AppCompatActivity() {
         tvHistoryEmpty = findViewById(R.id.tvHistoryEmpty)
         tvPreloadHint = findViewById(R.id.tvPreloadHint)
         tvCategoryNotice = findViewById(R.id.tvCategoryNotice)
+        tvLocalDataStatus = findViewById(R.id.tvLocalDataStatus)
         searchChipScroll = findViewById(R.id.searchChipScroll)
-        btnAdvanced = findViewById(R.id.btnAdvanced)
         permissionHint = findViewById(R.id.permissionHint)
         catTabs = listOf(
             R.id.catMtr, R.id.catBus, R.id.catGmb, R.id.catFerry,
@@ -267,6 +276,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        // SEARCH_LOCAL_DATA: 狀態列本身就係「線路資料更新」嘅捷徑。
+        tvLocalDataStatus.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
         findViewById<View>(R.id.btnFavAdd).setOnClickListener {
             val key = vm.addCurrentFavorite()
             Toast.makeText(
@@ -277,9 +290,8 @@ class MainActivity : AppCompatActivity() {
             favoriteAdapter.submit(vm.favorites())
         }
         findViewById<View>(R.id.btnFavList).setOnClickListener { selectTab(1) }
-        findViewById<View>(R.id.btnBackToSearch).setOnClickListener { showSearchHome() }
-        btnAdvanced.setOnClickListener { showSequence() }
-
+        // SEARCH_NO_ADVANCED: 冇「進階」掣、冇「返回搜尋」掣，
+        // 8 模式／站序區塊永久隱藏；分類 tab 同 chips 照舊綁定。
         bindSearchCategories()
         bindSearchChips()
         // 系統 IME 直接輸入路線號碼；每鍵即時向官方目錄查詢（唔再係自訂鍵盤）。
@@ -305,8 +317,12 @@ class MainActivity : AppCompatActivity() {
         tabMore.setOnClickListener { selectTab(3) }
 
         selectTab(0)
-        // 搜尋主頁預先載入官方路線目錄：未切去搜尋分頁已經開始背景下載，
-        // 撳入去即刻見到「12 往 海麗邨 ›」呢類列，唔係空白頁。
+        // SEARCH_LOCAL_DATA: 先建立本機資料指紋同狀態列，再預載；
+        // 咁 onResume 唔會因為「第一次」而多打一次目錄查詢。
+        renderLocalDataStatus()
+        // 搜尋主頁預先載入官方路線目錄（本機快照優先、即時 API 後備）：
+        // 未切去搜尋分頁已經開始背景下載，撳入去即刻見到「12 往 海麗邨 ›」
+        // 呢類列，唔係空白頁。
         vm.searchRoutes("")
         // 懸浮液態玻璃：外觀跟隨系統深色／高對比／減少動態效果
         NavGlass.apply(this, bottomTabs)
@@ -328,16 +344,36 @@ class MainActivity : AppCompatActivity() {
             nearbyLoaded = true
             vm.loadNearbyRoutes(radius)
         }
+        // LOCATION_AUTO_UPDATE：返前景（包括由系統設定開啟權限／改半徑）重新
+        // 註冊位置更新；未授權就確保冇任何 listener 留低。
+        if (LocationHelper.hasPermission(this)) {
+            startLocationUpdates()
+        } else {
+            stopLocationUpdates()
+        }
         // 由「應用程式設置」改咗 ETA 自動刷新開關／間隔返嚟：即時重啟輪詢；
         // 若已經過咗一個完整間隔，順手補一次即時 ETA。
         vm.onForeground()
         renderAutoRefreshStatus()
+        // SEARCH_LOCAL_DATA: 由「應用程式設置 → 線路資料更新／清除本機資料」
+        // 返嚟，指紋變咗即刻用新快照重新預載，本地資料唔再「望落冇咗」。
+        if (renderLocalDataStatus()) {
+            vm.searchRoutes(routeInput.text?.toString() ?: "")
+            refreshHistory()
+        }
     }
 
     override fun onPause() {
-        // 唔做背景靜默輪詢：離開 App 即刻停，返嚟 onResume 先重啟。
+        // 唔做背景靜默定位／輪詢：離開 App 即刻移除 LocationListener，
+        // 返嚟 onResume 先重新註冊（LOCATION_AUTO_UPDATE 前景 only）。
+        stopLocationUpdates()
         vm.onBackground()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        stopLocationUpdates()
+        super.onDestroy()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -503,9 +539,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 截圖式搜尋首頁：頂部直接係分類 tab，唔顯示紅色 header／底部欄。 */
+    /**
+     * SEARCH_LOCAL_DATA — 恢復本地資料喺搜尋功能上。
+     *
+     * 讀 `RouteDataStore.meta()` ＋實際存在嘅 10 份快照檔，顯示「本機資料：
+     * N/M 個來源 · 共 K 筆」，並把預載提示如實標成「本機資料」／「即時 API」。
+     * 回傳指紋有冇變：由設定頁更新／清除返嚟就要重新 `searchRoutes()`，
+     * 否則新快照要等用戶再撳過先會生效。
+     */
+    private fun renderLocalDataStatus(): Boolean {
+        val report = RouteDataStore.meta()
+        val files = arrayOf(
+            RouteDataStore.KMB_ROUTES, RouteDataStore.KMB_STOPS,
+            RouteDataStore.CTB_ROUTES, RouteDataStore.CTB_STOPS,
+            RouteDataStore.NLB_ROUTES, RouteDataStore.NLB_STOPS,
+            RouteDataStore.GMB_ROUTES, RouteDataStore.GMB_STOPS,
+            RouteDataStore.MTR_LINES, RouteDataStore.LRT_STOPS,
+            RouteDataStore.MTR_BUS_STOPS
+        ).count { RouteDataStore.readText(it) != null }
+        val info = LocalDataInfo(
+            report.okCount, report.total, report.records, report.updatedAt, files
+        )
+        val sig = SearchLocalData.signature(info)
+        val changed = SearchLocalData.shouldReload(lastLocalSignature, sig)
+        lastLocalSignature = sig
+        tvLocalDataStatus.text = if (SearchLocalData.hasSnapshot(info)) {
+            getString(
+                R.string.search_local_ok,
+                info.okSources, info.totalSources, info.records
+            )
+        } else {
+            getString(R.string.search_local_never)
+        }
+        // 如實標示預載列嘅來源：唔會把 live fallback 扮成本機資料。
+        val tag = SearchLocalData.sourceTag(
+            info,
+            getString(R.string.search_local_source_local),
+            getString(R.string.search_local_source_live)
+        )
+        findViewById<TextView>(R.id.tvPreloadHint).text =
+            getString(R.string.search_preload_hint) + " · " +
+                getString(R.string.search_local_source_prefix) + tag
+        return changed
+    }
+
+    /**
+     * SEARCH_NO_ADVANCED — 截圖式搜尋主頁：頂部直接係分類 tab（唔顯示紅色
+     * header 同狀態列），但**底部懸浮液態玻璃導航欄而家常駐喺主搜尋頁**。
+     * 之前導航欄只喺「進階」站序模式先出現，主頁反而被頂部收起邏輯一併
+     * GONE 咗；進階取消後直接移到主頁。
+     */
     private fun showSearchHome() {
-        inSequence = false
         stopSequenceView.visibility = View.GONE
         searchHomeView.visibility = View.VISIBLE
         searchResultsView.visibility = View.GONE
@@ -513,20 +597,12 @@ class MainActivity : AppCompatActivity() {
         renderSearch()
     }
 
-    /** 進階：保留原有 8 模式／站序／方向／篩選。 */
-    private fun showSequence() {
-        inSequence = true
-        searchHomeView.visibility = View.GONE
-        searchResultsView.visibility = View.GONE
-        stopSequenceView.visibility = View.VISIBLE
-        restoreChrome()
-    }
-
+    /** 只收起頂部紅色 header／狀態列；導航欄保留（SEARCH_NO_ADVANCED）。 */
     private fun hideChrome() {
         mainHeader.visibility = View.GONE
         statusText.visibility = View.GONE
         tvAutoRefreshStatus.visibility = View.GONE
-        bottomTabs.visibility = View.GONE
+        bottomTabs.visibility = View.VISIBLE
     }
 
     private fun restoreChrome() {
@@ -556,7 +632,8 @@ class MainActivity : AppCompatActivity() {
             NavGlass.selectTab(this, tabs[i], i == index)
         }
         if (index == 2) {
-            if (inSequence) showSequence() else showSearchHome()
+            // SEARCH_NO_ADVANCED: 冇進階模式可切，直接顯示截圖式搜尋主頁。
+            showSearchHome()
         } else {
             restoreChrome()
         }
@@ -574,16 +651,46 @@ class MainActivity : AppCompatActivity() {
             permissionHint.visibility = View.GONE
             nearbyLoaded = true
             vm.loadNearbyRoutes(selectedRadius())
+            startLocationUpdates()
             return
         }
-        // 未授權：清空舊卡片、顯示等待，然後先攞權限
+        // 未授權：清空舊卡片、顯示等待，然後先攞權限；唔註冊位置更新
         nearbyLoaded = false
+        stopLocationUpdates()
         vm.awaitLocationPermission()
         showPermissionHint()
         if (!locationPromptShown) {
             locationPromptShown = true
             launchPermissionRequest()
         }
+    }
+
+    /**
+     * LOCATION_AUTO_UPDATE — 授權後註冊前景位置更新。
+     * 系統 LocationManager 回報新位置、且移動距離同時間都過咗閾值，
+     * 先至重新定位並重整附近路線；未授權／熄晒定位服務就直接收工。
+     * callback 行喺 main Looper，可以直接改 UI state。
+     */
+    private fun startLocationUpdates() {
+        if (!LocationHelper.hasPermission(this)) {
+            stopLocationUpdates()
+            return
+        }
+        LocationTracker.reset()
+        LocationTracker.start(this, selectedRadius()) { _ ->
+            nearbyLoaded = true
+            permissionHint.visibility = View.GONE
+            vm.loadNearbyRoutes(selectedRadius())
+        }
+        locationUpdatesRunning = LocationTracker.isRunning()
+        renderAutoRefreshStatus()
+    }
+
+    /** 前景結束／權限被撤：即刻移除 listener 同 callback，唔留 background 定位。 */
+    private fun stopLocationUpdates() {
+        LocationTracker.stop(this)
+        locationUpdatesRunning = false
+        renderAutoRefreshStatus()
     }
 
     private fun launchPermissionRequest() {
@@ -694,6 +801,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Shared by render() and onResume() so the line never goes stale. */
     private fun renderAutoRefreshStatus() {
-        tvAutoRefreshStatus.text = EtaRefreshPrefs.statusLabel(this)
+        val suffix = if (locationUpdatesRunning) {
+            getString(R.string.location_tracking_on)
+        } else ""
+        tvAutoRefreshStatus.text = EtaRefreshPrefs.statusLabel(this) + suffix
     }
 }
