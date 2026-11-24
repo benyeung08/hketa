@@ -13,8 +13,8 @@ android {
         targetSdk = 34
         // Bump these before tagging vX.Y.Z: the in-app updater compares
         // versionName with the GitHub Release tag_name.
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     /**
