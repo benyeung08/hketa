@@ -20,6 +20,7 @@
 
 - **🔎 截圖式分類搜尋頁**：8 個交通類別 tab（港鐵／巴士／專線小巴／渡輪／電車／的士／非專線小巴／居民巴士服務）、6 個營運商 chips、綠框「路線號碼」系統 IME 即時查、我的書籤同持久化去重嘅搜尋紀錄；**10 個 `search_*` 色值同 `values-night` 零改動**
 - **🧩 Kotlin 編譯修正**：補回被區塊替換 cut 走、仍被 7 處引用嘅 `permissionHint` 宣告同綁定；checker 加兩條硬閘，掃描全部單純 `<field>.<member>` receiver 逐個對照宣告
+- **🧩 第二次 Kotlin 編譯修正（真實 CI 回報）**：`compileReleaseKotlin` 報 `EtaViewModel.kt:385 Unresolved reference: app`；`app` 只係主建構函數參數（無 `val`），喺成員函數入面唔可見。已喺 `loadNearbyRoutes()` 補 `val app = getApplication<Application>()`（同 `refreshNearbyCards()` 一致），並新增通用 `app.` 作用域掃描、2 條硬閘同 preflight/workflow drift，修復前版本 0 秒擋低
 - **📦 Artifacts 只出正式版 APK**：移除 4 個 debug step 同 `hketa-debug-apk`；`assembleRelease` 唔再只喺 tag 觸發，push `main` 都組裝已簽名正式版，唯一 Artifact 為 `hketa-release-apk`
 - **📝 CI 錯誤蒸餾**：429／5xx／timeout 先自動重試（30s／60s 退避）；`Unresolved reference`／`error:`／AAPT2 即刻 break，唔會被重試掩蓋，真正錯誤交畀 distiller 印出
 - **🔐 簽章與版本閘門不變**：`tag ↔ build.gradle.kts ↔ aapt badging` 三方可校驗（連 `versionCode`／package／SDK），`apksigner` 驗簽後先發布；Release 只附一個 `.apk`
@@ -35,7 +36,7 @@
 - **🔎 取消搜尋「進階」＋導航欄移到主搜尋頁**：移除進階掣／返回掣／模式切換，8 模式區塊永久隱藏；`hideChrome()` 只收起頂部 header，底部液態玻璃導航欄喺主搜尋頁常駐
 - **💾 恢復本地路線資料喺搜尋功能上**：新增 `SearchLocalData.kt` 指紋／來源標記 + 搜尋頁本機資料狀態列；預載提示如實標「本機資料／即時 API」；更新／清除快照返嚟 `onResume()` 指紋變咗即刻重新預載
 - **🔄 循環標記 per-company**：循環線判定改用該公司自己嘅班次，拆卡 fallback 用自己 `first.stopId`，唔會繼承 KMB 站號；搜尋頁本來只合併 KMB/CTB 聯營，其餘每公司一列
-- **🧪 離線驗證與誠實降級**：preflight 127 檔、static 357 條、5 個 Java harness ＋ 38 項 backfill、20 情境 drift 全過；官方實際只有 2 班就顯示 2 班，唔捏造班次
+- **🧪 離線驗證與誠實降級**：preflight 128 檔、static 368 條、5 個 Java harness ＋ 38 項 backfill、24 情境 drift 全過；官方實際只有 2 班就顯示 2 班，唔捏造班次
 - **🚫 唔加掣、唔改資料層**：8 營運商 `EtaRepository`／`GeoStops`／`JointRoutes.augment()`／權限三層閘、聯營／循環／GMB 循環線班次邏輯全部一個都冇郁
 
 ### ✨ 功能總覽
@@ -62,11 +63,11 @@
 
 ### ✅ 驗證與資料來源
 
-- `preflight` 127 個必要檔案齊全；`static checks` 357 條全綠（含 SEARCH_LOCAL_DATA 9 條、SEARCH_NO_ADVANCED 8 條、SEPARATE_OPERATORS 10 條）
+- `preflight` 128 個必要檔案齊全；`static checks` 368 條全綠（含 SEARCH_LOCAL_DATA 9 條、SEARCH_NO_ADVANCED 8 條、SEPARATE_OPERATORS 10 條、KOTLIN_APP_SCOPE 2 條）
 - 12 個 `.java` 以 ECJ 17 實編譯 `exit 0`（58 class）；5 個 Java harness ＋ 38 項 published-release backfill 全過
-- Kotlin 符號對照 7 個相關檔 0 未定義；8 Python／12 Java／53 XML／YAML／24 Kotlin 語法、括號、資源 0 缺失
-- 色盤 10 個 `search_*` 值 + `values-night` 零覆寫；inline preflight 20 情境 drift 全部 0 秒精確命中
-- README 中英 23 章 120 條對稱；4 份 Release 說明中英對稱；舊 repo 用合併包覆蓋 → 全專案 hash 0 差異
+- Kotlin 符號對照 7 個相關檔 0 未定義；8 Python／12 Java／54 XML／YAML／24 Kotlin 語法、括號、資源 0 缺失
+- 色盤 10 個 `search_*` 值 + `values-night` 零覆寫；inline preflight 24 情境 drift 全部 0 秒精確命中
+- README 中英 23 章 122 條對稱；5 份 Release 說明中英對稱；舊 repo 用合併包覆蓋 → 全專案 hash 0 差異
 - 路線／站名／座標來自香港政府官方開放數據（DATA.GOV.HK、data.etabus.gov.hk、rt.data.gov.hk、data.etagmb.gov.hk）；實時到站時間向官方 API 即時查詢
 
 ### ⚠️ 已知限制
@@ -87,6 +88,7 @@
 
 - **🔎 Screenshot-style category search**: 8 transport tabs (MTR / Bus / GMB / Ferry / Tram / Taxi / Non-franchised bus / Residents' bus), 6 operator chips, a green "Route number" field backed by the system IME with instant lookup, bookmarks and de-duplicated persistent history; **all 10 `search_*` colours and `values-night` are unchanged**
 - **🧩 Kotlin compile fix**: restored the `permissionHint` declaration and binding that a block replacement had removed while 7 call sites still used it; the checker now adds two hard gates and scans every plain `<field>.<member>` receiver against declarations
+- **🧩 Second Kotlin compile fix (from a real CI log)**: `compileReleaseKotlin` failed with `EtaViewModel.kt:385 Unresolved reference: app`; `app` is a primary-constructor parameter without `val` and is invisible inside member functions. `loadNearbyRoutes()` now declares `val app = getApplication<Application>()` (matching `refreshNearbyCards()`), backed by a generic `app.` scope scan, 2 hard gates and preflight/workflow drift that reject the broken version in 0 seconds
 - **📦 Artifacts now contain the production APK only**: 4 debug steps and `hketa-debug-apk` removed; `assembleRelease` is no longer tag-gated, so a push to `main` also builds the signed release and the sole Artifact is `hketa-release-apk`
 - **📝 CI error distillation**: only 429 / 5xx / timeout are retried (30s / 60s back-off); `Unresolved reference`, `error:` and AAPT2 failures break immediately instead of being hidden, and the real error is printed by the distiller
 - **🔐 Signing and version gate unchanged**: `tag ↔ build.gradle.kts ↔ aapt badging` are cross-checked (including `versionCode`, package and SDK), `apksigner` runs before publishing, and the Release carries exactly one `.apk` asset
@@ -102,7 +104,7 @@
 - **🔎 Search "Advanced" removed + nav bar moved to the main search page**: advanced button / back button / mode switch removed, the 8-mode block stays permanently hidden; `hideChrome()` collapses only the top header so the liquid-glass nav stays visible on search home
 - **💾 Local route data restored on the search screen**: `SearchLocalData.kt` signature / source tag plus an on-page local-data status row; the preload hint honestly says "local data" or "live API", and `onResume()` re-preloads immediately when the snapshot fingerprint changes after an update / clear
 - **🔄 Circular flag is per-company**: circular detection uses that operator's own arrivals and a split card falls back to its own `first.stopId` instead of inheriting the KMB id; search rows already only collapse the KMB/CTB joint pair
-- **🧪 Offline verification, honest degradation**: preflight 127 files, 357 static checks, 5 Java harnesses + 38 backfill checks and 20 drift scenarios all pass; if the official feed reports only 2 trips, 2 are shown — nothing is invented
+- **🧪 Offline verification, honest degradation**: preflight 128 files, 368 static checks, 5 Java harnesses + 38 backfill checks and 24 drift scenarios all pass; if the official feed reports only 2 trips, 2 are shown — nothing is invented
 - **🚫 No new buttons, no data-layer changes**: the 8-operator `EtaRepository` / `GeoStops` / `JointRoutes.augment()`, the three-layer permission gate and the joint / circular / GMB-circular trip logic are all untouched
 
 ### ✨ Feature overview
@@ -129,11 +131,11 @@
 
 ### ✅ Verification and data sources
 
-- `preflight`: all 127 required files present; 357 static checks green (including 9 SEARCH_LOCAL_DATA, 8 SEARCH_NO_ADVANCED and 10 SEPARATE_OPERATORS)
+- `preflight`: all 128 required files present; 368 static checks green (including 9 SEARCH_LOCAL_DATA, 8 SEARCH_NO_ADVANCED, 10 SEPARATE_OPERATORS and 2 KOTLIN_APP_SCOPE)
 - 12 `.java` files compiled with ECJ 17, `exit 0` (58 classes); 5 Java harnesses + 38 published-Release backfill checks pass
-- Kotlin symbol cross-check across 7 related files: 0 undefined; 8 Python / 12 Java / 53 XML / YAML / 24 Kotlin syntax, brackets and resources: 0 missing
-- 10 `search_*` colours with zero `values-night` overrides; all 20 inline-preflight drift scenarios detected in 0 seconds
-- README: 23 sections / 120 bullets symmetric in Chinese and English; 4 bilingual Release-note files symmetric; overlaying the merged pack on an old repo gives 0 hash differences across the project
+- Kotlin symbol cross-check across 7 related files: 0 undefined; 8 Python / 12 Java / 54 XML / YAML / 24 Kotlin syntax, brackets and resources: 0 missing
+- 10 `search_*` colours with zero `values-night` overrides; all 24 inline-preflight drift scenarios detected in 0 seconds
+- README: 23 sections / 122 bullets symmetric in Chinese and English; 5 bilingual Release-note files symmetric; overlaying the merged pack on an old repo gives 0 hash differences across the project
 - Routes / stop names / coordinates come from Hong Kong government open data (DATA.GOV.HK, data.etabus.gov.hk, rt.data.gov.hk, data.etagmb.gov.hk); live ETAs are queried from the official APIs
 
 ### ⚠️ Known limitations
