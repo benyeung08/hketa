@@ -17,8 +17,8 @@
 
 介面由 `v1.0.0` 起採用 **APP1933 風格**：九巴紅色標頭、主頁附近路線卡片、底部四分頁、每條路線顯示未來三班次。**資料層完全冇改**——八種營運商、線路資料更新、App 內更新同簽名一致性全部保留。
 
-目前版本 **`v1.0.1`**（`versionCode = 2`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
-中英雙語 Release 說明：[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（現行）、[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)（首版）。
+目前版本 **`v1.0.2`**（`versionCode = 3`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
+中英雙語 Release 說明：[RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md)（今日現行）、[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（歷史）、[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)（首版）。
 
 ### ✨ 功能
 
@@ -27,12 +27,19 @@
 - **🔍 搜尋主頁預載路線**：未輸入已列出官方目錄列；點 `12 往 海麗邨 ›` 直接開同一個路線詳情頁（帶方向）
 - **⟳ ETA 自動刷新**：主頁附近路線卡片、已選車站、收藏、路線詳情全部前景定時更新；間隔 15／30／45／60 秒可揀、可關掉，唔重新定位、唔背景輪詢
 - **📦 已發佈版本都可補正式版**：`workflow_dispatch` 揀一個**已發佈** Release，用該 tag 自己嘅 source 重建已簽名正式版 APK，清走衝突 `.apk` 後只留一個 `-release.apk`；唔新建 Release、唔改 tag／內文（PUBLISHED_RELEASE_BACKFILL）
-- **🐛 CI 編譯修正（本輪最新）**：上一版改搜尋頁時，連仍被 7 處引用嘅 `permissionHint` 欄位一齊 cut 走，Kotlin 報 `Unresolved reference` 令 `assembleDebug` 失敗；已加返宣告＋`findViewById` 綁定，並新增 2 條符號檢查＋preflight drift，同類錯誤而家 0 秒報出
+- **🐛 CI 編譯修正（本輪最新）**：上一版改搜尋頁時，連仍被 7 處引用嘅 `permissionHint` 欄位一齊 cut 走，Kotlin 報 `Unresolved reference` 令 `assembleRelease` 失敗；已加返宣告＋`findViewById` 綁定，並新增 2 條符號檢查＋preflight drift，同類錯誤而家 0 秒報出
+- **💾 本輪最新：恢復本地資料喺搜尋功能上**：`RouteSearch` 本來就係本機快照優先、即時 API 後備，但取消「進階」後搜尋頁**睇唔到本機資料**，而且由「應用程式設置 → 線路資料更新」更新／清除快照返嚟，`onResume()` 唔會重新預載 → 畫面仍係舊一次結果，本地資料望落「冇咗」。新增純 Kotlin `SearchLocalData.kt`（指紋／來源標記／離線判定）＋搜尋頁 `tvLocalDataStatus` 狀態列：`本機資料：N/M 個來源成功 · 共 K 筆 · 點按更新`，撳一下去設定頁；預載提示如實加 `來源：本機資料`／`來源：即時 API`，唔會把 live fallback 扮成本機資料。`onResume()` 比對 `updatedAt｜來源數｜筆數｜快照檔數` 指紋，變咗即刻 `searchRoutes()` 重新預載並重整歷史。**唔加返進階掣、唔新增色值、唔改 `RouteDataStore`／`RouteSearch`／8 營運商資料層**，實時 ETA 仍永遠即時查、唔快取
+- **🔎 本輪最新：取消搜尋功能嘅「進階」並將導航欄移到主搜尋頁**：移除搜尋頁 `進階：站序／方向／篩選 ›` 掣、`btnBackToSearch` 返回掣、進階模式狀態旗標同切換函式；8 模式／站序區塊永久隱藏（保留 View 只為既有資料層綁定相容，用戶冇任何入口）。之前底部懸浮液態玻璃導航欄只喺進階模式先 `restoreChrome()` 出現，主搜尋頁反而被 `hideChrome()` 設成 `GONE`；而家 `hideChrome()` 只收起頂部紅色 header／狀態列，**導航欄喺主搜尋頁常駐 VISIBLE**，`selectTab(2)` 永遠直接顯示截圖式分類搜尋主頁。設定頁「更新應用程式」嘅同名進階抽屜掣保留；搜尋頁 10 個 `search_*` 色值、`values-night`、液態玻璃幾何／4 分頁、8 營運商資料層、位置更新、同站更多路線、同號分卡全部一個都冇郁
+- **🚌 本輪最新：同路線號碼不同巴士營運商分開顯示**：之前 `cardsFrom()` 嘅分組 key 唔帶公司，九巴 12 同 嶼巴 12、城巴 1 同 綠小巴 1 呢類**同號但各自營運**會被塞入同一張卡（三班次混埋兩間公司）。新增純 Kotlin `SameRouteOperators.partition()`：**只有剛好 KMB+CTB 兩家且兩邊都非循環**先維持既有 `城巴/九巴` 聯營卡，其餘（KMB+CTB+第三家／KMB+NLB／CTB+GMB／任一邊循環）一律**按公司拆卡**，各自三班次、各自公司 meta（`九巴 / 龍運`／`城巴`／`嶼巴`／`綠色小巴`），同號兩張卡排埋一齊。循環標記改用**該公司自己嘅班次**判定，唔再由整個 bucket 誤標；拆卡 fallback 用自己 `first.stopId`，唔會繼承 KMB 站號。搜尋頁本來只合併 KMB/CTB 聯營、其餘每公司一列，唔使改；8 營運商資料層／`JointRoutes.augment()`／權限閘／位置更新／同站更多路線／色值一個都冇郁
+- **🚌 本輪最新：自動定位加入「顯示同站更多路線」**：之前 `nearbyStops(..., 6)` 嘅 6 個配額會被 KMB／CTB 同一實體站嘅兩個 `StopOption` 食晒，近站另一半公司 ETA 直接被 cut 走。而家改為攞 24 個候選、純 Kotlin `NearbyMoreRoutes.select()` 按**實體站名**保留最近 **6 個站嘅全部公司別名**（最多 12 個並行 ETA 查詢防 429），`cardsFrom()` 本來唔 truncate 路線，全部如實出卡並按 `(距離, 路線號, 目的地)` 排，同站路線排埋一齊；狀態列顯示 `N 個站 · M 條路線 · 同站路線全部顯示`。自動定位同上一輪嘅前景位置更新共用 `loadNearbyRoutes()`，兩者一齊生效；ETA 自動刷新重用 expanded 快取，8 營運商資料層／權限閘／色值一個都冇郁
+- **📍 本輪最新：自動定位加入「更新定位位置」**：授權後喺前景註冊平台 `LocationManager` 位置更新（唔用 Play Services／WorkManager）；裝置郁動超過**半徑 1/4（最少 50 m）**且隔 **≥30 秒**先自動重新定位並重整附近路線，GPS 抖動唔會狂打 API。`onResume` 註冊、`onPause`／`onDestroy` 即刻移除，`permissionHint` 仍係「授予權限」而**唔係重新定位掣**；狀態列顯示 `· 📍 位置自動更新`。未授權／熄定位服務一律唔註冊、唔 fallback 中環；ETA 自動刷新照舊只重用已快取站點
+- **📦 本輪最新：CI Artifacts 只出正式版 APK**：移除 `Assemble debug APK`／`hketa-debug-apk` 兩組 step；`assembleRelease` 改為**所有 push 都跑**（唔再局限 tag），新增 `hketa-release.apk` 穩定名，唯一 Artifact `hketa-release-apk`；tag build 額外複製帶版本名畀 Release asset。checker 加 4 條反向斷言、preflight／workflow 加 drift，唔准再出 debug APK
 - **🖼 本輪：搜尋頁定稿＋顏色唔變**：`activity_main.xml` 改為截圖分類式（8 tab／6 chips／書籤／紀錄），`MainActivity.kt` 由自訂鍵盤改接新介面；全部 `search_*` 色值一個都冇郁、`values-night` 唔覆寫，純 UI＋檢查同步
 - **📅 歷史單日說明檔（備用）**：`_day1_2026-11-19.md`（11-19 介面還原）／`_day2_2026-11-20.md`（20 號至最新改動）兩份可直接貼；純文字，唔被 workflow 自動選用、唔影響 CI
 - **📝 v1.0.0 雙語說明（截至 2026-11-19）**：`RELEASE_NOTES_v1.0.0.md` 中英各 5 章 33 條對稱，收錄 APP1933 搜尋／無地圖詳情／定位授權／懸浮導航欄／ETA 自動刷新，明確唔收 11-20 改動；純文字，唔使 push code
+- **📝 v1.0.2 雙語說明（今日 2026-11-24）**：`RELEASE_NOTES_v1.0.2.md` 中英各 **5 章 43 條**完全對稱、2 段 `#### 📅` 分組（上午／收尾），收錄截圖式搜尋頁、`permissionHint` 編譯修正、只出正式版 APK、前景位置更新、同站更多路線、同號分卡、取消進階＋導航欄移位、恢復本地資料；`app/build.gradle.kts` 同步 bump 到 `versionCode = 3`／`versionName = 1.0.2`，`RELEASE_NOTES_${TAG}.md` 自動對應 `v1.0.2` tag，舊兩份說明加歷史註記、唔郁已簽名 APK
 - **📝 v1.0.1 雙語說明（本輪：2026-11-20 至最新）**：`RELEASE_NOTES_v1.0.1.md` 重寫為**只列 20 號至最新**，中英各 5 章 33 條對稱；移除「昨天／今天」舊分組同重複條目，完整收錄聯營／站名規則／正式版對應／backfill／CI 修正／GMB 循環線班次／說明分界／離線驗證
-- **🧩 兩份說明互補唔重複**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 至最新；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明唔郁 APK／tag、唔使重跑 CI
+- **🧩 三份說明互補、舊檔保留歷史**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 起（當時「至最新」係歷史表述）、**`v1.0.2` 收錄今日 11-24**；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明唔郁 APK／tag、唔使重跑 CI
 - **📝 v1.0.1 中英雙語 Release 說明**：`RELEASE_NOTES_v1.0.1.md` 兩版各 5 章、33 條要點完全對稱，`RELEASE_NOTES_${TAG}.md` 自動對應 tag，唔會誤用 v1.0.0 內文
 - **🆕 本輪交付**：`HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` 可直接貼；另附最小包、合併包與完整專案 zip
 - **🔁 綠小巴循環線班次修正**：第一站顯示三個**唔同**班次而唔係三個同一班次；最後一站顯示**自己**嘅三個唔同班次、唔再同第一站重複（資料驅動、唔捏造班次）
@@ -57,7 +64,7 @@
 
 ### 📦 安裝
 
-1. 由 [Releases](https://github.com/benyeung08/hketa/releases) 嘅**對應版本**（例如 `v1.0.0`）下載 **`hketa-v1.0.0-release.apk`**（正式版、已簽名）；或由該次 Actions run 下載 Artifact `hketa-release-apk`（tag build）／`hketa-debug-apk`（開發版）
+1. 由 [Releases](https://github.com/benyeung08/hketa/releases) 嘅**對應版本**（例如 `v1.0.0`）下載 **`hketa-v1.0.0-release.apk`**（正式版、已簽名）；或由任何一次 Actions run 下載唯一 Artifact `hketa-release-apk`（已簽名正式版）
 2. Android 8+ 首次安裝需開啟「安裝未知應用程式」
 3. 覆蓋安裝會保持簽名一致；若裝置曾裝過**其他金鑰**簽嘅版本，請先卸載
 4. 可對照隨附嘅 `SIGNING_FINGERPRINT.txt` 同 `VERSION_INFO.txt` 核對憑證、APK SHA-256 同版本
@@ -73,20 +80,20 @@ FE:7B:35:E1:9D:90:F5:88:09:1B:08:1B:05:28:40:12:71:56:52:24:13:2D:9A:EB:1C:C0:53
 需要 **JDK 17**、**Android SDK 34 / Build Tools 34.0.0**、**Gradle 8.7**。
 
 ```bash
-gradle assembleDebug --no-daemon
-# 輸出：app/build/outputs/apk/debug/app-debug.apk
+gradle assembleRelease --no-daemon
+# 輸出：app/build/outputs/apk/release/app-release.apk（已簽名；冇注入 release keystore 時自動用 repo 內置 dev key）
 ```
 
 > ⚠️ Repo **刻意唔提交 `gradle-wrapper.jar`**，所以 `./gradlew` 會失敗；本機請用已安裝嘅 Gradle 8.7，或自行補回 wrapper jar。CI 直接下載官方 Gradle 8.7 發行版。
 
-推送到 `main` 後，`.github/workflows/build-apk.yml` 會自動打包並上傳 Artifact `hketa-debug-apk`。打 `v*` tag 先會組裝**正式版（signed release）APK**並發布到該版本嘅 Release：
+推送到 `main` **或**打 `v*` tag，`.github/workflows/build-apk.yml` 都會組裝**正式版（signed release）APK**，Actions「Artifacts」區從此只有一個 `hketa-release-apk`；**唔再組裝／上傳 debug APK**。打 tag 時額外跑版本三重校驗並發布到該版本嘅 Release：
 
 ```bash
 # 1) 先 bump 兩個版本欄位
-#    app/build.gradle.kts: versionCode = 2 / versionName = "1.0.1"
-git add app/build.gradle.kts && git commit -m "Bump to 1.0.1" && git push origin main
+#    app/build.gradle.kts: versionCode = 3 / versionName = "1.0.2"
+git add app/build.gradle.kts && git commit -m "Bump to 1.0.2" && git push origin main
 # 2) tag 必須同 versionName 對應
-git tag v1.0.1 && git push origin v1.0.1
+git tag v1.0.2 && git push origin v1.0.2
 ```
 
 ### 🏷 正式版 APK 與 Releases 版本對應
@@ -117,7 +124,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### 📦 為「已發佈嘅版本」補上正式版 APK（PUBLISHED_RELEASE_BACKFILL）
 
-之前嘅流程只喺**新打 tag** 時附正式版；但一個早前已發佈嘅 Release（例如 `v1.0.0`）可能得 debug APK、甚至冇 APK，而 App 內更新會攞最新 Release 嘅**第一個 `.apk`**，舊／debug asset 會靜靜贏。新增一個手動 workflow 專門補呢個位：
+之前嘅流程只喺**新打 tag** 時附正式版；但一個早前已發佈嘅 Release（例如 `v1.0.0`）可能仍殘留舊 debug APK、甚至冇 APK（CI 而家已唔再產 debug artifact），而 App 內更新會攞最新 Release 嘅**第一個 `.apk`**，舊／debug asset 會靜靜贏。新增一個手動 workflow 專門補呢個位：
 
 - **點用**：GitHub → **Actions → Build HK ETA APK → Run workflow**；`tag` 留空＝自動揀最新已發佈 Release，亦可填 `v1.0.0`；`include_prerelease` 預設關
 - **用該 tag 自己嘅 source**：`git worktree` 由已發佈 tag 取出原始碼，CI 腳本則由 default branch 複製過去；**唔會用 main 嘅新 code 扮舊版本**。照樣跑 `RELEASE_VERSION_GATE`（`tag ↔ build.gradle.kts ↔ aapt badging`）同 `apksigner` 驗簽
@@ -335,8 +342,8 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 
 Since `v1.0.0` the shell follows the **APP1933** layout: KMB-red header, nearby-route cards, four bottom tabs, and the next three arrivals per route. **The data layer is untouched** — all eight operators, the catalogue updater, the in-app updater and signature consistency remain.
 
-Current version **`v1.0.1`** (`versionCode = 2`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
-Bilingual release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (current), [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) (first release).
+Current version **`v1.0.2`** (`versionCode = 3`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
+Bilingual release notes: [RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md) (today / current), [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (history), [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) (first release).
 
 ### ✨ Features
 
@@ -345,12 +352,19 @@ Bilingual release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (cur
 - **🔍 Search home preloads routes**: official catalogue rows appear before typing; tapping `12 往 海麗邨 ›` opens the same route detail (with direction)
 - **⟳ ETA auto-refresh**: Home nearby cards, the selected stop, favourites and route detail all poll in the foreground; 15 / 30 / 45 / 60 s selectable, switchable off, no re-location, no background polling
 - **📦 Backfill an already-published Release**: a `workflow_dispatch` run rebuilds the signed production APK from THAT tag's own source, prunes conflicting `.apk` assets and leaves exactly one `-release.apk` — no new Release, no tag move, no body rewrite (PUBLISHED_RELEASE_BACKFILL)
-- **🐛 CI compile fix (latest this round)**: rewiring the search page also cut the `permissionHint` field that 7 call sites still used, so Kotlin reported `Unresolved reference` and `assembleDebug` failed; the declaration + `findViewById` binding are restored, with 2 new symbol checks and a preflight drift rule so the same mistake is caught in 0 seconds
+- **🐛 CI compile fix (latest this round)**: rewiring the search page also cut the `permissionHint` field that 7 call sites still used, so Kotlin reported `Unresolved reference` and `assembleRelease` failed; the declaration + `findViewById` binding are restored, with 2 new symbol checks and a preflight drift rule so the same mistake is caught in 0 seconds
+- **💾 Latest this round: RESTORE local data on the search screen**: `RouteSearch` was already local-snapshot-first with live API fallback, but after removing "Advanced" the search page showed **no local-data state at all**, and returning from Settings → route-data refresh/clear never re-preloaded, so the screen kept the previous (possibly live-fallback) rows and local data looked gone. A pure-Kotlin `SearchLocalData.kt` (signature / source tag / offline check) plus a `tvLocalDataStatus` row now shows `本機資料：N/M sources · K records · tap to update`, opens Settings on tap, and the preload hint is honestly tagged `來源：本機資料` / `來源：即時 API` — a live fallback is never dressed up as local data. `onResume()` compares the `updatedAt|sources|records|snapshot-files` signature and re-runs `searchRoutes()` + history when it changed. **No Advanced button restored, no new colour, no change to `RouteDataStore` / `RouteSearch` / the 8-operator data layer**; real-time ETA is still always live and never cached
+- **🔎 Latest this round: REMOVE the search "Advanced" entry and MOVE the nav bar onto the main search page**: the `進階：站序／方向／篩選 ›` button, the back-to-search button, the advanced-mode flag and its switching function are all removed; the 8-mode / stop-sequence block stays permanently hidden (its Views are kept only for existing data-layer bindings, with no user entry point). Previously the floating liquid-glass bottom nav only appeared in advanced mode via `restoreChrome()` while the main search page hid it with `GONE`; now `hideChrome()` only collapses the red top header / status lines and the **nav bar stays VISIBLE on the main search page**, with `selectTab(2)` always showing the screenshot-style category search home. The identically-named advanced drawer button on the Settings screen is kept. The 10 `search_*` colours, `values-night`, glass geometry / 4 tabs, 8-operator data layer, position updates, more-routes-per-stop and same-number operator split are all untouched
+- **🚌 Latest this round: SAME route number, DIFFERENT bus operators are shown separately**: `cardsFrom()` grouped by `route|stop|dest` without company, so independently-operated same-number routes (KMB 12 vs NLB 12, CTB 1 vs GMB 1) ended up in ONE card with trips from two companies mixed. A pure-Kotlin `SameRouteOperators.partition()` now keeps the existing `城巴/九巴` joint card **only for an exact KMB+CTB pair where both sides are non-circular**; every other combination (KMB+CTB+third, KMB+NLB, CTB+GMB, either side circular) is **split into one card per operator**, with its own three trips and its own operator meta (`九巴 / 龍運` / `城巴` / `嶼巴` / `綠色小巴`), sorted adjacent. The circular flag is now derived from THAT company's own arrivals instead of the whole bucket, and a split card falls back to its own `first.stopId` rather than inheriting the KMB id. Search rows already only collapse the KMB/CTB joint pair, so they needed no change. The 8-operator data layer, `JointRoutes.augment()`, permission gate, position updates, more-routes-per-stop and every colour are untouched
+- **🚌 Latest this round: auto-locate now shows MORE routes per stop**: the old `nearbyStops(..., 6)` quota was eaten by the two `StopOption` rows (KMB / CTB) of the same physical stop, so the other operator's ETA for the nearest stop was silently cut. Now 24 candidates are fetched and a pure-Kotlin `NearbyMoreRoutes.select()` keeps **ALL company aliases of the nearest 6 physical stops**, grouped by stop name (capped at 12 parallel ETA queries to avoid 429). `cardsFrom()` never truncates routes, so every official route becomes a card, sorted by `(distance, route, destination)` to keep one stop's routes together; the status line reads `N stops · M routes · all routes per stop`. Both the initial auto-locate and last round's foreground position updates share `loadNearbyRoutes()`, and ETA auto-refresh reuses the expanded cache. The 8-operator data layer, permission gate and every colour are untouched
+- **📍 Latest this round: auto-locate now UPDATES the device position**: once permission is granted, a foreground platform `LocationManager` listener is registered (no Play Services / WorkManager). Nearby routes are re-located and rebuilt only after the device moves more than **1/4 of the chosen radius (min 50 m)** AND at least **30 s** have passed, so GPS jitter cannot hammer the API. Registered in `onResume`, removed in `onPause` / `onDestroy`; `permissionHint` is still a **permission-consent hint, not a relocate button**. The status line shows `· 📍 位置自動更新`. Nothing is registered without consent or with location services off, and there is no Central fallback; ETA auto-refresh still reuses the cached stops only
+- **📦 Latest this round: CI Artifacts expose ONLY the production APK**: the `Assemble debug APK` / `hketa-debug-apk` steps are gone; `assembleRelease` now runs on **every push** (no longer tag-only), a stable `hketa-release.apk` is prepared, and `hketa-release-apk` is the single APK artifact. Tag builds additionally copy a versioned name for the Release asset. 4 new negative checks plus preflight / workflow drift rules forbid any debug artifact from returning
 - **🖼 This round: search page locked, colours unchanged**: `activity_main.xml` now matches the screenshot categories (8 tabs / 6 chips / bookmarks / history) and `MainActivity.kt` was rewired from the custom keypad; every `search_*` value is untouched, `values-night` never overrides them, UI + checks only
 - **📅 Historical single-day notes (standby)**: `_day1_2026-11-19.md` (11-19 layout work) / `_day2_2026-11-20.md` (20th-through-latest work) are paste-ready; plain text, never auto-selected by the workflow, no CI impact
 - **📝 Bilingual v1.0.0 notes (through 2026-11-19)**: `RELEASE_NOTES_v1.0.0.md` is fully symmetric at 5 sections / 33 bullets per language, covering the APP1933 search, map-free detail, location consent, floating nav bar and ETA auto-refresh, and explicitly excludes the 11-20 work; text-only, no code push needed
+- **📝 Bilingual v1.0.2 notes (today 2026-11-24)**: `RELEASE_NOTES_v1.0.2.md` is fully symmetric at **5 sections / 43 bullets per language** with 2 `#### 📅` groups (morning / wrap-up), covering the screenshot-style search page, the `permissionHint` compile fix, production-APK-only Artifacts, foreground position updates, more routes per stop, same-number operator split, Advanced removal + nav relocation and restored local data; `app/build.gradle.kts` is bumped to `versionCode = 3` / `versionName = 1.0.2`, `RELEASE_NOTES_${TAG}.md` matches the `v1.0.2` tag automatically, and the two older note files get a historical note without touching any signed APK
 - **📝 Bilingual v1.0.1 notes (this round: 2026-11-20 through the latest)**: `RELEASE_NOTES_v1.0.1.md` is rewritten to list **only 20th-through-latest**, fully symmetric at 5 sections / 33 bullets per language; the old "Yesterday / Today" split and duplicated bullets are removed, and joint routes / stop-name rules / version matching / backfill / CI fixes / the GMB circular-trip fix / the notes boundary / offline verification are all recorded
-- **🧩 The two notes are complementary, never duplicated**: `v1.0.0` stops at 11-19, `v1.0.1` starts at 11-20; `RELEASE_NOTES_${TAG}.md` picks the matching file per tag, and editing notes never touches the APK / tag or needs a CI re-run
+- **🧩 Three notes, old ones kept as history**: `v1.0.0` stops at 11-19, `v1.0.1` starts at 11-20 (its "through the latest" wording is a historical snapshot), **`v1.0.2` covers today 11-24**; `RELEASE_NOTES_${TAG}.md` picks the matching file per tag, and editing notes never touches the APK / tag or needs a CI re-run
 - **📝 Bilingual v1.0.1 release notes**: `RELEASE_NOTES_v1.0.1.md` is fully symmetric in both languages (5 sections, 33 bullets each); `RELEASE_NOTES_${TAG}.md` matches the tag automatically and never reuses the v1.0.0 body
 - **🆕 Delivered this round**: `HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` is paste-ready, plus a minimal pack, a merged pack and the full-project zip
 - **🔁 GMB circular trips fixed**: the first stop shows three DISTINCT trips instead of three copies of one, and the last stop shows its OWN three distinct trips instead of repeating the first (data-driven, never fabricated)
@@ -375,7 +389,7 @@ Bilingual release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (cur
 
 ### 📦 Install
 
-1. From the **matching version** on [Releases](https://github.com/benyeung08/hketa/releases) (e.g. `v1.0.0`), download **`hketa-v1.0.0-release.apk`** (signed production build); alternatively grab the `hketa-release-apk` artifact from a tag run, or `hketa-debug-apk` for the debug build
+1. From the **matching version** on [Releases](https://github.com/benyeung08/hketa/releases) (e.g. `v1.0.0`), download **`hketa-v1.0.0-release.apk`** (signed production build); alternatively grab the single `hketa-release-apk` artifact (signed production build) from ANY Actions run
 2. On Android 8+, enable "Install unknown apps" for the first install
 3. Overlay installs stay signature-consistent; **uninstall first** if the device previously had a build signed with a different key
 4. Cross-check certificate, APK SHA-256 and version against the attached `SIGNING_FINGERPRINT.txt` and `VERSION_INFO.txt`
@@ -391,20 +405,20 @@ FE:7B:35:E1:9D:90:F5:88:09:1B:08:1B:05:28:40:12:71:56:52:24:13:2D:9A:EB:1C:C0:53
 Requires **JDK 17**, **Android SDK 34 / Build Tools 34.0.0**, **Gradle 8.7**.
 
 ```bash
-gradle assembleDebug --no-daemon
-# Output: app/build/outputs/apk/debug/app-debug.apk
+gradle assembleRelease --no-daemon
+# Output: app/build/outputs/apk/release/app-release.apk (signed; falls back to the repo dev key when no release keystore is injected)
 ```
 
 > ⚠️ The repo **deliberately does not ship `gradle-wrapper.jar`**, so `./gradlew` will fail. Use an installed Gradle 8.7 locally (or restore the wrapper jar). CI downloads the official Gradle 8.7 distribution instead.
 
-Pushing to `main` triggers `.github/workflows/build-apk.yml`, which builds and uploads the `hketa-debug-apk` artifact. A `v*` tag build assembles the **signed production (release) APK** and publishes it to that version's Release:
+Pushing to `main` **or** a `v*` tag triggers `.github/workflows/build-apk.yml`, which assembles the **signed production (release) APK**; the Actions "Artifacts" section now contains exactly one `hketa-release-apk` and **no debug APK is built or uploaded at all**. Tag builds additionally run the three-way version gate and publish to that version's Release:
 
 ```bash
 # 1) bump BOTH version fields first
-#    app/build.gradle.kts: versionCode = 2 / versionName = "1.0.1"
-git add app/build.gradle.kts && git commit -m "Bump to 1.0.1" && git push origin main
+#    app/build.gradle.kts: versionCode = 3 / versionName = "1.0.2"
+git add app/build.gradle.kts && git commit -m "Bump to 1.0.2" && git push origin main
 # 2) the tag must match versionName
-git tag v1.0.1 && git push origin v1.0.1
+git tag v1.0.2 && git push origin v1.0.2
 ```
 
 ### 🏷 Production APK ↔ matching Release version
@@ -435,7 +449,7 @@ On a circular green-minibus route the **FIRST and LAST stop are the SAME physica
 
 ### 📦 Add the production APK to an ALREADY-PUBLISHED Release (PUBLISHED_RELEASE_BACKFILL)
 
-The tagged-release job only attaches the signed APK when a NEW `v*` tag is pushed. A Release published earlier (e.g. `v1.0.0`) may still carry only a debug APK — or none — and the in-app updater takes the FIRST `.apk` asset of the latest Release, so a stale/debug asset would silently win. A manual workflow closes that gap:
+The tagged-release job only attaches the signed APK when a NEW `v*` tag is pushed. A Release published earlier (e.g. `v1.0.0`) may still carry a legacy debug APK — or none (CI no longer produces debug artifacts) — and the in-app updater takes the FIRST `.apk` asset of the latest Release, so a stale/debug asset would silently win. A manual workflow closes that gap:
 
 - **How**: GitHub → **Actions → Build HK ETA APK → Run workflow**. Leave `tag` empty for the newest published Release, or type `v1.0.0`; `include_prerelease` is OFF by default
 - **Builds from THAT tag's own source**: a `git worktree` materialises the published tag while the CI scripts are copied from the default branch. **main's newer code is never built as v1.0.0.** The same `RELEASE_VERSION_GATE` (`tag ↔ build.gradle.kts ↔ aapt badging`) and `apksigner` check still run

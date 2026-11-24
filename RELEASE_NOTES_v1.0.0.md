@@ -44,7 +44,7 @@
 
 ### 📦 安裝
 
-1. 下載本 Release 的 **`hketa-v1.0.0-release.apk`**（正式版、已簽名；或該次 Actions run 的 Artifact `hketa-release-apk`／`hketa-debug-apk`）
+1. 下載本 Release 的 **`hketa-v1.0.0-release.apk`**（正式版、已簽名；或 Actions run 的唯一 Artifact `hketa-release-apk`）
 2. Android 8 或以上，首次安裝需開啟「安裝未知應用程式」
 3. 覆蓋安裝會保持簽名一致；若裝置曾裝過**其他金鑰**簽的舊版，請先卸載
 4. 可對照隨附的 `SIGNING_FINGERPRINT.txt` 同 `VERSION_INFO.txt` 核對憑證、APK SHA-256 與版本
@@ -110,7 +110,7 @@ Java 17 資料層 + Kotlin 1.9.24 UI／協程｜AGP 8.5.2｜Gradle 8.7｜JDK 17�
 
 ### 📦 Install
 
-1. Download **`hketa-v1.0.0-release.apk`** (signed production build) from this Release, or the `hketa-release-apk` / `hketa-debug-apk` Artifact of that Actions run
+1. Download **`hketa-v1.0.0-release.apk`** (signed production build) from this Release, or the single `hketa-release-apk` Artifact of an Actions run
 2. On Android 8+, enable "Install unknown apps" for the first install
 3. Overlay installs stay signature-consistent; **uninstall first** if the device previously had a build signed with a different key
 4. Cross-check the certificate, APK SHA-256 and version against the attached `SIGNING_FINGERPRINT.txt` and `VERSION_INFO.txt`
