@@ -45,8 +45,9 @@ REQUIRED = [
     "scripts/published_release.py",
     # GMB_CIRCULAR_ETA
     "app/src/main/java/hk/eta/app/api/GmbCircularEta.java",
-    # RELEASE_NOTES_v1.0.1
+    # RELEASE_NOTES_v1.0.1 / v1.0.2
     "RELEASE_NOTES_v1.0.1.md",
+    "RELEASE_NOTES_v1.0.2.md",
     # Resources
     "app/src/main/res/xml/file_paths.xml",
     "app/src/main/res/values/strings.xml",
@@ -64,6 +65,14 @@ REQUIRED = [
     "app/src/main/res/layout/radius_picker.xml",
     "app/src/main/res/drawable/ic_pill_arrow_down.xml",
     "app/src/main/java/hk/eta/app/ui/NearbyRadiusPrefs.kt",
+    # LOCATION_AUTO_UPDATE：前景自動更新定位位置
+    "app/src/main/java/hk/eta/app/ui/LocationTracker.kt",
+    # MORE_ROUTES_PER_STOP：自動定位顯示同站更多路線
+    "app/src/main/java/hk/eta/app/ui/NearbyMoreRoutes.kt",
+    # SEPARATE_OPERATORS：同路線號碼不同巴士營運商分開顯示
+    "app/src/main/java/hk/eta/app/ui/SameRouteOperators.kt",
+    # SEARCH_LOCAL_DATA：恢復本地資料喺搜尋功能上
+    "app/src/main/java/hk/eta/app/ui/SearchLocalData.kt",
     # ⟳ ETA 自動刷新
     "app/src/main/java/hk/eta/app/ui/EtaRefreshPrefs.kt",
     "app/src/main/res/layout/eta_refresh_picker.xml",
@@ -233,7 +242,7 @@ def main() -> int:
          '由完整 zip 覆蓋 MainActivity.kt'),
         ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
          'permissionHint = findViewById(R.id.permissionHint)',
-         'MainActivity.kt 漏咗 permissionHint 宣告／綁定（Kotlin Unresolved reference，assembleDebug 會失敗）',
+         'MainActivity.kt 漏咗 permissionHint 宣告／綁定（Kotlin Unresolved reference，assembleRelease 會失敗）',
          '由完整 zip 覆蓋 MainActivity.kt'),
         ('app/src/main/java/hk/eta/app/ui/SearchAdapters.kt',
          'class SearchHistoryAdapter',
@@ -424,6 +433,56 @@ def main() -> int:
          "hketa-release-apk",
          "build-apk.yml 仍係舊版（正式版 APK 冇上傳成 Actions Artifact）",
          "由完整 zip 覆蓋 .github/workflows/build-apk.yml"),
+        # RELEASE_ONLY_ARTIFACT：Artifacts 區只准出正式版 APK
+        (".github/workflows/build-apk.yml",
+         "Prepare production APK artifact",
+         "build-apk.yml 仍係舊版（仲會出 hketa-debug-apk／正式版只喺 tag 先出）",
+         "由完整 zip 覆蓋 .github/workflows/build-apk.yml"),
+        # SEARCH_LOCAL_DATA
+        ("app/src/main/java/hk/eta/app/ui/SearchLocalData.kt",
+         "fun signature(info: LocalDataInfo): String",
+         "SearchLocalData.kt 唔見咗或仍係舊版（本地資料未恢復到搜尋功能）",
+         "由完整 zip 覆蓋 SearchLocalData.kt"),
+        ("app/src/main/java/hk/eta/app/ui/MainActivity.kt",
+         "private fun renderLocalDataStatus(): Boolean",
+         "MainActivity.kt 仍係舊版（搜尋頁未顯示／未重新載入本機資料）",
+         "由完整 zip 覆蓋 MainActivity.kt"),
+        # SEARCH_NO_ADVANCED
+        ("app/src/main/res/layout/activity_main.xml",
+         "SEARCH_NO_ADVANCED",
+         "activity_main.xml 仍係舊版（搜尋頁「進階」掣未取消）",
+         "由完整 zip 覆蓋 activity_main.xml"),
+        ("app/src/main/java/hk/eta/app/ui/MainActivity.kt",
+         "SEARCH_NO_ADVANCED: 冇「進階」掣",
+         "MainActivity.kt 仍係舊版（導航欄未移到主搜尋頁／進階模式未取消）",
+         "由完整 zip 覆蓋 MainActivity.kt"),
+        # SEPARATE_OPERATORS
+        ("app/src/main/java/hk/eta/app/ui/SameRouteOperators.kt",
+         "fun partition(etas: List<EtaItem>, circularHint: Boolean)",
+         "SameRouteOperators.kt 唔見咗或仍係舊版（同號唔同營運商未分開顯示）",
+         "由完整 zip 覆蓋 SameRouteOperators.kt"),
+        ("app/src/main/java/hk/eta/app/ui/App1933Format.kt",
+         "SameRouteOperators.partition(list, circularHint)",
+         "App1933Format.kt 仍係舊版（同路線號碼唔同公司仍夾埋一張卡）",
+         "由完整 zip 覆蓋 App1933Format.kt"),
+        # MORE_ROUTES_PER_STOP
+        ("app/src/main/java/hk/eta/app/ui/NearbyMoreRoutes.kt",
+         "fun sortCards(cards: List<RouteCard>)",
+         "NearbyMoreRoutes.kt 唔見咗或仍係舊版（自動定位未顯示同站更多路線）",
+         "由完整 zip 覆蓋 NearbyMoreRoutes.kt"),
+        ("app/src/main/java/hk/eta/app/ui/EtaViewModel.kt",
+         "NearbyMoreRoutes.select(candidates)",
+         "EtaViewModel.kt 仍係舊版（附近路線仍係舊 6 個 StopOption 配額）",
+         "由完整 zip 覆蓋 EtaViewModel.kt"),
+        # LOCATION_AUTO_UPDATE
+        ("app/src/main/java/hk/eta/app/ui/LocationTracker.kt",
+         "fun minDistanceForRadius",
+         "LocationTracker.kt 唔見咗或仍係舊版（前景位置更新未接上）",
+         "由完整 zip 覆蓋 LocationTracker.kt"),
+        ("app/src/main/java/hk/eta/app/ui/MainActivity.kt",
+         "LocationTracker.start(this, selectedRadius())",
+         "MainActivity.kt 仍係舊版（自動定位未加入更新定位位置）",
+         "由完整 zip 覆蓋 MainActivity.kt"),
         (".github/workflows/build-apk.yml",
          "body_path: RELEASE_BODY.md",
          "build-apk.yml 仍係舊版（Release 說明未對應版本 notes）",
@@ -610,9 +669,16 @@ def main() -> int:
         ('RELEASE_NOTES_v1.0.1.md', '## English',
          'v1.0.1 Release 說明唔見咗或得中文（缺 English 對稱版）',
          '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
-        ('app/build.gradle.kts', 'versionName = "1.0.1"',
-         'build.gradle.kts 未 bump（仍係 1.0.0，打 v1.0.1 tag 會被版本閘門擋低）',
-         '改成 versionCode = 2 / versionName = "1.0.1" 並 push，先可打 tag'),
+        ('app/build.gradle.kts', 'versionName = "1.0.2"',
+         'build.gradle.kts 未 bump（仍係 1.0.1，打 v1.0.2 tag 會被版本閘門擋低）',
+         '改成 versionCode = 3 / versionName = "1.0.2" 並 push，先可打 tag'),
+        # RELEASE_NOTES_v1.0.2：今日（2026-11-24）
+        ('RELEASE_NOTES_v1.0.2.md', '收錄範圍：2026-11-24（今日）',
+         'RELEASE_NOTES_v1.0.2.md 唔見咗或仍係舊版（今日說明未建立）',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.2.md'),
+        ('RELEASE_NOTES_v1.0.2.md', 'Scope: 2026-11-24 (today)',
+         'RELEASE_NOTES_v1.0.2.md 缺英文版本分界／中英唔對稱',
+         '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.2.md'),
     ]
     for rel, needle, msg, fix in drift:
         p = ROOT / rel

@@ -727,7 +727,7 @@ check("ViewModel polls EVERY visible ETA surface, interval read from prefs",
       and "state.cards.isNotEmpty() && state.stops.isNotEmpty()" in eta_vm_kt
       and "else -> return" in eta_vm_kt)
 check("nearby auto-refresh reuses CACHED stops, never re-locates",
-      "val cards = fetchCards(stops)" in eta_vm_kt
+      "fetchCards(stops)" in eta_vm_kt
       and "refreshNearbyCards(state.stops)" in eta_vm_kt
       and "LocationHelper.current" not in
           eta_vm_kt[eta_vm_kt.index("private fun refreshNearbyCards"):
@@ -1080,12 +1080,12 @@ check("one-shot drift repair script exists and is idempotent", all(
                                "benyeung08/hketa", "ic_launcher_round",
                                "已經係新版", "Full sync")), DRIFT_REPAIR_DETAIL)
 
-# --- CI: surface the REAL Gradle error (Assemble debug APK 1m42s) ------------
+# --- CI: surface the REAL Gradle error (Assemble signed release APK) ----------
 build_error = read(ROOT / "scripts/show_build_error.py")
 check("Gradle build logs are captured with pipefail + tee", all(
-      s in workflow for s in ("set -o pipefail", "tee build-debug.log",
-                              "tee build-release.log", "id: assemble_debug")))
-# --- Kotlin compile pitfalls (real build-debug.log: compileDebugKotlin FAILED) -
+      s in workflow for s in ("set -o pipefail", "tee build-release.log",
+                              "id: assemble_release")))
+# --- Kotlin compile pitfalls (real build-release.log: compileReleaseKotlin) ---
 location_helper = read(UI / "LocationHelper.kt")
 # Legit top-level symbols of kotlinx-coroutines-core/android 1.8.1.
 COROUTINES_OK = {
@@ -1124,7 +1124,7 @@ check("LocationHelper keeps all 3 legacy callbacks for minSdk 24",
           ("override fun onStatusChanged(", "override fun onProviderEnabled(",
            "override fun onProviderDisabled(", "override fun onLocationChanged(")))
 
-# --- Java compile pitfall (build-debug.log: compileDebugJavaWithJavac FAILED) -
+# --- Java compile pitfall (build-release.log: compileReleaseJavaWithJavac) ---
 mtr_catalog = read(API / "MtrCatalog.java")
 check("MtrCatalog has lower(String[]) overload for CSV header rows",
       "private static List<String> lower(String[] cells)" in mtr_catalog
@@ -1141,17 +1141,18 @@ check("firstWithAll / firstWithAny still consume List<String> header",
 check("CI no longer hides the error behind --stacktrace", all(
       s in workflow for s in ("NO --stacktrace on purpose", "--console=plain"))
       and "gradle assembleDebug --no-daemon --stacktrace" not in workflow
-      and "gradle assembleRelease --no-daemon --stacktrace" not in workflow)
+      and "gradle assembleRelease --no-daemon --stacktrace" not in workflow
+      and "gradle assembleDebug" not in workflow)
 check("distiller warns when old stacktrace-shaped log is seen",
       "新 workflow 未生效" in build_error,
       "→ scripts/show_build_error.py 唔見咗或仍係舊版；由完整 zip 覆蓋，"
       "或全量 git add -A && git commit && git push")
 check("failure steps distil the real error instead of stack frames", all(
-      s in workflow for s in ("Show real Gradle error",
-                              "steps.assemble_debug.outcome",
+      s in workflow for s in ("Show real Gradle error (release)",
+                              "steps.assemble_release.outcome",
                               "scripts/show_build_error.py",
-                              "Upload full Gradle error log",
-                              "hketa-gradle-logs")))
+                              "Upload full Gradle release log",
+                              "hketa-gradle-release-log")))
 check("error distiller matches real failure categories", all(
       s in build_error for s in ("What went wrong", "Execution failed for task",
                                  "Caused by", "Unresolved reference", "AAPT2",
@@ -1226,11 +1227,12 @@ if missing_release_tokens:
 
 # Both published notes files are OPTIONAL: the workflow has an if/else
 # fallback that writes a short version-matched body when a tag has no notes.
-# v1.0.1 is the CURRENT release, so its bilingual notes SHOULD be present;
-# a missing / half-written (Chinese-only) file is reported as a drift below.
+# v1.0.2 is the CURRENT release; v1.0.0 / v1.0.1 are kept as history.
+# A missing / half-written (Chinese-only) file is reported as a drift below.
 release_notes_v100 = ROOT / "RELEASE_NOTES_v1.0.0.md"
 release_notes_v101 = ROOT / "RELEASE_NOTES_v1.0.1.md"
-for _f in (release_notes_v100, release_notes_v101):
+release_notes_v102 = ROOT / "RELEASE_NOTES_v1.0.2.md"
+for _f in (release_notes_v100, release_notes_v101, release_notes_v102):
     if not _f.is_file():
         print(f"[INFO] {_f.name} 未上傳；"
               "workflow 會用版本對應嘅簡短 Release 內文（fallback），唔影響發布。")
@@ -1426,18 +1428,19 @@ check("RELEASE_NOTES_v1.0.1.md exists and is BILINGUAL + symmetric",
                         "hketa-v1.0.1-release.apk", "versionCode = 2",
                         "GMB circular trip fix", "綠小巴循環線班次修正",
                         "FE:7B:35:E1", "RELEASE_NOTES_${TAG}.md")))
-check("RELEASE_NOTES_v1.0.1.md matches the BUMPED gradle tag/version",
+check("CURRENT gradle tag/version matches RELEASE_NOTES_v1.0.2.md (v1.0.1 kept as history)",
       bool(_cur_code) and bool(_cur_name)
-      and _cur_tag == "v1.0.1"
-      and _cur_code.group(1) == "2"
-      and _cur_name.group(1) == "1.0.1"
-      and ("`" + _cur_tag + "`") in release_notes_v101.read_text(encoding="utf-8"))
+      and _cur_tag == "v1.0.2"
+      and _cur_code.group(1) == "3"
+      and _cur_name.group(1) == "1.0.2"
+      and ("`" + _cur_tag + "`") in release_notes_v102.read_text(encoding="utf-8")
+      and "versionCode = 3" in release_notes_v102.read_text(encoding="utf-8"))
 # RELEASE_NOTES_v1.0.1 YESTERDAY/TODAY — two-day split + standalone day notes.
 _day1 = ROOT / "RELEASE_NOTES_v1.0.1_day1_2026-11-19.md"
 _day2 = ROOT / "RELEASE_NOTES_v1.0.1_day2_2026-11-20.md"
 # --- RELEASE_NOTES_v1.0.1：20 號至最新 + 兩份說明版本對應 ---------------------
 _v101_text = release_notes_v101.read_text(encoding="utf-8")
-check("RELEASE_NOTES_v1.0.1.md is the LATEST notes (2026-11-20 through the latest)",
+check("RELEASE_NOTES_v1.0.1.md is the HISTORICAL 11-20-through-latest notes",
       all(s in _v101_text for s in (
           "收錄範圍：2026-11-20 至最新",
           "scope: 2026-11-20 through the latest",
@@ -1483,6 +1486,83 @@ check("RELEASE_NOTES_v1.0.1.md Chinese/English sections are symmetric",
               _t.split("## 中文（繁體）")[1].split("---")[0],
               _t.split("## English")[1].split("---")[0]))(
           release_notes_v101.read_text(encoding="utf-8")))
+# --- RELEASE_NOTES_v1.0.2: 今日（2026-11-24）中英雙語說明 --------------------
+_v102_text = release_notes_v102.read_text(encoding="utf-8") \
+    if release_notes_v102.is_file() else ""
+_v102_zh = _v102_text.split("## 中文（繁體）")[1].split("\n---\n")[0] \
+    if "## 中文（繁體）" in _v102_text else ""
+_v102_en = _v102_text.split("## English")[1].split("\n---\n")[0] \
+    if "## English" in _v102_text else ""
+check("RELEASE_NOTES_v1.0.2.md exists, is BILINGUAL and fully symmetric",
+      release_notes_v102.is_file()
+      and all(s in _v102_text for s in (
+          "# HK ETA v1.0.2", "## 中文（繁體）", "## English",
+          "hketa-v1.0.2-release.apk", "versionCode = 3",
+          "FE:7B:35:E1", "RELEASE_NOTES_${TAG}.md"))
+      and len(re.findall(r"^### ", _v102_zh, re.M)) == 5
+      and len(re.findall(r"^### ", _v102_en, re.M)) == 5
+      and len(re.findall(r"^#### 📅 ", _v102_zh, re.M)) == 2
+      and len(re.findall(r"^#### 📅 ", _v102_en, re.M)) == 2
+      and len(re.findall(r"^- ", _v102_zh, re.M)) >= 40
+      and len(re.findall(r"^- ", _v102_zh, re.M))
+          == len(re.findall(r"^- ", _v102_en, re.M)))
+check("RELEASE_NOTES_v1.0.2.md scope is TODAY 2026-11-24 with a version boundary",
+      all(s in _v102_text for s in (
+          "收錄範圍：2026-11-24（今日）", "Scope: 2026-11-24 (today)",
+          "版本分界", "Version boundary",
+          "2026-11-24 上午", "2026-11-24 收尾",
+          "2026-11-24 morning", "2026-11-24 wrap-up",
+          "RELEASE_NOTES_v1.0.0.md", "RELEASE_NOTES_v1.0.1.md")))
+check("RELEASE_NOTES_v1.0.2.md covers TODAY's search / CI / location / card / local-data work",
+      all(s in _v102_text for s in (
+          "截圖式分類搜尋", "Screenshot-style category search",
+          "permissionHint", "hketa-release-apk",
+          "自動定位加入更新定位位置", "UPDATES the device position",
+          "同站更多路線", "MORE routes per stop",
+          "SameRouteOperators.partition", "different bus operators shown separately",
+          "取消搜尋「進階」", '"Advanced" removed',
+          "SearchLocalData.kt", "Local route data restored",
+          "357", "20 情境", "20 drift scenarios")))
+check("RELEASE_NOTES_v1.0.2.md does NOT duplicate the 11-19 / 11-20 historical highlights",
+      all(s not in _v102_text for s in (
+          "昨天（2026-11-19）", "Yesterday (2026-11-19)",
+          "2026-11-19 → 最新", "由 11-19 起至最新",
+          "收錄範圍：2026-11-20 至最新", "scope: 2026-11-20 through the latest"))
+      and "#### 📅 2026-11-24" in _v102_text
+      and len(re.findall(r"^#### 📅 ", _v102_text, re.M)) == 4)
+check("RELEASE_NOTES_v1.0.2.md install / asset / fingerprint / version facts are correct",
+      all(s in _v102_text for s in (
+          "hketa-v1.0.2-release.apk", "hketa-release-apk",
+          "versionName = 1.0.2", "versionCode = 3",
+          "FE:7B:35:E1…20:02:57", "SIGNING_FINGERPRINT.txt",
+          "VERSION_INFO.txt", "applicationId = hk.eta.app", "minSdk 24",
+          "target / compile SDK 34", "AGP 8.5.2", "Gradle 8.7")))
+check("RELEASE_NOTES_v1.0.2.md is TEXT-ONLY and states the tag-source / no-APK caveat",
+      all(s in _v102_text for s in (
+          "純文字 Release 說明", "plain-text Release note",
+          "改說明唔等於改 APK", "Editing notes never touches the APK",
+          "唔使重跑 CI", "needs no CI re-run",
+          "由 repo Actions 產出已簽名 APK", "repo Actions can build the signed release",
+          "11-24 之後只有文件同步", "After 11-24 only documentation was synced")))
+check("RELEASE_NOTES_v1.0.2.md lists honest limitations (ETA / best-effort / foreground-only)",
+      all(s in _v102_text for s in (
+          "實時 ETA 需要網絡", "Live ETA needs network",
+          "best-effort", "前景 only 定位", "Foreground-only location",
+          "唔捏造", "nothing is invented",
+          "唔包含官方私有服務", "No official private services")))
+check("v1.0.0 / v1.0.1 notes are preserved as HISTORY and point to the current v1.0.2",
+      release_notes_v100.is_file() and release_notes_v101.is_file()
+      and "歷史註記（2026-11-24）" in release_notes_v101.read_text(encoding="utf-8")
+      and "Historical note (2026-11-24)" in release_notes_v101.read_text(encoding="utf-8")
+      and "RELEASE_NOTES_v1.0.2.md" in release_notes_v101.read_text(encoding="utf-8"))
+check("version bump did not break earlier features / data layer",
+      "SEARCH_LOCAL_DATA" in main_kt
+      and "SEARCH_NO_ADVANCED" in main_layout
+      and "SameRouteOperators.partition(list, circularHint)" in read(UI / "App1933Format.kt")
+      and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
+      and "fun signature(info: LocalDataInfo): String" in
+          read(UI / "SearchLocalData.kt"))
+
 check("signature strings all defined", all(
       name in settings_strings for name in ("signing_section", "signing_fingerprint",
                                             "signing_status_ok", "signing_status_fail",
@@ -1582,8 +1662,29 @@ check("Kotlin 1.9.24", 'version "1.9.24"' in root_gradle)
 check("Gradle 8.7 wrapper", "gradle-8.7-bin.zip" in wrapper)
 check("Gradle 8.7 in CI", "gradle-8.7-bin.zip" in workflow)
 check("compileSdk 34 in app + CI", "compileSdk = 34" in app_gradle and "android-34" in workflow)
-check("CI assembles debug APK", "gradle assembleDebug" in workflow)
-check("CI uploads the APK", "upload-artifact@v4" in workflow and "app-debug.apk" in workflow)
+# RELEASE_ONLY_ARTIFACT — 2026-11-24: Actions「Artifacts」區只准出正式版 APK。
+# main push 都要出（唔再係「打 tag 先有」），debug APK 連組裝都唔做。
+check("CI assembles ONLY the signed production APK",
+      "gradle assembleRelease" in workflow
+      and "gradle assembleDebug" not in workflow
+      and "id: assemble_release" in workflow)
+check("CI uploads ONLY the production APK artifact",
+      "upload-artifact@v4" in workflow
+      and "name: hketa-release-apk" in workflow
+      and "hketa-release.apk" in workflow
+      # 用 "name: " 前綴：drift 診斷訊息入面可以讲「唔再出 debug APK」，
+      # 但唔准再有任何一個叫 hketa-debug-apk 嘅 Artifact step。
+      and "name: hketa-debug-apk" not in workflow
+      and "app-debug.apk" not in workflow
+      and "build-debug.log" not in workflow
+      and "gradle assembleDebug" not in workflow)
+check("RELEASE_ONLY_ARTIFACT: release build runs on EVERY push, not only tags",
+      "Prepare production APK artifact" in workflow
+      and "cp \"$APK\" hketa-release.apk" in workflow
+      and "refs/tags/*" in workflow
+      and "- name: Assemble signed release APK\n        id: assemble_release\n        run: |" in workflow)
+check("RELEASE_ONLY_ARTIFACT: upload step has NO tag-only guard",
+      "- name: Upload signed release APK artifact\n        uses: actions/upload-artifact@v4" in workflow)
 
 # --- Resource references ------------------------------------------------------
 res_text = "\n".join(read(p) for p in RES.rglob("*.xml"))
@@ -1657,6 +1758,334 @@ check("LocationHelper exposes one shared permission gate",
       "fun hasPermission(context: Context): Boolean" in loc_kt
       and "private fun hasPermission" not in loc_kt
       and "IMPORTANT: callers MUST gate" in loc_kt)
+# --- SEARCH_LOCAL_DATA: 恢復本地資料喺搜尋功能上 ----------------------------
+local_kt = read(UI / "SearchLocalData.kt")
+check("SEARCH_LOCAL_DATA: pure Kotlin decision layer, no Android / network / colour",
+      "object SearchLocalData" in local_kt
+      and "data class LocalDataInfo(" in local_kt
+      and "import android." not in local_kt
+      and "HttpJson" not in local_kt
+      and "setTextColor" not in local_kt)
+check("SEARCH_LOCAL_DATA: hasSnapshot / signature / shouldReload / sourceTag",
+      all(s in local_kt for s in (
+          "fun hasSnapshot(info: LocalDataInfo): Boolean",
+          "info.updatedAt > 0L || info.filesPresent > 0",
+          "fun signature(info: LocalDataInfo): String",
+          "fun shouldReload(previous: String, current: String): Boolean",
+          "previous.isNotEmpty() && previous != current",
+          "fun sourceTag(info: LocalDataInfo, local: String, live: String): String",
+          "fun offlineCapable(info: LocalDataInfo): Boolean"))
+      and "捏造" in local_kt)
+check("SEARCH_LOCAL_DATA: status row exists on the search page, fixed colours only",
+      'android:id="@+id/tvLocalDataStatus"' in main_layout
+      and 'android:text="@string/search_local_never"' in main_layout
+      and '@color/search_field_bg' in main_layout
+      and '@color/search_green' in main_layout
+      and "SEARCH_LOCAL_DATA" in main_layout
+      # 狀態列必須喺 pageSearch 內、routeInput 之後
+      and main_layout.index('android:id="@+id/tvLocalDataStatus"')
+          > main_layout.index('android:id="@+id/routeInput"')
+      and main_layout.index('android:id="@+id/tvLocalDataStatus"')
+          < main_layout.index('android:id="@+id/searchResultsView"'))
+check("SEARCH_LOCAL_DATA: 5 new strings, no colour resource added",
+      all(f'name="{n}"' in read(RES / "values/strings.xml") for n in (
+          "search_local_never", "search_local_ok",
+          "search_local_source_local", "search_local_source_live",
+          "search_local_source_prefix"))
+      and 'name="search_' in read(RES / "values/colors.xml")
+      and 'name="search_' not in read(RES / "values-night/colors.xml"))
+check("SEARCH_LOCAL_DATA: Activity renders status + source tag from RouteDataStore.meta()",
+      all(s in main_kt for s in (
+          "import hk.eta.app.api.RouteDataStore",
+          "private lateinit var tvLocalDataStatus: TextView",
+          "private var lastLocalSignature = """,
+          "tvLocalDataStatus = findViewById(R.id.tvLocalDataStatus)",
+          "private fun renderLocalDataStatus(): Boolean",
+          "RouteDataStore.meta()",
+          "RouteDataStore.readText(it) != null",
+          "LocalDataInfo(",
+          "SearchLocalData.signature(info)",
+          "SearchLocalData.shouldReload(lastLocalSignature, sig)",
+          "SearchLocalData.hasSnapshot(info)",
+          "SearchLocalData.sourceTag(",
+          "R.string.search_preload_hint"))
+      and "tvLocalDataStatus.setOnClickListener" in main_kt
+      and "SettingsActivity::class.java" in main_kt)
+check("SEARCH_LOCAL_DATA: snapshot files covered (11 public dataset constants)",
+      all(s in main_kt for s in (
+          "RouteDataStore.KMB_ROUTES", "RouteDataStore.KMB_STOPS",
+          "RouteDataStore.CTB_ROUTES", "RouteDataStore.CTB_STOPS",
+          "RouteDataStore.NLB_ROUTES", "RouteDataStore.NLB_STOPS",
+          "RouteDataStore.GMB_ROUTES", "RouteDataStore.GMB_STOPS",
+          "RouteDataStore.MTR_LINES", "RouteDataStore.LRT_STOPS",
+          "RouteDataStore.MTR_BUS_STOPS")))
+check("SEARCH_LOCAL_DATA: onResume re-preloads ONLY when the local signature changed",
+      "if (renderLocalDataStatus()) {" in main_kt
+      and 'vm.searchRoutes(routeInput.text?.toString() ?: "")' in main_kt
+      and "refreshHistory()" in main_kt
+      and main_kt.index("if (renderLocalDataStatus()) {")
+          > main_kt.index("override fun onResume()")
+      and main_kt.index("if (renderLocalDataStatus()) {")
+          < main_kt.index("override fun onPause()"))
+check("SEARCH_LOCAL_DATA: data layer stays local-first, ETA still live-only",
+      "public static JSONObject catalogueJson(String file, String... urls)" in
+          read(API / "RouteDataStore.java")
+      and "RouteDataStore.catalogueJson(" in read(API / "RouteSearch.java")
+      and "Real-time ETA is NEVER cached" in read(API / "RouteDataStore.java")
+      and "public static void invalidateDownstream()" in
+          read(API / "RouteDataStore.java"))
+check("SEARCH_LOCAL_DATA: no Advanced restored, previous rounds all intact",
+      "SEARCH_NO_ADVANCED" in main_kt
+      and "btnAdvanced" not in main_kt
+      and "bottomTabs.visibility = View.VISIBLE" in main_kt
+      and "LocationTracker.start(this, selectedRadius())" in main_kt
+      and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
+      and "SameRouteOperators.partition(list, circularHint)" in
+          read(UI / "App1933Format.kt"))
+
+# --- SEARCH_NO_ADVANCED: 取消進階、導航欄移到主搜尋頁 ----------------------
+noadv_settings = read(RES / "layout/activity_settings.xml")
+check("SEARCH_NO_ADVANCED: advanced BUTTON removed from search page only",
+      'android:id="@+id/btnAdvanced"' not in main_layout
+      and "@string/search_advanced" not in main_layout
+      and 'name="search_advanced"' not in read(RES / "values/strings.xml")
+      # 設定頁「更新應用程式」嘅同名進階抽屜掣必須保留，唔好誤刪
+      and 'android:id="@+id/btnAdvanced"' in noadv_settings
+      and "SEARCH_NO_ADVANCED" in main_layout)
+check("SEARCH_NO_ADVANCED: sequence mode / state / back button all gone from Activity",
+      all(s not in main_kt for s in (
+          "btnAdvanced", "inSequence", "showSequence",
+          "btnBackToSearch", "R.id.btnAdvanced"))
+      and "SEARCH_NO_ADVANCED" in main_kt
+      and "showSearchHome()" in main_kt)
+check("SEARCH_NO_ADVANCED: hidden 8-mode block stays GONE, no visible entry point",
+      'android:id="@+id/stopSequenceView"' in main_layout
+      and 'android:visibility="gone"' in main_layout
+      and 'android:id="@+id/btnBackToSearch"' not in main_layout
+      and "stopSequenceView.visibility = View.VISIBLE" not in main_kt
+      and "stopSequenceView.visibility = View.GONE" in main_kt)
+check("SEARCH_NO_ADVANCED: bottom nav bar is now VISIBLE on the MAIN search page",
+      "bottomTabs.visibility = View.VISIBLE" in main_kt
+      and main_kt.count("bottomTabs.visibility = View.VISIBLE") == 2
+      and "bottomTabs.visibility = View.GONE" not in main_kt
+      and (lambda s: "bottomTabs.visibility = View.VISIBLE" in s)(
+          main_kt[main_kt.index("private fun hideChrome()"):
+                  main_kt.index("private fun restoreChrome()")])
+      and (lambda s: "showSearchHome()" in s and "if (index == 2)" in s)(
+          main_kt[main_kt.index("private fun selectTab(index: Int)"):
+                  main_kt.index("private fun selectTab(index: Int)") + 700]))
+check("SEARCH_NO_ADVANCED: screenshot header still clean (top chrome hidden)",
+      "mainHeader.visibility = View.GONE" in main_kt
+      and "statusText.visibility = View.GONE" in main_kt
+      and "tvAutoRefreshStatus.visibility = View.GONE" in main_kt
+      and "mainHeader.visibility = View.VISIBLE" in main_kt)
+check("SEARCH_NO_ADVANCED: floating glass nav unchanged (geometry / 4 tabs / colours)",
+      all(s in main_layout for s in (
+          'android:id="@+id/bottomTabs"',
+          'android:layout_gravity="bottom|center_horizontal"',
+          'android:id="@+id/tabHome"', 'android:id="@+id/tabFav"',
+          'android:id="@+id/tabSearch"', 'android:id="@+id/tabMore"'))
+      and "NavGlass.apply(this, bottomTabs)" in main_kt
+      and "NavGlass.selectTab(this, tabs[i], i == index)" in main_kt)
+check("SEARCH_NO_ADVANCED: no colour change, 8-mode data bindings kept compatible",
+      "companySpinner = findViewById(R.id.companySpinner)" in main_kt
+      and "routeEdit = findViewById(R.id.routeEdit)" in main_kt
+      and "findViewById<RecyclerView>(R.id.stopsRecycler)" in main_kt
+      and 'name="search_' in read(RES / "values/colors.xml")
+      and 'name="search_' not in read(RES / "values-night/colors.xml"))
+check("SEARCH_NO_ADVANCED: location / more-routes / separate-operators all intact",
+      "LocationTracker.start(this, selectedRadius())" in main_kt
+      and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
+      and "SameRouteOperators.partition(list, circularHint)" in
+          read(UI / "App1933Format.kt"))
+
+# --- SEPARATE_OPERATORS: 同路線號碼不同巴士營運商分開顯示 ------------------
+sep_kt = read(UI / "SameRouteOperators.kt")
+sep_fmt_kt = read(UI / "App1933Format.kt")
+sep_card_kt = read(UI / "CardAdapters.kt")
+check("SEPARATE_OPERATORS: pure Kotlin decision layer, no Android / network / colour",
+      "object SameRouteOperators" in sep_kt
+      and "import android." not in sep_kt
+      and "HttpJson" not in sep_kt
+      and "setTextColor" not in sep_kt
+      and "search_" not in sep_kt
+      and "data class OperatorGroup(" in sep_kt)
+check("SEPARATE_OPERATORS: ONLY an exact KMB+CTB non-circular pair merges",
+      all(s in sep_kt for s in (
+          "fun isJointPair(a: String, b: String): Boolean",
+          "names.size == 2",
+          "isJointPair(names[0], names[1])",
+          "circular[names[0]] != true",
+          "circular[names[1]] != true",
+          "OperatorGroup(JointRoutes.JOINT, etas, false)"))
+      and sep_kt.count("return listOf(OperatorGroup(JointRoutes.JOINT") == 1)
+check("SEPARATE_OPERATORS: every OTHER company combination is split into its OWN card",
+      "val byCompany = LinkedHashMap<String, MutableList<EtaItem>>()" in sep_kt
+      and "byCompany.getOrPut(e.company)" in sep_kt
+      and "OperatorGroup(company, list, circular[company] == true)" in sep_kt
+      and "fun partition(etas: List<EtaItem>, circularHint: Boolean)" in sep_kt)
+check("SEPARATE_OPERATORS: circular flag is per-COMPANY, not bucket-wide",
+      "val single = byCompany.size == 1" in sep_kt
+      and "(circularHint && single) || isCircular(list)" in sep_kt
+      and "etas.any { CircularRoutes.isCircularDest(it.destTc) }" in sep_kt)
+check("SEPARATE_OPERATORS: cardsFrom delegates and keeps 3 trips of ITS OWN company",
+      "for (group in SameRouteOperators.partition(list, circularHint))" in sep_fmt_kt
+      and "val cardCompany = group.company" in sep_fmt_kt
+      and "val joint = cardCompany == JointRoutes.JOINT" in sep_fmt_kt
+      and "sorted.take(3).map { tripOf(it, cardCompany, joint) }" in sep_fmt_kt
+      and "val companies = sorted.map" not in sep_fmt_kt)
+check("SEPARATE_OPERATORS: split card falls back to ITS OWN stopId, not the bucket KMB id",
+      'val fallbackId = if (stopId.isEmpty() || !joint) {' in sep_fmt_kt
+      and "first.stopId" in sep_fmt_kt
+      and "resolveStopDisplay(cardCompany, displays, fallback)" in sep_fmt_kt)
+check("SEPARATE_OPERATORS: same route number but different companies sort adjacent",
+      ".thenBy { it.company }" in sep_fmt_kt
+      and ".thenBy { it.company }" in read(UI / "NearbyMoreRoutes.kt")
+      and "compareBy<RouteCard> { it.route }" in sep_fmt_kt)
+check("SEPARATE_OPERATORS: card meta already shows the operator label, NO UI/colour change",
+      "cardOperatorLabel(card.company)" in sep_card_kt
+      and "App1933Format.companyLabel(company)" in sep_card_kt
+      and "public static String routeCompanyLabel(" in read(API / "JointRoutes.java")
+      and 'return "九巴 / 龍運"' in read(API / "JointRoutes.java")
+      and 'return "嶼巴"' in read(API / "JointRoutes.java")
+      and "btnNearby" not in main_layout)
+check("SEPARATE_OPERATORS: search rows still only collapse KMB/CTB joint, others separate",
+      "public final boolean joint" in read(API / "RouteSearch.java")
+      and "markJoint(out)" in read(API / "RouteSearch.java"))
+check("SEPARATE_OPERATORS: joint / circular / nearby-more-routes / data layer intact",
+      "JOINT_KMB_CTB_MERGE" in read(UI / "EtaViewModel.kt")
+      and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
+      and "LocationTracker.start(this, selectedRadius())" in main_kt
+      and "public static List<EtaItem> augment" in read(API / "JointRoutes.java")
+      and "public static List<StopOption> nearby(double lat" in read(API / "GeoStops.java"))
+
+# --- MORE_ROUTES_PER_STOP: 自動定位顯示同站更多路線 -------------------------
+more_kt = read(UI / "NearbyMoreRoutes.kt")
+more_vm_kt = read(UI / "EtaViewModel.kt")
+check("MORE_ROUTES_PER_STOP: pure Kotlin layer, no Android / network / colour",
+      "object NearbyMoreRoutes" in more_kt
+      and "import android." not in more_kt
+      and "HttpJson" not in more_kt
+      and "setTextColor" not in more_kt
+      and "search_" not in more_kt)
+check("MORE_ROUTES_PER_STOP: widened candidate pool, entity cap, query cap",
+      all(s in more_kt for s in (
+          "const val CANDIDATE_LIMIT = 24",
+          "const val ENTITY_LIMIT = 6",
+          "const val MAX_QUERIES = 12",
+          "fun select(candidates: List<StopOption>): List<StopOption>",
+          "fun entityKey(stop: StopOption): String",
+          "fun entityCount(stops: List<StopOption>): Int",
+          "fun sortCards(cards: List<RouteCard>): List<RouteCard>"))
+      and more_kt.index("fun select(") < more_kt.index("fun sortCards("))
+check("MORE_ROUTES_PER_STOP: entity key matches fetchCards bucket (name else stopId)",
+      'stop.stopName.trim()' in more_kt
+      and 'if (name.isEmpty()) stop.stopId else name' in more_kt
+      and "stop.company +" not in more_kt)
+check("MORE_ROUTES_PER_STOP: keeps ALL aliases of a kept entity, stops at 7th entity",
+      "if (!entities.contains(key))" in more_kt
+      and "if (entities.size >= ENTITY_LIMIT) break" in more_kt
+      and "if (out.size >= MAX_QUERIES) break" in more_kt
+      and "LinkedHashSet<String>()" in more_kt)
+check("MORE_ROUTES_PER_STOP: cards are NOT truncated, sorted by rank+route+dest",
+      "compareBy<RouteCard> { it.rank }" in more_kt
+      and ".thenBy { it.route }" in more_kt
+      and ".thenBy { it.dest }" in more_kt
+      and ".take(" not in more_kt)
+check("MORE_ROUTES_PER_STOP: ViewModel uses widened pool + select + sort in BOTH loads",
+      all(s in more_vm_kt for s in (
+          "repo.nearbyStops(fix.lat, fix.lng, radiusMeters,\n                        NearbyMoreRoutes.CANDIDATE_LIMIT)",
+          "NearbyMoreRoutes.select(candidates)",
+          "NearbyMoreRoutes.sortCards(fetchCards(stops))",
+          "NearbyMoreRoutes.entityCount(stops)",
+          "stops.take(NearbyMoreRoutes.MAX_QUERIES)",
+          "R.string.nearby_more_routes_tag"))
+      and more_vm_kt.count("NearbyMoreRoutes.sortCards") == 2
+      and "cards.sortedBy { it.rank }" not in more_vm_kt
+      and "stops.take(6)" not in more_vm_kt
+      and "radiusMeters, 6)" not in more_vm_kt)
+check("MORE_ROUTES_PER_STOP: status string exists, no new colour / View / button",
+      "nearby_more_routes_tag" in read(RES / "values/strings.xml")
+      and "btnNearby" not in main_layout and "btnNearby" not in main_kt
+      and "📍 重新定位" not in read(RES / "values/strings.xml"))
+check("MORE_ROUTES_PER_STOP: location permission + foreground tracker intact",
+      "fun autoLocateIfAllowed" in main_kt
+      and "LocationTracker.start(this, selectedRadius())" in main_kt
+      and "fun awaitLocationPermission" in more_vm_kt
+      and "private fun locationGranted" in more_vm_kt)
+check("MORE_ROUTES_PER_STOP: 8-operator data layer untouched",
+      "nearbyStops(double lat, double lng, int radiusMeters," in
+          read(API / "EtaRepository.java")
+      and "public static List<StopOption> nearby(double lat, double lng, int radiusMeters, int limit)" in
+          read(API / "GeoStops.java"))
+
+# --- LOCATION_AUTO_UPDATE: 自動定位之上加入「更新定位位置」 -------------------
+tracker_kt = read(UI / "LocationTracker.kt")
+check("LOCATION_AUTO_UPDATE: tracker file exists with platform LocationManager",
+      "object LocationTracker" in tracker_kt
+      and "LocationManager" in tracker_kt
+      and "requestLocationUpdates(" in tracker_kt
+      and "removeUpdates(" in tracker_kt
+      and "com.google.android.gms" not in tracker_kt
+      and "FusedLocationProviderClient" not in tracker_kt
+      and "androidx.work" not in tracker_kt
+      and "import com.google" not in tracker_kt)
+check("LOCATION_AUTO_UPDATE: tracker is permission-gated before registering",
+      "if (!LocationHelper.hasPermission(context))" in tracker_kt
+      and tracker_kt.index("if (!LocationHelper.hasPermission(context))") <
+          tracker_kt.index("requestLocationUpdates(")
+      and '@SuppressLint("MissingPermission")' in tracker_kt)
+check("LOCATION_AUTO_UPDATE: foreground-only, idempotent start / stop",
+      "fun start(context: Context" in tracker_kt
+      and "fun stop(context: Context" in tracker_kt
+      and "stop(context)" in tracker_kt
+      and "onMoved = null" in tracker_kt
+      and "Looper.getMainLooper()" in tracker_kt)
+check("LOCATION_AUTO_UPDATE: distance + time de-bounce before reload",
+      "fun minDistanceForRadius(radiusMeters: Int): Float" in tracker_kt
+      and "Location.distanceBetween(" in tracker_kt
+      and "MIN_TIME_MS = 30_000L" in tracker_kt
+      and "MIN_DISTANCE_M = 50f" in tracker_kt
+      and "fun reset()" in tracker_kt)
+check("LOCATION_AUTO_UPDATE: new listener keeps API 34 non-null callbacks + 3 legacy",
+      all(s in tracker_kt for s in (
+          "override fun onStatusChanged(provider: String?",
+          "override fun onProviderEnabled(provider: String)",
+          "override fun onProviderDisabled(provider: String)",
+          "override fun onLocationChanged(location: Location)"))
+      and "onProviderEnabled(provider: String?)" not in tracker_kt)
+check("LOCATION_AUTO_UPDATE: MainActivity registers on resume / auto-locate, stops on pause+destroy",
+      all(s in main_kt for s in (
+          "LocationTracker.start(this, selectedRadius())",
+          "LocationTracker.stop(this)",
+          "override fun onDestroy()",
+          "override fun onResume()",
+          "override fun onPause()"))
+      and main_kt.count("startLocationUpdates()") >= 4
+      and main_kt.count("stopLocationUpdates()") >= 5
+      and (lambda s: "stopLocationUpdates()" in s and "vm.onBackground()" in s)(
+          main_kt[main_kt.index("override fun onPause()"):main_kt.index("override fun onDestroy()")])
+      and (lambda s: "stopLocationUpdates()" in s)(
+          main_kt[main_kt.index("override fun onDestroy()"):main_kt.index("override fun onConfigurationChanged")])
+      and (lambda s: "startLocationUpdates()" in s and "vm.onForeground()" in s)(
+          main_kt[main_kt.index("override fun onResume()"):main_kt.index("override fun onPause()")]))
+check("LOCATION_AUTO_UPDATE: still NO relocate button; hint is still permission consent",
+      "btnNearby" not in main_layout and "btnNearby" not in main_kt
+      and "📍 重新定位" not in read(RES / "values/strings.xml")
+      and "location_permission_hint" in read(RES / "values/strings.xml")
+      and "permissionHint" in main_kt)
+check("LOCATION_AUTO_UPDATE: status line shows tracking without new View or colour",
+      "location_tracking_on" in read(RES / "values/strings.xml")
+      and "R.string.location_tracking_on" in main_kt
+      and "locationUpdatesRunning" in main_kt
+      and "tvAutoRefreshStatus.text = EtaRefreshPrefs.statusLabel(this) + suffix" in main_kt
+      and 'android:id="@+id/tvAutoRefreshStatus"' in main_layout)
+check("LOCATION_AUTO_UPDATE: manifest declares both location permissions",
+      "android.permission.ACCESS_FINE_LOCATION" in read(MANIFEST)
+      and "android.permission.ACCESS_COARSE_LOCATION" in read(MANIFEST))
+check("LOCATION_AUTO_UPDATE: no new colour / no search-page change",
+      "search_" not in tracker_kt and "setTextColor" not in tracker_kt)
+
 check("no stale relocate strings / hints remain",
       "📍 重新定位" not in read(RES / "values/strings.xml")
       and 'name="locate"' not in read(RES / "values/strings.xml")
@@ -1668,6 +2097,7 @@ check("ViewModel maps all 8 spinner positions",
 
 # --- APP1933 shell: UI only, 8-operator data layer untouched ------------------
 fmt_kt = read(UI / "App1933Format.kt")
+sep_kt = read(UI / "SameRouteOperators.kt")
 card_kt = read(UI / "CardAdapters.kt")
 check("APP1933 shell has 4 bottom tabs + 4 pages", all(
       f'android:id="@+id/{n}"' in main_layout for n in
@@ -1734,7 +2164,9 @@ check("SEARCH_UI: screenshot-style category search page replaces the keypad",
           'android:id="@+id/searchHomeView"', 'android:id="@+id/searchResultsView"',
           'android:id="@+id/bookmarkRecycler"', 'android:id="@+id/historyRecycler"',
           'android:id="@+id/tvBookmarkEmpty"', 'android:id="@+id/tvHistoryEmpty"',
-          'android:id="@+id/tvCategoryNotice"', 'android:id="@+id/btnAdvanced"'))
+          'android:id="@+id/tvCategoryNotice"'))
+      # SEARCH_NO_ADVANCED: 搜尋頁嘅「進階」掣已取消
+      and 'android:id="@+id/btnAdvanced"' not in main_layout
       and '@layout/keypad' not in main_layout
       and 'android:id="@+id/searchBar"' not in main_layout
       and 'android:id="@+id/keypadRoot"' not in main_layout)
@@ -1753,7 +2185,7 @@ check("SEARCH_UI: activity wires the screenshot page, NOT the old keypad",
           "bindSearchCategories", "bindSearchChips", "selectCategory",
           "selectChip", "matchesCategory", "renderSearch", "refreshHistory",
           "refreshBookmarks", "openHistoryItem", "showSearchHome",
-          "showSequence", "hideChrome", "SearchHistoryAdapter",
+          "hideChrome", "restoreChrome", "SearchHistoryAdapter",
           "BookmarkAdapter", "SearchHistoryPrefs", "toHistoryItem",
           "routeInput.addTextChangedListener", "vm.searchRoutes"))
       and all(s not in main_kt for s in (
@@ -1763,7 +2195,7 @@ check("SEARCH_UI: activity wires the screenshot page, NOT the old keypad",
       and "class BookmarkAdapter" in search_adapters
       and "object SearchHistoryPrefs" in search_history_kt)
 # SEARCH_UI_KOTLIN_FIX: 上一版 cut 走舊 APP1933 欄位區塊時，連仍被 7 處引用嘅
-# permissionHint 一齊移走 → Kotlin「Unresolved reference」令 assembleDebug 失敗。
+# permissionHint 一齊移走 → Kotlin「Unresolved reference」令 assembleRelease 失敗。
 # Python checker 只查 R.id / 文字 needle，唔查 Kotlin 符號，所以加返兩條硬閘。
 check("SEARCH_UI_KOTLIN_FIX: permissionHint is DECLARED and BOUND (not just referenced)",
       "private lateinit var permissionHint: TextView" in main_kt
@@ -1836,7 +2268,7 @@ check("SEARCH_UI: pageSearch uses ONLY the fixed search_* colours",
                   re.findall(r'@color/([A-Za-z0-9_]+)', block))
           and "search_bg" in block))(
           main_layout[main_layout.index('android:id="@+id/pageSearch"'):
-                      main_layout.index('<!-- 進階：')]))
+                      main_layout.index('android:id="@+id/stopSequenceView"')]))
 check("SEARCH_UI: activity only APPLIES existing colours, never defines new ones",
       all(s in main_kt for s in (
           "R.color.search_green", "R.color.search_text",
@@ -1906,8 +2338,13 @@ check("JOINT_KMB_CTB: ETA layer best-effort merges the partner operator",
 check("JOINT_KMB_CTB: ONE card labelled 城巴/九巴, three per-trip labels",
       all(s in fmt_kt for s in (
           "val operatorText: String", "fun companyLabel",
-          "fun tripOperatorText", "contains(EtaRepository.KMB)",
-          "contains(EtaRepository.CTB)", "JointRoutes.JOINT"))
+          "fun tripOperatorText", "JointRoutes.JOINT"))
+      # SEPARATE_OPERATORS: the exact KMB+CTB pair test moved to a pure layer.
+      and all(s in sep_kt for s in (
+          "isJointPair(a: String, b: String): Boolean",
+          "a == EtaRepository.KMB", "b == EtaRepository.CTB",
+          "names.size == 2", "JointRoutes.JOINT"))
+      and "SameRouteOperators.partition(list, circularHint)" in fmt_kt
       # grouping key must NOT include company any more
       and 'e.company + "|" + e.route' not in fmt_kt)
 check("JOINT_KMB_CTB: card meta / chips / search note / detail label all wired",
@@ -1958,8 +2395,10 @@ check("CIRCULAR_ONLY: only circular lines keep EACH operator's OWN stop name",
       and "stopIdFor(" in circ_java
       and "CircularRoutes.isCircularSequence(raw)" in vm_kt
       and "!circular && JointRoutes.isJointCompany(company)" in vm_kt
-      and "val companyKey = if (circular) e.company" in fmt_kt
-      and "if (circular) CircularRoutes.styleLabel(cardCompany)" in fmt_kt
+      and "fun isCircular(etas: List<EtaItem>): Boolean" in sep_kt
+      and "circularHint && single" in sep_kt
+      and "group.circular" in fmt_kt
+      and "CircularRoutes.styleLabel(cardCompany)" in fmt_kt
       and "circularHint: Boolean = false" in fmt_kt)
 check("CIRCULAR_ONLY: circular rows are NOT collapsed into a joint row",
       "markCircular(" in search_java
