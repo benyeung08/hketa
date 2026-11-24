@@ -69,6 +69,7 @@ jobs:
               'app/src/main/java/hk/eta/app/api/GmbCircularEta.java',
               # RELEASE_NOTES_v1.0.1
               'RELEASE_NOTES_v1.0.1.md',
+               'RELEASE_NOTES_v1.0.2.md',
               'app/src/main/res/xml/file_paths.xml',
               'app/src/main/res/values/strings.xml',
               'app/src/main/res/values/colors.xml',
@@ -86,6 +87,10 @@ jobs:
               'app/src/main/res/drawable/ic_pill_arrow_down.xml',
               'app/src/main/java/hk/eta/app/ui/NearbyRadiusPrefs.kt',
               # ⟳ ETA 自動刷新
+              'app/src/main/java/hk/eta/app/ui/LocationTracker.kt',
+              'app/src/main/java/hk/eta/app/ui/NearbyMoreRoutes.kt',
+              'app/src/main/java/hk/eta/app/ui/SameRouteOperators.kt',
+              'app/src/main/java/hk/eta/app/ui/SearchLocalData.kt',
               'app/src/main/java/hk/eta/app/ui/EtaRefreshPrefs.kt',
               'app/src/main/res/layout/eta_refresh_picker.xml',
               # 懸浮液態玻璃導航欄 + 設定頁免責聲明卡
@@ -226,7 +231,7 @@ jobs:
                 '由完整 zip 覆蓋 MainActivity.kt'),
                ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
                 'permissionHint = findViewById(R.id.permissionHint)',
-                'MainActivity.kt 漏咗 permissionHint 宣告／綁定（Kotlin Unresolved reference，assembleDebug 會失敗）',
+                'MainActivity.kt 漏咗 permissionHint 宣告／綁定（Kotlin Unresolved reference，assembleRelease 會失敗）',
                 '由完整 zip 覆蓋 MainActivity.kt'),
                ('app/src/main/java/hk/eta/app/ui/SearchAdapters.kt',
                 'class SearchHistoryAdapter',
@@ -417,6 +422,56 @@ jobs:
                'hketa-release-apk',
                'build-apk.yml 仍係舊版（正式版 APK 冇上傳成 Actions Artifact）',
                '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              # RELEASE_ONLY_ARTIFACT：Artifacts 區只准出正式版 APK
+              ('.github/workflows/build-apk.yml',
+               'Prepare production APK artifact',
+               'build-apk.yml 仍係舊版（仲會出 hketa-debug-apk／正式版只喺 tag 先出）',
+               '由完整 zip 覆蓋 .github/workflows/build-apk.yml'),
+              # SEARCH_LOCAL_DATA
+              ('app/src/main/java/hk/eta/app/ui/SearchLocalData.kt',
+               'fun signature(info: LocalDataInfo): String',
+               'SearchLocalData.kt 唔見咗或仍係舊版（本地資料未恢復到搜尋功能）',
+               '由完整 zip 覆蓋 SearchLocalData.kt'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'private fun renderLocalDataStatus(): Boolean',
+               'MainActivity.kt 仍係舊版（搜尋頁未顯示／未重新載入本機資料）',
+               '由完整 zip 覆蓋 MainActivity.kt'),
+              # SEARCH_NO_ADVANCED
+              ('app/src/main/res/layout/activity_main.xml',
+               'SEARCH_NO_ADVANCED',
+               'activity_main.xml 仍係舊版（搜尋頁「進階」掣未取消）',
+               '由完整 zip 覆蓋 activity_main.xml'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'SEARCH_NO_ADVANCED: 冇「進階」掣',
+               'MainActivity.kt 仍係舊版（導航欄未移到主搜尋頁／進階模式未取消）',
+               '由完整 zip 覆蓋 MainActivity.kt'),
+              # SEPARATE_OPERATORS
+              ('app/src/main/java/hk/eta/app/ui/SameRouteOperators.kt',
+               'fun partition(etas: List<EtaItem>, circularHint: Boolean)',
+               'SameRouteOperators.kt 唔見咗或仍係舊版（同號唔同營運商未分開顯示）',
+               '由完整 zip 覆蓋 SameRouteOperators.kt'),
+              ('app/src/main/java/hk/eta/app/ui/App1933Format.kt',
+               'SameRouteOperators.partition(list, circularHint)',
+               'App1933Format.kt 仍係舊版（同路線號碼唔同公司仍夾埋一張卡）',
+               '由完整 zip 覆蓋 App1933Format.kt'),
+              # MORE_ROUTES_PER_STOP
+              ('app/src/main/java/hk/eta/app/ui/NearbyMoreRoutes.kt',
+               'fun sortCards(cards: List<RouteCard>)',
+               'NearbyMoreRoutes.kt 唔見咗或仍係舊版（自動定位未顯示同站更多路線）',
+               '由完整 zip 覆蓋 NearbyMoreRoutes.kt'),
+              ('app/src/main/java/hk/eta/app/ui/EtaViewModel.kt',
+               'NearbyMoreRoutes.select(candidates)',
+               'EtaViewModel.kt 仍係舊版（附近路線仍係舊 6 個 StopOption 配額）',
+               '由完整 zip 覆蓋 EtaViewModel.kt'),
+              # LOCATION_AUTO_UPDATE
+              ('app/src/main/java/hk/eta/app/ui/LocationTracker.kt',
+               'fun minDistanceForRadius',
+               'LocationTracker.kt 唔見咗或仍係舊版（前景位置更新未接上）',
+               '由完整 zip 覆蓋 LocationTracker.kt'),
+              ('app/src/main/java/hk/eta/app/ui/MainActivity.kt',
+               'LocationTracker.start(this, selectedRadius())',
+               'MainActivity.kt 仍係舊版（自動定位未加入更新定位位置）',
+               '由完整 zip 覆蓋 MainActivity.kt'),
               ('.github/workflows/build-apk.yml',
                'body_path: RELEASE_BODY.md',
                'build-apk.yml 仍係舊版（Release 說明未對應版本 notes）',
@@ -603,9 +658,16 @@ jobs:
               ('RELEASE_NOTES_v1.0.1.md', '## English',
                'v1.0.1 Release 說明唔見咗或得中文（缺 English 對稱版）',
                '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.1.md'),
-              ('app/build.gradle.kts', 'versionName = "1.0.1"',
-               'build.gradle.kts 未 bump（仍係 1.0.0，打 v1.0.1 tag 會被版本閘門擋低）',
-               '改成 versionCode = 2 / versionName = "1.0.1" 並 push，先可打 tag'),
+              ('app/build.gradle.kts', 'versionName = "1.0.2"',
+               'build.gradle.kts 未 bump（仍係 1.0.1，打 v1.0.2 tag 會被版本閘門擋低）',
+               '改成 versionCode = 3 / versionName = "1.0.2" 並 push，先可打 tag'),
+               # RELEASE_NOTES_v1.0.2：今日（2026-11-24）
+               ('RELEASE_NOTES_v1.0.2.md', '收錄範圍：2026-11-24（今日）',
+                'RELEASE_NOTES_v1.0.2.md 唔見咗或仍係舊版（今日說明未建立）',
+                '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.2.md'),
+               ('RELEASE_NOTES_v1.0.2.md', 'Scope: 2026-11-24 (today)',
+                'RELEASE_NOTES_v1.0.2.md 缺英文版本分界／中英唔對稱',
+                '由完整 zip 覆蓋 RELEASE_NOTES_v1.0.2.md'),
           ]
           for path, needle, msg, fix in drift:
               p = R / path
@@ -776,57 +838,10 @@ jobs:
       # It is NOT a source / upload / signing bug. Retry the whole assemble up
       # to 3 times with a short backoff; give up immediately on any OTHER
       # failure so the real compiler error still reaches the distiller.
-      - name: Assemble debug APK
-        id: assemble_debug
-        run: |
-          set -o pipefail
-          ok=0
-          for attempt in 1 2 3; do
-            echo "::group::gradle assembleDebug (attempt $attempt/3)"
-            : > build-debug.log
-            if gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build-debug.log; then
-              echo "::endgroup::"
-              ok=1
-              break
-            fi
-            echo "::endgroup::"
-            if grep -qE '429|Too Many Requests|Could not GET|Could not resolve|Read timed out|Connection reset|Received status code 5[0-9][0-9]' build-debug.log; then
-              if [ "$attempt" -lt 3 ]; then
-                delay=$((attempt * 30))
-                echo "::warning::Maven Central 429 / 5xx / timeout（共享 IP 限流），${delay}s 後自動重試（$attempt/3）"
-                sleep "$delay"
-                continue
-              fi
-              echo "::error::連續 3 次都係依賴下載限流；唔係 code 錯。請等幾分鐘再 Re-run jobs，唔使改任何檔"
-            else
-              echo "::error::Gradle 失敗唔係依賴下載問題，唔重試，交畀下一個 step 顯示真正錯誤"
-              break
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then exit 1; fi
-
-      - name: Show real Gradle error
-        if: failure() && steps.assemble_debug.outcome == 'failure'
-        run: python3 scripts/show_build_error.py build-debug.log
-
-      - name: Upload full Gradle error log
-        if: failure() && steps.assemble_debug.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: hketa-gradle-logs
-          path: build-debug.log
-          if-no-files-found: warn
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: hketa-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
+      # RELEASE_ONLY_ARTIFACT: 所有 push（main 或 tag）都組裝已簽名正式版；
+      # 唔再組裝／上傳 debug APK。Artifacts 區從此只有 hketa-release-apk。
       - name: Assemble signed release APK
         id: assemble_release
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -o pipefail
           ok=0
@@ -853,6 +868,17 @@ jobs:
             fi
           done
           if [ "$ok" -ne 1 ]; then exit 1; fi
+
+      # RELEASE_ONLY_ARTIFACT: 穩定名 hketa-release.apk 畀 Actions Artifact；
+      # tag build 額外複製一份帶版本名，畀 Release asset / version gate 用。
+      - name: Prepare production APK artifact
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          cp "$APK" hketa-release.apk
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            cp "$APK" "hketa-${GITHUB_REF_NAME}-release.apk"
+          fi
+          ls -l hketa-release.apk
 
       - name: Show real Gradle error (release)
         if: failure() && steps.assemble_release.outcome == 'failure'
@@ -892,8 +918,8 @@ jobs:
           # RELEASE_VERSION_GATE: one single, explicitly "release" named APK
           # asset. The in-app updater takes the FIRST .apk asset of the latest
           # Release, so there must be exactly one and it must be the signed
-          # production build (never the debug APK).
-          cp "$APK" "hketa-${GITHUB_REF_NAME}-release.apk"
+          # production build. The versioned copy now comes from the
+          # "Prepare production APK artifact" step (RELEASE_ONLY_ARTIFACT).
 
       # RELEASE_VERSION_GATE — 對應版本三重校驗 --------------------------------
       # tag (v1.0.0) == build.gradle.kts versionName == ACTUAL APK badging.
@@ -949,12 +975,12 @@ jobs:
             echo "No RELEASE_NOTES_${TAG}.md; using the short version-matched body."
           fi
 
+      # RELEASE_ONLY_ARTIFACT: 唯一嘅 APK Artifact；main push 都有得下載。
       - name: Upload signed release APK artifact
-        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: hketa-release-apk
-          path: hketa-${{ github.ref_name }}-release.apk
+          path: hketa-release.apk
           if-no-files-found: error
 
       # 只附一個 .apk（正式版），其餘兩個係文字清單。
