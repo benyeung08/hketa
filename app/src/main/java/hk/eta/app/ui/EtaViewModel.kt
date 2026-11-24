@@ -361,6 +361,11 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         startAutoRefresh()
         viewModelScope.launch {
             try {
+                // KOTLIN_APP_SCOPE: `app` 係主建構函數參數（無 val），唔係類別成員，
+                // 喺成員函數入面唔可見；必須同 refreshNearbyCards() 一樣喺區塊內
+                // 明確攞一次 Application，否則 compileReleaseKotlin 報
+                // "Unresolved reference: app"。
+                val app = getApplication<Application>()
                 val fix = LocationHelper.current(getApplication<Application>())
                 // MORE_ROUTES_PER_STOP: 攞多啲候選，再按「實體站名」保留最近
                 // 6 個站嘅全部公司別名（KMB／CTB 同站唔再被 6 個配額 cut 走）。
