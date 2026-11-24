@@ -614,6 +614,31 @@
                 android:textColorHint="@color/search_hint"
                 android:textSize="19sp" />
 
+            <!--
+              SEARCH_LOCAL_DATA: 恢復本地資料喺搜尋功能上 —— 顯示本機線路資料
+              狀態（來源／筆數／有冇快照），並如實標示預載列係「本機資料」
+              定「即時 API」。撳一下去「應用程式設置 → 線路資料更新」。
+              顏色全部用既有 search 色盤，冇新增任何色值。
+            -->
+            <TextView
+                android:id="@+id/tvLocalDataStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@color/search_field_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:paddingStart="14dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="10dp"
+                android:text="@string/search_local_never"
+                android:textColor="@color/search_green"
+                android:textSize="13sp" />
+
             <!-- 即時結果：輸入非空時顯示（精確／前綴符合，最多 4 條） -->
             <LinearLayout
                 android:id="@+id/searchResultsView"
@@ -754,20 +779,14 @@
                     android:visibility="gone" />
             </LinearLayout>
 
-            <!-- 進階：保留原有 8 模式／站號／方向／篩選 -->
-            <TextView
-                android:id="@+id/btnAdvanced"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:background="@color/search_field_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="@string/search_advanced"
-                android:textColor="@color/search_green"
-                android:textSize="14sp" />
-
-            <!-- 站序模式：保留原有 8 模式／站號／方向／篩選全部功能 -->
+            <!--
+              SEARCH_NO_ADVANCED: 「進階：站序／方向／篩選 ›」掣已取消。
+              底部懸浮液態玻璃導航欄由原本只喺進階模式出現，改為常駐喺
+              主搜尋頁（見 MainActivity.hideChrome / showSearchHome）。
+              以下 8 模式／站序區塊永久隱藏：保留 View 只為既有資料層
+              綁定相容（routeEdit / companySpinner / stopsRecycler 等），
+              用戶冇任何入口切去，亦唔會再顯示。
+            -->
             <LinearLayout
                 android:id="@+id/stopSequenceView"
                 android:layout_width="match_parent"
@@ -775,16 +794,6 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:visibility="gone">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnBackToSearch"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="38dp"
-                    android:layout_marginStart="12dp"
-                    android:layout_marginEnd="12dp"
-                    android:text="@string/back_to_search"
-                    android:textSize="12sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
