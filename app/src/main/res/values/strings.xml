@@ -120,10 +120,18 @@
     <string name="location_permission_denied">未授予定位權限，附近路線已暫停 · 按此到系統設定開啟</string>
     <string name="location_waiting">正在等待定位權限…授予後會自動載入附近路線。</string>
     <string name="location_auto">已取得定位權限 · 自動載入附近路線</string>
+    <!-- LOCATION_AUTO_UPDATE：前景位置更新狀態後綴（唔係按鈕、唔係重新定位掣） -->
+    <string name="location_tracking_on"> · 📍 位置自動更新</string>
     <string name="search_title">路線搜尋</string>
     <string name="search_title_bar">搜尋</string>
     <string name="search_input_hint">輸入路線號碼</string>
     <string name="search_empty">已預先載入官方路線目錄 · 輸入路線號碼可即時篩選</string>
+    <!-- SEARCH_LOCAL_DATA：恢復本地資料喺搜尋功能上 -->
+    <string name="search_local_never">本機資料：尚未建立快照 · 點按到設定更新</string>
+    <string name="search_local_ok">本機資料：%1$d/%2$d 個來源成功 · 共 %3$d 筆 · 點按更新</string>
+    <string name="search_local_source_local">本機資料</string>
+    <string name="search_local_source_live">即時 API</string>
+    <string name="search_local_source_prefix">來源：</string>
     <string name="search_preload_empty">正在預先載入官方路線目錄；若一直空白，請到「應用程式設置 → 線路資料更新」按立即更新。</string>
     <string name="search_no_result">找不到路線「%1$s」。可試其他號碼，或到設定更新線路資料。</string>
     <string name="back_to_search">← 返回路線搜尋</string>
@@ -200,6 +208,8 @@
     <string name="eta_refresh_settings_off">已關閉</string>
     <string name="eta_refresh_auto_tag">· 自動更新</string>
     <string name="eta_refresh_nearby_tag">· 附近路線已自動更新</string>
+    <!-- MORE_ROUTES_PER_STOP：自動定位同站路線全收錄 -->
+    <string name="nearby_more_routes_tag"> · 同站路線全部顯示 · 每條未來三班次</string>
     <string-array name="eta_refresh_interval_labels">
         <item>15 秒</item>
         <item>30 秒</item>
@@ -268,7 +278,6 @@
     <string name="search_history_empty">沒有搜尋紀錄，以下為官方目錄預載</string>
     <string name="search_preload_hint">官方目錄預載 · 點列開路線詳情</string>
     <string name="search_clear">清除</string>
-    <string name="search_advanced">進階：站序／方向／篩選 ›</string>
     <string name="search_back">← 返回路線搜尋</string>
     <string name="search_no_api">此類別暫無同類公開實時 ETA API，未納入（唔捏造班次）</string>
     <string name="search_rail_hint">港鐵：重鐵／輕鐵／港鐵接駁巴士目錄</string>
