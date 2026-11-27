@@ -7,12 +7,13 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.GovServiceHours
 import hk.eta.app.api.RouteSearch
 
 // JOINT_KMB_CTB: one central label so card meta, search rows and the detail
 // screen all show the SAME "城巴/九巴" for a jointly-operated route.
-private fun cardOperatorLabel(company: String): String =
-    App1933Format.companyLabel(company)
+private fun cardOperatorLabel(company: String, route: String): String =
+    App1933Format.companyLabel(company, route)
 
 /** APP1933 home page: one row per route+stop, up to three arrivals. */
 class RouteCardAdapter(
@@ -44,8 +45,9 @@ class RouteCardAdapter(
         } else {
             ""
         }
-        holder.meta.text = cardOperatorLabel(card.company) + style +
+        val meta = cardOperatorLabel(card.company, card.route) + style +
             if (card.distanceNote.isEmpty()) "" else " · " + card.distanceNote
+        holder.meta.text = meta.removePrefix(" · ")
 
         val chips = arrayOf(holder.trip1, holder.trip2, holder.trip3)
         for (i in chips.indices) {
@@ -55,7 +57,7 @@ class RouteCardAdapter(
                 val base = if (numeric) t.label + " 分鐘" else t.label
                 var text = if (t.tag.isEmpty()) base else base + " · " + t.tag
                 // JOINT_KMB_CTB: "該班次：城巴" / "該班次：九巴" on joint routes.
-                val tripOp = App1933Format.tripOperatorText(t)
+                val tripOp = App1933Format.tripOperatorText(t, card.route)
                 if (tripOp.isNotEmpty()) {
                     text = text + " · " + tripOp
                 }
@@ -169,7 +171,7 @@ class RouteResultAdapter(
         // JOINT_KMB_CTB: the joint label must never disappear even if the
         // catalogue row has no attribution note of its own.
         val note = if (item.joint && item.note.isEmpty()) {
-            JointRoutes.JOINT_LABEL
+            GovServiceHours.Brand.jointLabel(item.route)
         } else {
             item.note
         }

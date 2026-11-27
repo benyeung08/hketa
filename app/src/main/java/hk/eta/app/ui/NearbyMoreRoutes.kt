@@ -11,9 +11,11 @@ import hk.eta.app.api.EtaModels.StopOption
  * 直接被 cut 走，望落「同一站得幾條路線」。
  *
  * 呢個純 Kotlin 層（無 Android／無網絡／可離線測）做三件事：
- *  1. 由較多候選（[CANDIDATE_LIMIT]）入面，按**實體站名**分組，保留最近
- *     [ENTITY_LIMIT] 個實體站嘅**全部**公司別名，唔再被單一配額截斷；
- *  2. 用 [MAX_QUERIES] 閘住並行 ETA 查詢數，避免官方 429；
+ *  1. ALL_ROUTES: [CANDIDATE_LIMIT]／[ENTITY_LIMIT]／[MAX_QUERIES] 全部設為
+ *     `Int.MAX_VALUE` —— 半徑內**所有**站點、**所有**實體站、**所有**公司
+ *     別名都保留，唔再有任何 24／6／12 配額截斷；
+ *  2. [ETA_BATCH_SIZE] 將全部 ETA 查詢**分批**執行（每批最多 12 個並行），
+ *     [BATCH_DELAY_MS] 喺批次之間讓一讓，避免一次過幾百個請求撞官方 429；
  *  3. [sortCards] 按 (距離 rank, 路線號, 營運商, 目的地) 排，同一站嘅路線排埋一齊、同號唔同公司相鄰，
  *     `App1933Format.cardsFrom()` 本來就唔 truncate 路線，全部如實出卡。
  *
@@ -23,14 +25,20 @@ import hk.eta.app.api.EtaModels.StopOption
  */
 object NearbyMoreRoutes {
 
-    /** 向 GeoStops 攞多啲候選，畀分組邏輯有得揀（唔係最終顯示數）。 */
-    const val CANDIDATE_LIMIT = 24
+    /** ALL_ROUTES: 半徑內全部候選站，唔再只攞 24 個。 */
+    const val CANDIDATE_LIMIT = Int.MAX_VALUE
 
-    /** 最近幾個「實體站」；每個站嘅全部公司別名都保留。 */
-    const val ENTITY_LIMIT = 6
+    /** ALL_ROUTES: 全部實體站，唔再只留最近 6 個。 */
+    const val ENTITY_LIMIT = Int.MAX_VALUE
 
-    /** 最多並行查幾多條 `stopEta`，慳住官方 API 速率限制。 */
-    const val MAX_QUERIES = 12
+    /** ALL_ROUTES: 全部站點別名都要查 ETA，唔再 cut 喺 12 個。 */
+    const val MAX_QUERIES = Int.MAX_VALUE
+
+    /** 每批最多幾個並行 `stopEta` 查詢，慳住官方 API 速率限制。 */
+    const val ETA_BATCH_SIZE = 12
+
+    /** 批次之間讓一讓（毫秒），減低連續打官方 API 撞 429 嘅機會。 */
+    const val BATCH_DELAY_MS = 120L
 
     /**
      * 同 `EtaViewModel.fetchCards()` 嘅合併 bucket 用同一條規則：
@@ -44,8 +52,9 @@ object NearbyMoreRoutes {
 
     /**
      * candidates 必須係 GeoStops 已按距離排好序嘅結果。
-     * 遇到第 7 個新實體站就停；已收錄嘅實體站，其餘公司別名照收，
-     * 直到 [MAX_QUERIES] 為止。回傳順序 = 距離序，`safeEta` 嘅 rank 唔變。
+     * ALL_ROUTES: [ENTITY_LIMIT]／[MAX_QUERIES] 係 `Int.MAX_VALUE`，所以
+     * **所有**候選站、所有實體站、所有公司別名都照收，回傳順序 = 距離序，
+     * `safeEta` 嘅 rank 唔變。保留原本兩個 break 令日後改返限量唔使改結構。
      */
     fun select(candidates: List<StopOption>): List<StopOption> {
         val out = ArrayList<StopOption>()
@@ -61,6 +70,14 @@ object NearbyMoreRoutes {
         }
         return out
     }
+
+    /**
+     * ALL_ROUTES: 將全部站點別名切成每批 [ETA_BATCH_SIZE] 個，等
+     * `fetchCards()` 逐批 `awaitAll()`，唔會一次過開幾百個 coroutine。
+     * 純函式、保留距離順序，可離線測。
+     */
+    fun batches(stops: List<IndexedValue<StopOption>>): List<List<IndexedValue<StopOption>>> =
+        stops.chunked(ETA_BATCH_SIZE)
 
     /** 畀狀態列如實報告「幾個站」，而唔係「幾個 StopOption」。 */
     fun entityCount(stops: List<StopOption>): Int =

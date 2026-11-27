@@ -13,7 +13,6 @@ import hk.eta.app.api.AppUpdate
 import hk.eta.app.api.CircularRoutes
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
-import hk.eta.app.api.RouteDataStore
 import hk.eta.app.api.RouteSearch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -35,6 +34,8 @@ data class UiState(
     // APP1933 home cards. When empty, MainActivity derives cards from `etas`.
     val cards: List<RouteCard> = emptyList(),
     val activeBound: String = "",     // "" = all directions
+    /** DIRECTION_TITLE_SYNC: 切換方向後嘅官方目的地，紅頂標題跟住轉。 */
+    val activeDest: String = "",
     val searchQuery: String = "",     // stop-list filter
     // APP1933 route-search screen (red bar + route/destination rows + keypad)
     val searchResults: List<RouteSearch.Result> = emptyList(),
@@ -82,17 +83,17 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Silent catalogue refresh according to the Settings screen preferences. */
+    /**
+     * LAUNCH_CATALOGUE_REFRESH: 開 App 更新一次由 `HkEtaApp.onCreate` 負責。
+     * 呢度共用同一個 process gate 做安全後備，**唔再**用 `RouteDataPrefs.isDue`
+     * 嘅每日／每 3 日／每星期節流 —— 用戶要求每次開 App 都更新一次。
+     * 兩個入口都經 `CatalogueRefreshRunner.runOnce`，`claimOnce()` 保證唔會
+     * 同時下載兩次；`RouteDataStore` 本身亦有 `BUSY` 原子閘雙重保險。
+     */
     private fun maybeAutoUpdateCatalogue() {
-        val app = getApplication<Application>()
         viewModelScope.launch {
             try {
-                if (RouteDataPrefs.isDue(app) && RouteDataPrefs.updateAllowed(app)) {
-                    val report = withContext(Dispatchers.IO) { RouteDataStore.refresh(false) }
-                    if (!report.busy && !report.skipped && report.okCount > 0) {
-                        RouteDataPrefs.markChecked(app)
-                    }
-                }
+                CatalogueRefreshRunner.runOnce(getApplication<Application>())
             } catch (e: Exception) {
                 // Silent: a failed background update must never disturb ETA queries.
             }
@@ -227,6 +228,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 etas = emptyList(),
                 cards = emptyList(),
                 activeBound = if (onlyBound == EtaRepository.NEARBY) "" else onlyBound,
+                activeDest = "",
                 searchQuery = "",
                 selection = null
             )
@@ -249,6 +251,7 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     jobs.awaitAll().flatten().sortedWith(
                         compareBy<StopOption>({ it.company }, { it.bound }, { it.seq })
+                            .thenBy { it.serviceType }
                     )
                 }
                 // CIRCULAR_ONLY: ONLY a circular line keeps EACH operator's
@@ -284,7 +287,10 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                         message = if (result.isEmpty()) {
                             "找不到資料。巴士請填路線號；港鐵重鐵填線路代碼（TML／ISL…）；輕鐵可留空顯示全部站；港鐵巴士填 K12／506 等。"
                         } else {
-                            "找到 ${result.size} 個車站／月台，點選查看實時到站時間。"
+                            // API_AUDIT_A4: 特別班次站序而家會載入，如實講清楚，唔再靜靜漏資料。
+                            val special = result.count { it.serviceType > 1 }
+                            val suffix = if (special > 0) "（含 $special 個特別班次站序）" else ""
+                            "找到 ${result.size} 個車站／月台$suffix，點選查看實時到站時間。"
                         },
                         stopAudit = audit
                     )
@@ -367,9 +373,9 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
                 // "Unresolved reference: app"。
                 val app = getApplication<Application>()
                 val fix = LocationHelper.current(getApplication<Application>())
-                // MORE_ROUTES_PER_STOP: 攞多啲候選，再按「實體站名」保留最近
-                // 6 個站嘅全部公司別名（KMB／CTB 同站唔再被 6 個配額 cut 走）。
-                // 資料層一個都冇改，只係改咗 limit 參數 + 純 Kotlin 選擇層。
+                // ALL_ROUTES: 半徑內**全部**站點候選（CANDIDATE_LIMIT =
+                // MAX_VALUE），再交近 NearbyMoreRoutes.select() 保留全部實體站
+                // 同全部公司別名；資料層一個都冇改，只係改咗 limit 參數。
                 val candidates = withContext(Dispatchers.IO) {
                     repo.nearbyStops(fix.lat, fix.lng, radiusMeters,
                         NearbyMoreRoutes.CANDIDATE_LIMIT)
@@ -449,7 +455,19 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         val current = _state.value?.activeBound ?: ""
         val index = bounds.indexOf(current)
         val next = bounds[(index + 1 + bounds.size) % bounds.size]
-        patch { copy(activeBound = next, message = "已切換方向：$next") }
+        // DIRECTION_TITLE_SYNC: 官方目錄 dest_tc 優先；冇方向級目的地嘅公司
+        // 就用官方站序終點站名降級。兩者都係官方資料，唔捏造。
+        val st = _state.value
+        val official = RouteSearch.destFor(
+            st?.company ?: "", st?.route ?: "", next
+        )
+        val nextDest = official.ifEmpty {
+            App1933Format.destinationForBound(stops, next)
+        }
+        patch {
+            copy(activeBound = next, activeDest = nextDest,
+                    message = "已切換方向：$next")
+        }
     }
 
     /** Live filter of the route stop sequence (no API call). */
@@ -560,9 +578,19 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
     /** Shared by the initial nearby load and every automatic ETA refresh. */
     private suspend fun fetchCards(stops: List<StopOption>): List<RouteCard> =
         coroutineScope {
-            val pairs = stops.take(NearbyMoreRoutes.MAX_QUERIES).mapIndexed { index, s ->
-                safeEta(s, index) { repo.etaFor(s) }
-            }.awaitAll()
+            // ALL_ROUTES: 全部站點別名都要查，唔再 take(12)。切成每批
+            // ETA_BATCH_SIZE 個逐批 awaitAll()，批次之間讓一讓，避免一次過
+            // 幾百個並行請求撞官方 429；rank 用原本嘅距離序，唔變。
+            val indexed = stops.withIndex().toList()
+            val pairs = ArrayList<Triple<StopOption, List<EtaItem>, Int>>(indexed.size)
+            for (batch in NearbyMoreRoutes.batches(indexed)) {
+                pairs.addAll(batch.map { (rank, s) ->
+                    safeEta(s, rank) { repo.etaFor(s) }
+                }.awaitAll())
+                if (NearbyMoreRoutes.BATCH_DELAY_MS > 0L) {
+                    delay(NearbyMoreRoutes.BATCH_DELAY_MS)
+                }
+            }
             // JOINT_KMB_CTB_MERGE: GeoStops 對同一個實體附近站會各出一個
             // KMB / CTB StopOption（站號命名空間唔同）。先按中文站名併埋
             // 兩份 ETA 再一次過交畀 cardsFrom，主頁卡片先至會顯示

@@ -9,18 +9,12 @@ import hk.eta.app.R
 import hk.eta.app.api.EtaModels.EtaItem
 import hk.eta.app.api.EtaModels.StopOption
 import hk.eta.app.api.EtaRepository
+import hk.eta.app.api.GovServiceHours
 import hk.eta.app.api.TimeUtils
 
-private fun operatorLabel(company: String): String = when (company) {
-    EtaRepository.KMB -> "九巴 / 龍運"
-    EtaRepository.CTB -> "城巴"
-    EtaRepository.NLB -> "嶼巴"
-    EtaRepository.GMB -> "綠色小巴"
-    EtaRepository.MTR -> "港鐵重鐵"
-    EtaRepository.LRT -> "輕鐵"
-    EtaRepository.MTRB -> "港鐵接駁巴士"
-    else -> company
-}
+/** KMB_LWB_SPLIT: 站序／ETA 列嘅公司名都按路線歸屬分開。 */
+private fun operatorLabel(company: String, route: String): String =
+    GovServiceHours.Brand.label(company, route)
 
 private fun operatorColor(company: String): Int = when (company) {
     EtaRepository.KMB -> R.color.kmb
@@ -68,7 +62,9 @@ class StopAdapter(private val onClick: (StopOption) -> Unit) :
         }
         // APP1933 puts the stop id in brackets after the Chinese stop name.
         holder.name.text = App1933Format.stopLabel(stop.stopName, stop.stopId)
-        val bits = mutableListOf(operatorLabel(stop.company))
+        val bits = mutableListOf<String>()
+        operatorLabel(stop.company, stop.route).takeIf { it.isNotEmpty() }
+            ?.let { bits.add(it) }
         if (stop.bound != EtaRepository.NEARBY) {
             bits.add(directionLabel(stop.bound))
         }
@@ -114,7 +110,7 @@ class EtaAdapter : RecyclerView.Adapter<EtaAdapter.VH>() {
             else -> TimeUtils.hhmm(eta.etaMillis)
         }
 
-        holder.company.text = operatorLabel(eta.company)
+        holder.company.text = operatorLabel(eta.company, eta.route)
         holder.company.setTextColor(holder.company.context.getColor(operatorColor(eta.company)))
         holder.time.text = TimeUtils.hhmm(eta.etaMillis) + " HKT"
 

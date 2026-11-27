@@ -24,16 +24,17 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
-import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.GovServiceHours
 import hk.eta.app.api.RouteDataStore
 import hk.eta.app.api.TimeUtils
 
 /**
  * SEARCH_UI_2026-11-23 — 搜尋分頁對照截圖：8 個交通類別 tab、營運商 chips、
- * 綠框「路線號碼」、我的書籤／搜尋紀錄。顏色全部由既有 @color/search_*
+ * 綠框「路線號碼」、搜尋紀錄（SEARCH_NO_BOOKMARK：我的書籤已取消）。
+ * 顏色全部由既有 @color/search_*
  * 同既有 drawable 決定，**呢輪冇新增／冇改任何色值**，亦唔跟隨系統深／淺色。
  * 底層 8 種查詢模式、官方目錄預載、點列開無地圖詳情頁、站序／方向／篩選
- * 全部保留；其餘分頁（主頁／收藏／設置）維持原本跟隨系統外觀。
+ * 全部保留；其餘版面（主頁／收藏頁／設置）維持原本跟隨系統外觀。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -50,7 +51,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvFavEmpty: View
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var tabHome: TextView
-    private lateinit var tabFav: TextView
     private lateinit var tabSearch: TextView
     private lateinit var tabMore: TextView
     private lateinit var pageHome: View
@@ -64,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchHomeView: View
     private lateinit var stopSequenceView: View
     private lateinit var searchEmpty: TextView
-    private lateinit var tvBookmarkEmpty: TextView
     private lateinit var tvHistoryEmpty: TextView
     private lateinit var tvPreloadHint: View
     private lateinit var tvCategoryNotice: TextView
@@ -86,7 +85,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoriteAdapter: FavoriteAdapter
     private lateinit var searchAdapter: SearchHistoryAdapter
     private lateinit var historyAdapter: SearchHistoryAdapter
-    private lateinit var bookmarkAdapter: BookmarkAdapter
 
     private var currentTab = 0
     // SEARCH_LOCAL_DATA: 上一級本機資料指紋；由設定頁更新／清除返嚟要比對。
@@ -143,7 +141,6 @@ class MainActivity : AppCompatActivity() {
         tvFavEmpty = findViewById(R.id.tvFavEmpty)
         swipe = findViewById(R.id.swipe)
         tabHome = findViewById(R.id.tabHome)
-        tabFav = findViewById(R.id.tabFav)
         tabSearch = findViewById(R.id.tabSearch)
         tabMore = findViewById(R.id.tabMore)
         pageHome = findViewById(R.id.pageHome)
@@ -157,7 +154,6 @@ class MainActivity : AppCompatActivity() {
         searchHomeView = findViewById(R.id.searchHomeView)
         stopSequenceView = findViewById(R.id.stopSequenceView)
         searchEmpty = findViewById(R.id.searchEmpty)
-        tvBookmarkEmpty = findViewById(R.id.tvBookmarkEmpty)
         tvHistoryEmpty = findViewById(R.id.tvHistoryEmpty)
         tvPreloadHint = findViewById(R.id.tvPreloadHint)
         tvCategoryNotice = findViewById(R.id.tvCategoryNotice)
@@ -214,8 +210,8 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "已移除收藏", Toast.LENGTH_SHORT).show()
             }
         )
-        // 即時結果／搜尋紀錄／我的書籤全部重用截圖式紀錄列；
-        // 顏色由 item_route_result.xml / item_bookmark.xml 固定，程式唔改色值。
+        // 即時結果／搜尋紀錄重用截圖式紀錄列；顏色由 item_route_result.xml
+        // 固定，程式唔改色值。SEARCH_NO_BOOKMARK：書籤列已取消。
         searchAdapter = SearchHistoryAdapter(
             onClick = { item -> openHistoryItem(item) },
             onRemove = { _ -> Unit }
@@ -227,11 +223,6 @@ class MainActivity : AppCompatActivity() {
                 refreshHistory()
             }
         )
-        bookmarkAdapter = BookmarkAdapter { key ->
-            vm.loadFavorite(key)
-            selectTab(0)
-        }
-
         findViewById<RecyclerView>(R.id.homeRecycler).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = cardAdapter
@@ -251,10 +242,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.historyRecycler).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = historyAdapter
-        }
-        findViewById<RecyclerView>(R.id.bookmarkRecycler).apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = bookmarkAdapter
         }
 
         swipe.setColorSchemeResources(R.color.brand, R.color.accent)
@@ -280,15 +267,6 @@ class MainActivity : AppCompatActivity() {
         tvLocalDataStatus.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
-        findViewById<View>(R.id.btnFavAdd).setOnClickListener {
-            val key = vm.addCurrentFavorite()
-            Toast.makeText(
-                this,
-                if (key == null) "請先點選車站或路線卡片" else "已加入收藏",
-                Toast.LENGTH_SHORT
-            ).show()
-            favoriteAdapter.submit(vm.favorites())
-        }
         findViewById<View>(R.id.btnFavList).setOnClickListener { selectTab(1) }
         // SEARCH_NO_ADVANCED: 冇「進階」掣、冇「返回搜尋」掣，
         // 8 模式／站序區塊永久隱藏；分類 tab 同 chips 照舊綁定。
@@ -312,7 +290,6 @@ class MainActivity : AppCompatActivity() {
         })
 
         tabHome.setOnClickListener { selectTab(0) }
-        tabFav.setOnClickListener { selectTab(1) }
         tabSearch.setOnClickListener { selectTab(2) }
         tabMore.setOnClickListener { selectTab(3) }
 
@@ -324,6 +301,15 @@ class MainActivity : AppCompatActivity() {
         // 未切去搜尋分頁已經開始背景下載，撳入去即刻見到「12 往 海麗邨 ›」
         // 呢類列，唔係空白頁。
         vm.searchRoutes("")
+        // LAUNCH_CATALOGUE_REFRESH: 開 App 嘅背景更新完成後，本機快照指紋會變，
+        // 即刻重新預載 + 重刷本機資料狀態列，唔使等下一次 onResume 或用戶再撳。
+        // LiveData observe(this) 會喺 DESTROY 自動移除，唔會洩漏 Activity。
+        CatalogueRefreshNotifier.completed.observe(this) {
+            if (renderLocalDataStatus()) {
+                vm.searchRoutes(routeInput.text?.toString() ?: "")
+                refreshHistory()
+            }
+        }
         // 懸浮液態玻璃：外觀跟隨系統深色／高對比／減少動態效果
         NavGlass.apply(this, bottomTabs)
         // 唔使撳掣：已有權限就自動定位；未有就先彈系統權限對話框，
@@ -367,6 +353,8 @@ class MainActivity : AppCompatActivity() {
         // 唔做背景靜默定位／輪詢：離開 App 即刻移除 LocationListener，
         // 返嚟 onResume 先重新註冊（LOCATION_AUTO_UPDATE 前景 only）。
         stopLocationUpdates()
+        // NAV_LIQUID：前景 only，離場即刻停流動高光；onResume 會重新 apply()
+        NavGlass.stopLiquid()
         vm.onBackground()
         super.onPause()
     }
@@ -456,7 +444,12 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val note = when (index) {
-            3 -> getString(R.string.search_lwb_hint)
+            2 -> if (GovServiceHours.Brand.hasData())
+                getString(R.string.search_kmb_hint)
+            else getString(R.string.search_brand_unknown)
+            3 -> if (GovServiceHours.Brand.hasData())
+                getString(R.string.search_lwb_hint)
+            else getString(R.string.search_brand_unknown)
             5 -> getString(R.string.search_no_api)
             else -> ""
         }
@@ -465,20 +458,16 @@ class MainActivity : AppCompatActivity() {
         renderSearch()
     }
 
-    /** 類別／chip 過濾只揀官方目錄已有嘅公司；冇 API 嘅類別如實留空。 */
-    private fun matchesCategory(company: String): Boolean = when (searchCategory) {
-        0 -> company == EtaRepository.MTR || company == EtaRepository.LRT ||
-            company == EtaRepository.MTRB
-        1 -> when (busChip) {
-            0 -> true
-            1 -> company == EtaRepository.CTB || company == JointRoutes.JOINT
-            2, 3 -> company == EtaRepository.KMB || company == JointRoutes.JOINT
-            4 -> company == EtaRepository.NLB
-            else -> false   // 愉景灣／馬灣巴士：官方冇同類實時 ETA API
-        }
-        2 -> company == EtaRepository.GMB
-        else -> false
-    }
+    /**
+     * HKE_MOBILITY_CATEGORIES: 還原香港出行易式分類 —— 每個類別／巴士公司
+     * 按鈕只顯示屬於佢嘅官方目錄列。舊版「所有巴士類別」直接 `true`，連小巴
+     * 同港鐵／輕鐵都撈埋入巴士頁；而家交畀純 Kotlin 決策層統一判定，
+     * 聯營 JOINT 同時喺城巴／九巴兩個按鈕出現，其餘一律唔交叉。
+     */
+    private fun matchesCategory(company: String, route: String): Boolean =
+        SearchCategoryRules.belongs(
+            company, searchCategory, busChip, GovServiceHours.Brand.brand(route)
+        )
 
     /** 點任何一列：記入搜尋紀錄，再帶方向開同一個「路線詳情（無地圖）」。 */
     private fun openHistoryItem(item: SearchHistoryItem) {
@@ -498,7 +487,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderSearch() {
         val state = vm.state.value ?: return
         val rows = state.searchResults
-            .filter { matchesCategory(it.company) }
+            .filter { matchesCategory(it.company, it.route) }
             .map { it.toHistoryItem(removable = false, preloaded = false) }
         if (!routeInput.text.isNullOrBlank()) {
             searchHomeView.visibility = View.GONE
@@ -509,15 +498,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             searchResultsView.visibility = View.GONE
             searchHomeView.visibility = View.VISIBLE
-            refreshBookmarks()
             refreshHistory(rows)
         }
-    }
-
-    private fun refreshBookmarks() {
-        val favs = vm.favorites()
-        bookmarkAdapter.submit(favs)
-        tvBookmarkEmpty.visibility = if (favs.isEmpty()) View.VISIBLE else View.GONE
     }
 
     /** 有歷史就顯示歷史；冇就顯示官方目錄預載（標明「目錄預載」、唔俾刪除）。 */
@@ -529,10 +511,15 @@ class MainActivity : AppCompatActivity() {
             tvPreloadHint.visibility = View.GONE
         } else {
             val rows = preloaded ?: (vm.state.value?.searchResults ?: emptyList())
-                .filter { matchesCategory(it.company) }
+                .filter { matchesCategory(it.company, it.route) }
                 .map { it.toHistoryItem(removable = false, preloaded = false) }
+            // ALL_ROUTES: 唔再硬 take(6)、唔再每公司 3 列配額 —— 共用
+            // `capPerCompany` 喺無上限模式直接返回**全部**官方目錄列，
+            // 港鐵 tab 同時見到全部重鐵／輕鐵／接駁巴士，巴士公司按鈕
+            // 亦各自顯示所屬公司嘅全部路線。RecyclerView 懶渲染頂得住。
+            val shown = SearchCategoryRules.capPerCompany(rows) { it.company }
             historyAdapter.submit(
-                rows.take(6).map { it.copy(removable = false, preloaded = true) }
+                shown.map { it.copy(removable = false, preloaded = true) }
             )
             tvHistoryEmpty.visibility = View.VISIBLE
             tvPreloadHint.visibility = View.VISIBLE
@@ -542,7 +529,8 @@ class MainActivity : AppCompatActivity() {
     /**
      * SEARCH_LOCAL_DATA — 恢復本地資料喺搜尋功能上。
      *
-     * 讀 `RouteDataStore.meta()` ＋實際存在嘅 10 份快照檔，顯示「本機資料：
+     * 讀 `RouteDataStore.meta()` ＋實際存在嘅 11 份快照檔（10 份目錄 ＋
+     * 政府班次資料快取目錄），顯示「本機資料：
      * N/M 個來源 · 共 K 筆」，並把預載提示如實標成「本機資料」／「即時 API」。
      * 回傳指紋有冇變：由設定頁更新／清除返嚟就要重新 `searchRoutes()`，
      * 否則新快照要等用戶再撳過先會生效。
@@ -557,8 +545,12 @@ class MainActivity : AppCompatActivity() {
             RouteDataStore.MTR_LINES, RouteDataStore.LRT_STOPS,
             RouteDataStore.MTR_BUS_STOPS
         ).count { RouteDataStore.readText(it) != null }
+        // GOV_IN_ROUTE_UPDATE: 政府班次資料快取都計入指紋，更新／清除即刻重載。
+        val govFiles = RouteDataStore.serviceHoursDir()?.listFiles()?.size ?: 0
+        // report.records 已經計埋政府來源，唔好重複加；govFiles 只入指紋。
         val info = LocalDataInfo(
-            report.okCount, report.total, report.records, report.updatedAt, files
+            report.okCount, report.total, report.records,
+            report.updatedAt, files + govFiles
         )
         val sig = SearchLocalData.signature(info)
         val changed = SearchLocalData.shouldReload(lastLocalSignature, sig)
@@ -622,14 +614,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // NAV_NO_FAV_TAB: 導航欄三分頁；pageFav 仍喺 index 1，
+    // 由設定頁「★ 我的收藏」掣 selectTab(1) 開，唔再喺導航欄佔一粒。
     private fun selectTab(index: Int) {
         currentTab = index
-        val tabs = listOf(tabHome, tabFav, tabSearch, tabMore)
+        val tabs = listOf(tabHome, tabSearch, tabMore)
+        val tabPages = intArrayOf(0, 2, 3)
         val pages = listOf(pageHome, pageFav, pageSearch, pageMore)
-        for (i in tabs.indices) {
+        for (i in pages.indices) {
             pages[i].visibility = if (i == index) View.VISIBLE else View.GONE
+        }
+        for (i in tabs.indices) {
             // 唔再用實色蓋住玻璃：選中係半透明磨砂 pill，未選係透明
-            NavGlass.selectTab(this, tabs[i], i == index)
+            NavGlass.selectTab(this, tabs[i], tabPages[i] == index)
         }
         if (index == 2) {
             // SEARCH_NO_ADVANCED: 冇進階模式可切，直接顯示截圖式搜尋主頁。

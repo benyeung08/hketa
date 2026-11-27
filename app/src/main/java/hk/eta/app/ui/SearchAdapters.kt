@@ -9,19 +9,11 @@ import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.GovServiceHours
 
-/** 截圖左側嘅營運商標記；聯營用「K/C」，唔捏造第 3 間公司。 */
-private fun operatorBadge(company: String): String = when (company) {
-    EtaRepository.KMB -> "KMB"
-    EtaRepository.CTB -> "CTB"
-    EtaRepository.NLB -> "NLB"
-    EtaRepository.GMB -> "GMB"
-    EtaRepository.MTR -> "MTR"
-    EtaRepository.LRT -> "LRT"
-    EtaRepository.MTRB -> "MTRB"
-    JointRoutes.JOINT -> "K/C"
-    else -> "HK"
-}
+/** KMB_LWB_SPLIT: 營運商標記按官方 GTFS agency 分開，UNKNOWN 留空唔估。 */
+private fun operatorBadge(company: String, route: String): String =
+    GovServiceHours.Brand.badge(company, route)
 
 /**
  * 「搜尋紀錄」列：綠色時鐘（只第一條）＋營運商標記＋「九巴 272P」
@@ -50,13 +42,16 @@ class SearchHistoryAdapter(
         val item = items[position]
         holder.clock.visibility =
             if (position == 0 && !item.preloaded) View.VISIBLE else View.GONE
-        holder.badge.text = operatorBadge(item.company)
-        holder.route.text = App1933Format.companyLabel(item.company) + " " + item.route
+        val badge = operatorBadge(item.company, item.route)
+        holder.badge.text = badge
+        holder.badge.visibility = if (badge.isEmpty()) View.GONE else View.VISIBLE
+        val label = App1933Format.companyLabel(item.company, item.route)
+        holder.route.text = if (label.isEmpty()) item.route else "$label ${item.route}"
         // 官方目錄得目的地，冇起點：如實顯示「往 XXX」，唔捏造「A 至 B」。
         holder.dest.text = item.dest
 
         val bits = mutableListOf<String>()
-        if (item.joint) bits.add(JointRoutes.JOINT_LABEL)
+        if (item.joint) bits.add(GovServiceHours.Brand.jointLabel(item.route))
         if (item.circular && item.style.isNotEmpty()) bits.add(item.style)
         if (item.preloaded) {
             bits.add(holder.root.context.getString(R.string.search_preloaded_tag))
@@ -81,44 +76,5 @@ class SearchHistoryAdapter(
         val dest: TextView = view.findViewById(R.id.resultDest)
         val note: TextView = view.findViewById(R.id.resultNote)
         val remove: ImageView = view.findViewById(R.id.resultRemove)
-    }
-}
-
-/** 「我的書籤」列；空 list 時 MainActivity 顯示「沒有資料記錄」。 */
-class BookmarkAdapter(
-    private val onClick: (String) -> Unit
-) : RecyclerView.Adapter<BookmarkAdapter.VH>() {
-
-    private var items: List<String> = emptyList()
-
-    fun submit(list: List<String>) {
-        items = list
-        notifyDataSetChanged()
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
-        VH(
-            LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_bookmark, parent, false)
-        )
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        val key = items[position]
-        val parts = key.split("|")
-        holder.title.text = if (parts.size >= 3) {
-            parts[1] + " · " + parts[2]
-        } else {
-            key
-        }
-        holder.meta.text = key.replace("|", " · ")
-        holder.root.setOnClickListener { onClick(key) }
-    }
-
-    override fun getItemCount(): Int = items.size
-
-    class VH(view: View) : RecyclerView.ViewHolder(view) {
-        val root: View = view.findViewById(R.id.bookmarkRoot)
-        val title: TextView = view.findViewById(R.id.bookmarkTitle)
-        val meta: TextView = view.findViewById(R.id.bookmarkMeta)
     }
 }

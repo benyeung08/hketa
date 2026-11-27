@@ -40,6 +40,7 @@ class SettingsActivity : AppCompatActivity() {
     // --- 懸浮液態玻璃導航欄 --------------------------------------------------
     private lateinit var swNavGlass: SwitchCompat
     private lateinit var tvNavGlassStatus: TextView
+    private lateinit var spNavMaterial: Spinner
 
     // --- ⟳ ETA 自動刷新 -------------------------------------------------------
     private lateinit var swEtaAutoRefresh: SwitchCompat
@@ -144,6 +145,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindViews() {
         swNavGlass = findViewById(R.id.swNavGlass)
         tvNavGlassStatus = findViewById(R.id.tvNavGlassStatus)
+        spNavMaterial = findViewById(R.id.spNavMaterial)
 
         swEtaAutoRefresh = findViewById(R.id.swEtaAutoRefresh)
         etaRefreshPickerRoot = findViewById(R.id.etaRefreshPickerRoot)
@@ -191,6 +193,29 @@ class SettingsActivity : AppCompatActivity() {
         swNavGlass.setOnCheckedChangeListener { _, enabled ->
             NavGlassPrefs.setFollowSystem(this, enabled)
             renderNavGlassStatus()
+        }
+
+        // CN_ADVANCED_MATERIAL: 0=跟隨系統 / 1=完整液態 / 2=簡化靜態。
+        // 只寫本 App SharedPreferences，唔掂任何系統／廠商設定。
+        val labels = listOf(
+            getString(R.string.nav_glass_material_follow),
+            getString(R.string.nav_glass_material_full),
+            getString(R.string.nav_glass_material_simple)
+        )
+        spNavMaterial.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, labels
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spNavMaterial.setSelection(NavGlassPrefs.materialMode(this))
+        spNavMaterial.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?, view: View?, position: Int, id: Long
+            ) {
+                NavGlassPrefs.setMaterialMode(this@SettingsActivity, position)
+                renderNavGlassStatus()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         renderNavGlassStatus()
     }
@@ -352,7 +377,13 @@ class SettingsActivity : AppCompatActivity() {
             getString(R.string.sources_placeholder)
         } else {
             report.sources.joinToString("\n") { s ->
+                // GOV_IN_ROUTE_UPDATE: 政府班次資料係正式來源，顯示「N 個 GTFS
+                // 檔案」而唔係當普通「N 筆」目錄紀錄；失敗／略過如實列出。
                 val detail = when {
+                    s.file == RouteDataStore.GOV_SOURCE && s.ok ->
+                        getString(R.string.sources_gov_files, s.count)
+                    s.file == RouteDataStore.GOV_SOURCE && s.skipped ->
+                        getString(R.string.sources_gov_skipped, s.error)
                     s.ok && s.count > 0 -> "${s.count} 筆"
                     s.ok -> "按需建立"
                     s.skipped -> "選用／按需略過：${s.error}"
@@ -566,9 +597,11 @@ class SettingsActivity : AppCompatActivity() {
             try {
                 val apk = withContext(Dispatchers.IO) {
                     val dir = File(filesDir, "updates")
-                    AppUpdate.download(
-                        release.apkUrl, dir, "hketa-${release.tag}.apk"
-                    ) { done, total ->
+                    // API_AUDIT_C1: 校驗 Release 宣告嘅 size 同（如有）
+                    // body 入面嘅 sha256，唔符合就直接拒裝。
+                    AppUpdate.downloadVerified(
+                        release.apkUrl, dir, "hketa-${release.tag}.apk",
+                        { done, total ->
                         mainHandler.post {
                             progressApp.progress = if (total > 0L) {
                                 (done * 100L / total).toInt().coerceIn(0, 100)
@@ -579,7 +612,8 @@ class SettingsActivity : AppCompatActivity() {
                             tvAppUpdateStatus.text =
                                 getString(R.string.app_update_downloading, size)
                         }
-                    }
+                    },
+                        AppUpdate.sha256FromNotes(release.notes), release.apkSize)
                 }
                 val check = withContext(Dispatchers.IO) {
                     ApkSignature.verify(

@@ -1,9 +1,11 @@
 package hk.eta.app.ui
 
 import hk.eta.app.api.EtaModels.EtaItem
+import hk.eta.app.api.EtaModels.StopOption
 import hk.eta.app.api.CircularRoutes
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.GovServiceHours
 import hk.eta.app.api.TimeUtils
 
 /**
@@ -73,16 +75,39 @@ object App1933Format {
         fallback: StopDisplay
     ): StopDisplay = displays[cardCompany] ?: fallback
 
-    /** Single source of truth for the ROUTE-level operator label. */
-    fun companyLabel(company: String): String =
-        JointRoutes.routeCompanyLabel(company)
+    /**
+     * KMB_LWB_SPLIT: ROUTE 級標籤嘅唯一入口。九巴路線只寫「九巴」、
+     * 龍運路線只寫「龍運」；官方 GTFS 冇記錄就留空，唔誤標对方。
+     */
+    /**
+     * DIRECTION_TITLE_SYNC: 官方 route-stop 站序入面該方向嘅**終點站名**。
+     * 當官方目錄冇方向級 dest_tc（嶼巴／小巴／港鐵／輕鐵／接駁巴士）時，
+     * 用呢個官方站名降級更新紅頂標題，唔捏造、零 IO、可離線測。
+     */
+    fun destinationForBound(stops: List<StopOption>, bound: String): String {
+        if (bound.isEmpty()) return ""
+        return stops.filter {
+            it.bound.equals(bound, ignoreCase = true) && it.stopName.isNotBlank()
+        }.maxByOrNull { it.seq }?.stopName?.trim()
+            ?.removePrefix("往 ")?.trim().orEmpty()
+    }
+
+    fun companyLabel(company: String, route: String = ""): String =
+        GovServiceHours.Brand.label(company, route)
 
     /** Single source of truth for the TRIP-level "該班次：…" label. */
-    fun tripOperatorText(trip: Trip): String = when {
+    fun tripOperatorText(trip: Trip, route: String = ""): String = when {
         trip.operatorText.isNotEmpty() ->
             JointRoutes.TRIP_PREFIX + trip.operatorText
-        trip.operator.isNotEmpty() ->
-            JointRoutes.TRIP_PREFIX + JointRoutes.operatorLabel(trip.operator)
+        trip.operator.isNotEmpty() -> {
+            // JOINT_EVERY_TRIP_OPERATOR: 官方 GTFS 判唔到歸屬（例如特別線／
+            // 聯營目錄交疊）時，用 ETA 本身嘅 company code 如實降級，
+            // 唔再留空 —— 用戶要「每一個班次」後面都見到營運商。
+            // KMB -> 九巴 / CTB -> 城巴；龍運聯營仍由 tripLabel 優先判「龍運」。
+            val name = GovServiceHours.Brand.tripLabel(trip.operator, route)
+                .ifEmpty { JointRoutes.operatorLabel(trip.operator) }
+            JointRoutes.TRIP_PREFIX + name
+        }
         else -> ""
     }
 
@@ -104,6 +129,18 @@ object App1933Format {
         circularHint: Boolean = false
     ): List<RouteCard> {
         val groups = LinkedHashMap<String, MutableList<EtaItem>>()
+        // JOINT_EVERY_TRIP_OPERATOR: 零 IO、純函式咁由呢批 ETA 自己判定
+        // 「邊啲路線號係聯營」—— 同一 route 同時有 KMB + CTB 班次即係。
+        // 唔靠 isJointRoute()（要讀本機目錄，唔應該喺 render() main thread 做），
+        // 亦唔受 destTc 用字唔同／circularHint 拆卡／partner ETA 只回一邊影響。
+        val companiesByRoute = LinkedHashMap<String, MutableSet<String>>()
+        for (e in etas) {
+            companiesByRoute.getOrPut(e.route) { HashSet() }.add(e.company)
+        }
+        val jointRoutes = companiesByRoute
+            .filter { (_, cs) -> cs.contains(EtaRepository.KMB)
+                && cs.contains(EtaRepository.CTB) }
+            .keys.toSet()
         for (e in etas) {
             // JOINT_KMB_CTB: KMB 同 CTB 嘅 stopId 屬兩個唔同命名空間。
             // 用呼叫方傳入嘅「同一實體站」站號做分組鍵，兩家公司嘅班次
@@ -124,11 +161,15 @@ object App1933Format {
                 // CIRCULAR_ONLY: a Citybus circular card shows the Citybus way,
                 // a KMB circular card the App1933 way —判定用自己嘅班次。
                 val style = if (group.circular) {
-                    CircularRoutes.styleLabel(cardCompany)
+                    CircularRoutes.styleLabel(cardCompany, first.route)
                 } else {
                     ""
                 }
-                val trips = sorted.take(3).map { tripOf(it, cardCompany, joint) }
+                // JOINT_EVERY_TRIP_OPERATOR: 聯營路線即使被拆成兩張卡
+                // （目的地用字唔同／循環線／partner 只回一邊），每一張卡嘅
+                // 每一個班次都要帶自己嘅營運商，唔再只靠合併卡嘅 joint flag。
+                val showOperator = joint || jointRoutes.contains(first.route)
+                val trips = sorted.take(3).map { tripOf(it, cardCompany, showOperator) }
                 // CTB_STOP_NAME: pick the stop label of THE OPERATOR OF THIS CARD.
                 // displays[JOINT] is the KMB label (joint routes keep KMB naming);
                 // displays[CTB] is the Citybus label. A split single-company card
@@ -164,7 +205,7 @@ object App1933Format {
         )
     }
 
-    private fun tripOf(e: EtaItem, cardCompany: String, joint: Boolean): Trip {
+    private fun tripOf(e: EtaItem, cardCompany: String, showOperator: Boolean): Trip {
         val now = System.currentTimeMillis()
         val diff = ((e.etaMillis - now) / 60_000L).toInt()
         val remark = e.remarkTc
@@ -190,10 +231,15 @@ object App1933Format {
             else -> ""
         }
         val clock = if (e.etaMillis > 0L) TimeUtils.hhmm(e.etaMillis) + " HKT" else ""
-        // JOINT_KMB_CTB: on a joint card EVERY trip names its own operator;
-        // on a single-operator card keep the old "only if different" behaviour.
-        val op = if (joint || e.company != cardCompany) e.company else ""
-        val opText = if (joint) JointRoutes.operatorLabel(e.company) else ""
+        // JOINT_KMB_CTB + JOINT_EVERY_TRIP_OPERATOR: 聯營路線 EVERY trip
+        // names its own operator; on a single-operator card keep the old
+        // "only if different" behaviour. tripLabel() 判唔到就用 company code
+        // 如實降級，唔留空、唔估第二間公司。
+        val op = if (showOperator || e.company != cardCompany) e.company else ""
+        val opText = if (showOperator)
+            GovServiceHours.Brand.tripLabel(e.company, e.route)
+                .ifEmpty { JointRoutes.operatorLabel(e.company) }
+            else ""
         return Trip(label, clock, tag, op, opText)
     }
 }

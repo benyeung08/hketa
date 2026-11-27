@@ -19,8 +19,9 @@ import hk.eta.app.api.JointRoutes
  *  - **只有**「剛好 KMB + CTB 兩家、兩邊都非循環」→ 合併成既有
  *    `城巴/九巴` 聯營卡，逐班 `該班次：城巴／九巴`（用戶之前明確要求，唔推翻）；
  *  - **其餘全部按公司拆卡**：各自 `cardCompany = 自己公司`，三班次只屬自己，
- *    `RouteCardAdapter` 既有 meta 會顯示 `九巴 / 龍運`／`城巴`／`嶼巴`／
- *    `綠色小巴`等，唔使改 UI、唔使加色值、唔使加掣；
+ *    `RouteCardAdapter` 嘅 meta 而家由 `Brand.label(company, route)` 只顯示
+ *    `九巴`／`龍運`／`城巴`／`嶼巴`／`綠色小巴`**自己一間**，唔使改 UI、
+ *    唔使加色值、唔使加掣；
  *  - KMB+CTB+第三家、KMB+NLB、CTB+GMB、任一邊係循環線 → 一律拆；
  *  - 循環線維持上一輪「各自顯示九巴／城巴方式」，唔會被聯營合併吞走。
  *
@@ -68,6 +69,10 @@ object SameRouteOperators {
             return listOf(OperatorGroup(JointRoutes.JOINT, etas, false))
         }
 
+        // SINGLE_OPERATOR_DISPLAY: 唔係聯營就每間公司各自一張卡、一個 label。
+        // byCompany 得 1 間 -> 1 張卡顯示 1 間；KMB+NLB／CTB+GMB／三家／
+        // 循環線 -> 逐間拆卡（各自 1 個 label）；只有上面 exact KMB+CTB 先
+        // 顯示「城巴/九巴」兩間。絕不把單公司路線升級做兩間服務商。
         val out = ArrayList<OperatorGroup>()
         for ((company, list) in byCompany) {
             out.add(OperatorGroup(company, list, circular[company] == true))

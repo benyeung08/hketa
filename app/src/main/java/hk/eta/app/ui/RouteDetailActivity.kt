@@ -7,14 +7,20 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import hk.eta.app.R
+import hk.eta.app.api.EtaModels.EtaItem
 import hk.eta.app.api.EtaModels.StopOption
 import hk.eta.app.api.CircularRoutes
+import hk.eta.app.api.GovServiceHours
+import hk.eta.app.api.RouteDataStore
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.LocalServiceHours
+import hk.eta.app.api.TimeUtils
 
 /**
  * ROUTE_DETAIL_NO_MAP — opened when a nearby-route card on the Home page is
@@ -27,9 +33,29 @@ import hk.eta.app.api.JointRoutes
  * Fare and predicted alighting time are NOT in those APIs, so the layout shows
  * an explicit "—" plus a footer note instead of inventing "$5.6" / "15:31".
  *
- * The four side chips and three header buttons all have real actions (no dead
- * buttons): board / back to nearby / favourite / Settings, and refresh trips /
- * favourite / switch direction.
+ * DETAIL_THREE_ICONS — all non-circular (one-way) routes show EXACTLY these
+ * three red-vector circles in the header, matching the first reference image:
+ *   ① calendar  -> 服務時間及班次 (from the LOCAL route-data snapshot,
+ *                   LocalServiceHours.lookup — no live API, no network)
+ *   ② notice     -> 服務通告 (official ETA remark_tc, never invented)
+ *   ③ ⇅ direction -> vm.toggleDirection()
+ * The four side chips keep their real actions (board / nearby / favourite /
+ * Settings); favourite is still reachable from chipFav.
+ *
+ * CIRCULAR_TWO_ACTIONS: a circular route has NO inbound direction, so the
+ * third circle (⇅ switch direction) is hidden and the red header shows
+ * exactly TWO icons — calendar (STILL 服務時間及班次, same dialog as a
+ * one-way route) + notice (服務通告) — second reference image.
+ * Normal routes keep all three (first reference image). The single source of
+ * truth is CircularRoutes.visibleHeaderActions(boolean).
+ *
+ * HONEST DATA: the LOCAL official route catalogue does NOT publish first/last
+ * bus times, exact departure times or a headway. The calendar dialog therefore
+ * lists ONLY the route rows actually present in the local snapshot (direction
+ * x service type) and explicitly says the timetable is unavailable — no
+ * invented numbers, same rule as the fare / alighting-time "—" placeholders.
+ * Live ETA is still used for the three arrival chips and the notice dialog;
+ * it is never cached into the local catalogue.
  */
 class RouteDetailActivity : AppCompatActivity() {
 
@@ -60,6 +86,10 @@ class RouteDetailActivity : AppCompatActivity() {
     private var emptyNotified = false
     private var circular = false
     private var auditText = ""
+    /** DIRECTION_TITLE_SYNC: 上一次用嚟渲染紅頂標題嘅方向，避免重複刷新。 */
+    private var titleBound = ""
+    /** DETAIL_THREE_ICONS: real ETA rows backing the calendar / notice dialogs. */
+    private var latestEtas: List<EtaItem> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,14 +113,7 @@ class RouteDetailActivity : AppCompatActivity() {
         tvTitle.text = buildTitle()
         tvBubble.text = App1933Format.stopLabel(stopName, stopId).ifEmpty { route }
         // CIRCULAR_DISPLAY / JOINT_KMB_CTB: the caption names the exact way.
-        tvNoMapLabel.text = when {
-            circular -> getString(R.string.detail_no_map_label) +
-                    " · " + CircularRoutes.styleLabel(company) +
-                    " · " + CircularRoutes.displayBadge(company, dest)
-            JointRoutes.isJointCompany(company) ->
-                    getString(R.string.detail_no_map_label) + " · " + JointRoutes.JOINT_LABEL
-            else -> getString(R.string.detail_no_map_label)
-        }
+        tvNoMapLabel.text = buildCaption()
 
         vm = ViewModelProvider(this)[EtaViewModel::class.java]
         adapter = DetailStopAdapter { stop -> boardAt(stop) }
@@ -109,6 +132,7 @@ class RouteDetailActivity : AppCompatActivity() {
             "", "ALL", "NEARBY" -> ""
             else -> bound
         }
+        titleBound = requestedBound
         vm.loadStops(route, company, requestedBound)
     }
 
@@ -136,6 +160,36 @@ class RouteDetailActivity : AppCompatActivity() {
      * App1933 way; Citybus shows "26 勵德邨 - 荷李活道(循環線) (002891)"
      * the Citybus way. The suffix always comes from the official dest.
      */
+    /** DIRECTION_TITLE_SYNC: 抽出嚟，切換方向後可以同標題一齊重算。 */
+    private fun buildCaption(): String = when {
+        circular -> getString(R.string.detail_no_map_label) +
+                " · " + CircularRoutes.styleLabel(company, route) +
+                " · " + CircularRoutes.displayBadge(company, route, dest)
+        JointRoutes.isJointCompany(company) ->
+                getString(R.string.detail_no_map_label) + " · " +
+                GovServiceHours.Brand.label(company, route)
+        else -> getString(R.string.detail_no_map_label)
+    }
+
+    /**
+     * DIRECTION_TITLE_SYNC — 之前 `toggleDirection()` 只改站序 filter，
+     * 紅頂「1 往 尖沙咀碼頭」永遠停留喺入頁時嘅 intent dest。而家
+     * ViewModel 已經計好該方向嘅官方目的地（目錄 dest_tc／站序終點站名），
+     * 呢度把 `dest`、標題同 caption 一次過同步，零 IO、唔捏造。
+     * 循環線冇 ⇅ 掣，直接跳過。
+     */
+    private fun syncDirectionTitle(state: UiState) {
+        if (circular) return
+        val b = state.activeBound
+        if (b.isEmpty() || b == titleBound) return
+        titleBound = b
+        val next = state.activeDest
+        if (next.isEmpty() || next == dest) return
+        dest = next
+        tvTitle.text = buildTitle()
+        tvNoMapLabel.text = buildCaption()
+    }
+
     private fun buildTitle(): String {
         val head = if (circular && dest.isNotEmpty()) {
             CircularRoutes.displayTitle(company, route, dest)
@@ -149,12 +203,27 @@ class RouteDetailActivity : AppCompatActivity() {
 
     private fun wireActions() {
         findViewById<View>(R.id.btnDetailBack).setOnClickListener { finish() }
-        findViewById<View>(R.id.detailActionTrips).setOnClickListener {
-            vm.refresh()
-            Toast.makeText(this, R.string.detail_trips_refreshed, Toast.LENGTH_SHORT).show()
+        // ① 日曆＝服務時間及班次；② 通知＝服務通告；③ ⇅＝切換方向。
+        // 三顆全部有實際功能，收藏仍然由左側 chipFav 提供。
+        findViewById<View>(R.id.detailActionCalendar)
+            .setOnClickListener { showServiceHours() }
+        findViewById<View>(R.id.detailActionNotice)
+            .setOnClickListener { showNotices() }
+        val directionAction = findViewById<View>(R.id.detailActionDirection)
+        // CIRCULAR_TWO_ACTIONS: 由單一純決策列表顯式設定三顆 ——
+        // 循環線 = 日曆（服務時間及班次）＋ 通知兩顆 VISIBLE、第三顆 ⇅ GONE；
+        // 單向路線 = 三顆 VISIBLE。兩顆入面日曆嘅功能同單向完全一樣。
+        val actions = CircularRoutes.visibleHeaderActions(circular)
+        findViewById<View>(R.id.detailActionCalendar).visibility =
+            if (actions.contains(CircularRoutes.ACTION_CALENDAR)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.detailActionNotice).visibility =
+            if (actions.contains(CircularRoutes.ACTION_NOTICE)) View.VISIBLE else View.GONE
+        directionAction.visibility = if (CircularRoutes.showDirectionAction(circular)) {
+            View.VISIBLE
+        } else {
+            View.GONE
         }
-        findViewById<View>(R.id.detailActionFav).setOnClickListener { addFavourite() }
-        findViewById<View>(R.id.detailActionDirection).setOnClickListener {
+        directionAction.setOnClickListener {
             autoSelected = false
             vm.toggleDirection()
         }
@@ -167,6 +236,131 @@ class RouteDetailActivity : AppCompatActivity() {
         findViewById<View>(R.id.chipMore).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+    }
+
+    /**
+     * ① 日曆圖標：服務時間及班次（GOV_SERVICE_HOURS）——
+     * **由政府公開資料獲取**：運輸署「公共交通服務班次資料」GTFS 本機快取，
+     * 提供服務日／頭班／尾班／班次間隔。未載入或冇呢條路線就如實降級去
+     * LocalServiceHours 本機官方目錄列，兩者都唔捏造時間表、唔快取即時 ETA。
+     * 循環線同單向路線共用呢個 dialog，內容完全一致。
+     */
+    private fun showServiceHours() {
+        // GOV_SERVICE_HOURS: 服務時間及班次由政府公開資料（DATA.GOV.HK
+        // 運輸署 GTFS）獲取；本機快取由開 App 更新一次／設定頁更新寫入。
+        val gov = GovServiceHours.lookup(
+            RouteDataStore.serviceHoursDir(), company, route, "")
+        val body = StringBuilder()
+        body.append(getString(R.string.detail_calendar_gov_header))
+            .append('\n')
+            .append(GovServiceHours.SOURCE_LABEL)
+        if (gov.lastUpdated.isNotEmpty()) {
+            body.append(" · ")
+                .append(getString(R.string.detail_calendar_gov_updated))
+                .append(" ").append(gov.lastUpdated)
+        }
+        body.append("\n").append(GovServiceHours.DATASET_PAGE).append("\n\n")
+
+        if (gov.available) {
+            if (gov.serviceDays.isNotEmpty()) {
+                body.append(getString(R.string.detail_calendar_service_days))
+                    .append(" ").append(gov.serviceDays).append('\n')
+            }
+            if (gov.firstTrip.isNotEmpty() || gov.lastTrip.isNotEmpty()) {
+                body.append(getString(R.string.detail_calendar_first_last))
+                    .append(" ").append(gov.firstTrip.ifEmpty { "—" })
+                    .append(" / ").append(gov.lastTrip.ifEmpty { "—" })
+                    .append('\n')
+            }
+            if (gov.serviceStart.isNotEmpty()) {
+                body.append(getString(R.string.detail_calendar_service_span))
+                    .append(" ").append(gov.serviceStart)
+                    .append("–").append(gov.serviceEnd).append('\n')
+            }
+            if (gov.headways.isNotEmpty()) {
+                body.append(getString(R.string.detail_calendar_headway)).append('\n')
+                gov.headways.take(6).forEach { h ->
+                    body.append("  • ").append(h.label()).append('\n')
+                }
+                if (gov.headways.size > 6) {
+                    body.append("  … ").append(getString(R.string.detail_calendar_more))
+                        .append(" ").append(gov.headways.size - 6).append('\n')
+                }
+            } else {
+                body.append(getString(R.string.detail_calendar_no_headway)).append('\n')
+            }
+            if (gov.specialDates > 0) {
+                body.append(getString(R.string.detail_calendar_special))
+                    .append(" ").append(gov.specialDates).append('\n')
+            }
+        } else {
+            // 政府資料未載入／冇呢條路線：如實講原因，後備用本機官方目錄列。
+            body.append(getString(R.string.detail_calendar_no_gov))
+                .append(" ").append(gov.reason).append("\n\n")
+            val info = LocalServiceHours.lookup(company, route)
+            body.append(getString(R.string.detail_calendar_local_header)).append('\n')
+                .append(info.sourceFile.ifEmpty { "—" })
+                .append(" · ").append(info.sourceLabel)
+            if (info.updatedAt > 0L) {
+                body.append(" · 更新於 ")
+                    .append(TimeUtils.hhmm(info.updatedAt)).append(" HKT")
+            }
+            body.append('\n')
+            when {
+                !info.hasSnapshot ->
+                    body.append(getString(R.string.detail_calendar_no_snapshot))
+                info.csvOnly ->
+                    body.append(getString(R.string.detail_calendar_csv_only))
+                info.rows.isEmpty() ->
+                    body.append(getString(R.string.detail_calendar_no_eta))
+                else -> info.rows.forEachIndexed { k, r ->
+                    body.append("  ").append(k + 1).append(". ")
+                        .append(r.label()).append('\n')
+                }
+            }
+        }
+        body.append('\n').append(getString(R.string.detail_calendar_no_timetable))
+        body.append('\n').append(getString(R.string.detail_calendar_gov_note))
+        body.append('\n').append(getString(R.string.detail_calendar_eta_note))
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.detail_calendar_title) + " · " + route)
+            .setMessage(body.toString())
+            .setPositiveButton(R.string.detail_dialog_ok, null)
+            .setNeutralButton(R.string.detail_calendar_refresh) { _, _ ->
+                // 去設定頁更新本機資料（會同時更新政府班次資料快取）。
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+            .show()
+    }
+
+    /**
+     * ② 通知圖標：服務通告。內容只係官方 ETA 附帶嘅 remark_tc（去重），
+     * 冇備註就如實講「暫無」，唔自己作通告。
+     */
+    private fun showNotices() {
+        val remarks = latestEtas
+            .map { it.remarkTc.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        val body = StringBuilder()
+        if (remarks.isEmpty()) {
+            body.append(getString(R.string.detail_notice_empty))
+        } else {
+            body.append(getString(R.string.detail_notice_from_eta)).append('\n')
+            remarks.forEach { body.append("  • ").append(it).append('\n') }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.detail_notice_title) + " · " + route)
+            .setMessage(body.toString())
+            .setPositiveButton(R.string.detail_dialog_ok, null)
+            // 通告仍係官方即時 ETA 嘅 remark_tc，保留手動刷新；
+            // 日曆 dialog 改讀本機資料，兩者來源清楚分開。
+            .setNeutralButton(R.string.detail_notice_refresh) { _, _ ->
+                vm.refresh()
+                Toast.makeText(this, R.string.detail_trips_refreshed, Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun addFavourite() {
@@ -190,6 +384,11 @@ class RouteDetailActivity : AppCompatActivity() {
     }
 
     private fun render(state: UiState) {
+        // DIRECTION_TITLE_SYNC: 撳 ⇅ 之後紅頂標題要跟住方向轉。
+        syncDirectionTitle(state)
+        // LOCAL_SERVICE_HOURS: 日曆 dialog 改讀本機路線資料；只有通知 dialog
+        // 仍用呢批即時 ETA 嘅 remark_tc，唔另查、唔快取、唔捏造。
+        latestEtas = state.etas
         val visible = if (state.activeBound.isNotEmpty()) {
             state.stops.filter { it.bound == state.activeBound || it.bound.isEmpty() }
         } else {
@@ -282,8 +481,11 @@ class DetailStopAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val stop = stops[position]
         val selected = stop.stopId == selectedId
+        // API_AUDIT_A4: 同一方向可以有多套 service_type 站序；
+        // 逐列標明班次，唔好將唔同班次嘅同名站混成一列。
+        val serviceTag = if (stop.serviceType > 1) " · 特別班次 ${stop.serviceType}" else ""
         holder.title.text = "${position + 1}. " +
-                App1933Format.stopLabel(stop.stopName, stop.stopId)
+                App1933Format.stopLabel(stop.stopName, stop.stopId) + serviceTag
         holder.fare.text = holder.itemView.context.getString(R.string.detail_fare_na)
         holder.dot.setBackgroundResource(
             if (selected) R.drawable.bg_detail_dot_on else R.drawable.bg_detail_dot_off
@@ -304,10 +506,12 @@ class DetailStopAdapter(
                         holder.rows[i].visibility = View.VISIBLE
                         holder.mins[i].text = trip.label
                         holder.clocks[i].text = trip.clock.removeSuffix(" HKT")
-                        // JOINT_KMB_CTB: "該班次：城巴" / "該班次：九巴"
+                        // JOINT_EVERY_TRIP_OPERATOR: 「6 分鐘 11:27」後面
+                        // 每一班次都加「該班次：九巴／城巴／龍運」，用 ·
+                        // 分隔同主頁 chip 一致；聯營路線永遠唔留空。
                         holder.tags[i].text = listOf(
-                            trip.tag, App1933Format.tripOperatorText(trip)
-                        ).filter { it.isNotEmpty() }.joinToString(" ")
+                            trip.tag, App1933Format.tripOperatorText(trip, route)
+                        ).filter { it.isNotEmpty() }.joinToString(" · ")
                     } else {
                         holder.rows[i].visibility = View.GONE
                     }
