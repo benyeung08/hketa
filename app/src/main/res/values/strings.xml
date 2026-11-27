@@ -7,7 +7,6 @@
     <string name="hint_stop">站號 / 車站代碼（選填，已知可直接查）</string>
     <string name="load_stops">載入車站</string>
     <string name="query_eta">查 ETA</string>
-    <string name="fav_add">☆ 加入收藏</string>
     <string name="fav_list">★ 我的收藏</string>
     <string name="nearby">📍 附近車站</string>
     <string name="stops_header">車站／月台</string>
@@ -23,8 +22,8 @@
     <string name="summary_never">本機資料：尚未建立快照</string>
     <string name="summary_format">本機資料：%1$d 個來源成功 · 共 %2$d 項 · %3$d 筆</string>
     <string name="update_now">立即更新線路資料</string>
-    <string name="updating">正在下載官方路線／站點資料…</string>
-    <string name="update_hint">更新會下載官方路線清單、全量站點與港鐵 CSV，並存到本機。首次可能需要數十秒。城巴官方沒有全量站點端點，改為查路線時用單站 API 自動建立站名快取；九巴全量站點若被 403 擋亦會自動改用單站 API，唔影響車站名顯示。</string>
+    <string name="updating">正在下載官方路線／站點資料同政府班次資料…</string>
+    <string name="update_hint">更新會下載官方路線清單、全量站點、港鐵 CSV，同埋**運輸署政府公開班次資料**（服務時間及班次 GTFS：服務日／頭班／尾班／班次間隔），全部存到本機。首次可能需要數十秒。城巴官方沒有全量站點端點，改為查路線時用單站 API 自動建立站名快取；九巴全量站點若被 403 擋亦會自動改用單站 API，唔影響車站名顯示。政府班次資料亦係「資料來源狀態」入面嘅正式一項，失敗會如實列出、唔捏造。</string>
     <string name="update_note_live_eta">實時 ETA 仍每次向官方 API 即時查詢</string>
     <string name="auto_update">自動更新</string>
     <string name="interval_label">檢查頻率</string>
@@ -32,9 +31,12 @@
     <string name="auto_hint">預設每日於 Wi-Fi 檢查一次。手動更新不受此限制；設為「手動」則完全不自動下載。</string>
     <string name="sources_title">資料來源狀態</string>
     <string name="sources_placeholder">尚未更新。按「立即更新線路資料」後會顯示每個來源的結果。</string>
+    <!-- GOV_IN_ROUTE_UPDATE: 政府班次資料喺「資料來源狀態」嘅顯示格式 -->
+    <string name="sources_gov_files">%1$d 個 GTFS 檔案 · 每兩星期更新</string>
+    <string name="sources_gov_skipped">選用／按需略過：%1$s</string>
     <string name="clear_local">清除本機線路資料（改回即時 API）</string>
     <string name="clear_done">已清除本機資料，之後會直接向官方 API 查詢。</string>
-    <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK、九巴／龍運、城巴、嶼巴、港鐵公司。城巴站名由 /stop/{stop_id} 單站 API 按需快取；九巴全量站點失敗時亦用單站 API 後備。線路／站點目錄每日或每月更新；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
+    <string name="settings_footer">資料來源：運輸署 DATA.GOV.HK（路線／站點目錄同「公共交通服務班次資料」GTFS）、九巴／龍運、城巴、嶼巴、港鐵公司。城巴站名由 /stop/{stop_id} 單站 API 按需快取；九巴全量站點失敗時亦用單站 API 後備。線路／站點目錄每日或每月更新；政府班次資料每兩星期更新、有數據修正截止日期；實時到站時間每分鐘更新，不受此設定影響。本機快照只存於 App 私人目錄，不會上傳。</string>
 
     <!-- 內建更新來源：已指向 benyeung08/hketa；要換 repo 就改呢個值一次打包。 -->
     <string name="default_github_repo">benyeung08/hketa</string>
@@ -106,9 +108,8 @@
     <string name="app_update_signature_failed">簽名不一致，已取消安裝並刪除 APK：%1$s</string>
     <string name="signing_hint">每次安裝前會比對下載 APK 與目前 App 的簽章憑證（含簽章輪替歷史）及套件名稱；不一致會直接拒絕，避免系統報「簽名衝突」。CI 亦會印出 APK 憑證指紋，可填入 expected_signing_sha256 作雙重鎖定。</string>
 
-    <!-- APP1933-style shell: 4 bottom tabs, route cards, three-arrival trips -->
+    <!-- APP1933-style shell: 3 bottom tabs, route cards, three-arrival trips -->
     <string name="tab_home">⌂&#10;主頁</string>
-    <string name="tab_fav">★&#10;收藏</string>
     <string name="tab_search">🔍&#10;搜尋</string>
     <string name="tab_more">⚙&#10;應用程式設置</string>
     <string name="home_title">附近路線</string>
@@ -125,20 +126,20 @@
     <string name="search_title">路線搜尋</string>
     <string name="search_title_bar">搜尋</string>
     <string name="search_input_hint">輸入路線號碼</string>
-    <string name="search_empty">已預先載入官方路線目錄 · 輸入路線號碼可即時篩選</string>
+    <string name="search_empty">已載入全部官方路線目錄 · 輸入路線號碼可即時篩選</string>
     <!-- SEARCH_LOCAL_DATA：恢復本地資料喺搜尋功能上 -->
     <string name="search_local_never">本機資料：尚未建立快照 · 點按到設定更新</string>
     <string name="search_local_ok">本機資料：%1$d/%2$d 個來源成功 · 共 %3$d 筆 · 點按更新</string>
     <string name="search_local_source_local">本機資料</string>
     <string name="search_local_source_live">即時 API</string>
     <string name="search_local_source_prefix">來源：</string>
-    <string name="search_preload_empty">正在預先載入官方路線目錄；若一直空白，請到「應用程式設置 → 線路資料更新」按立即更新。</string>
+    <string name="search_preload_empty">正在載入全部官方路線目錄；若一直空白，請到「應用程式設置 → 線路資料更新」按立即更新。</string>
     <string name="search_no_result">找不到路線「%1$s」。可試其他號碼，或到設定更新線路資料。</string>
     <string name="back_to_search">← 返回路線搜尋</string>
     <string name="direction_switch">⇄ 轉換路線方向</string>
     <string name="filter_stop_hint">篩選站名／站號</string>
     <string name="fav_title">收藏車站</string>
-    <string name="fav_empty">尚未收藏任何車站。到主頁點卡片後按 ☆；長按可移除。</string>
+    <string name="fav_empty">尚未收藏任何車站。到路線詳情頁撳「收藏」加入；長按可移除。</string>
     <string name="fav_hint">點選查看 · 長按移除</string>
     <string name="more_title">應用程式設置</string>
     <string name="more_settings_hint">附近路線距離 · 線路資料更新 · 更新應用程式 · App 簽名一致性 · 關於本 App</string>
@@ -152,14 +153,21 @@
     <!-- 懸浮液態玻璃導航欄：跟隨系統外觀 -->
     <string name="nav_glass_section">◌ 導航欄外觀（懸浮液態玻璃）</string>
     <string name="nav_glass_follow">跟隨系統外觀</string>
-    <string name="nav_glass_hint" formatted="false">導航欄係真正浮喺內容上面嘅深灰黑藥丸：高 56dp、全圓角、水平置中；位置由貼底 8dp 嘅佔位列改為離底約 12%（48–160dp）嘅懸浮 overlay，內容會同時出現喺膠囊後面同下面。左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色＋白邊、關閉動畫收起陰影同模糊。各捲動頁加咗底部預留，最後一筆資料仍捲得到。</string>
+    <string name="nav_glass_hint" formatted="false">導航欄係真正浮喺內容上面嘅深灰黑藥丸：高 56dp、全圓角、水平置中；位置由貼底 8dp 嘅佔位列改為離底約 12%（48–160dp）嘅懸浮 overlay，內容會同時出現喺膠囊後面同下面。左右留白按螢幕寬度自動調整 —— 手機每邊約 6%，平板／横屏（≥600dp）每邊約 18%，夾喺 16–256dp 之間；選中分頁係內嵌深色 pill 加藍色字。預設跟隨系統：深色模式轉更深玻璃、開啟高對比文字轉實色＋白邊、關閉動畫收起陰影同模糊。中國版 Android 17／國內 ROM 停用視窗模糊時，會自動改用提高不透明度嘅實色玻璃（同一 56dp 藥丸），唔會留透明欄透落底層；只用公共 API 同能力探測，唔靠 GMS 或廠商私有設定。各捲動頁加咗底部預留，最後一筆資料仍捲得到。液態層（NAV_LIQUID）：折射亮邊加一條來回流動嘅高光，選中分頁有短暫回彈，高光喺 API 31+ 再作輕微散射；全部按「跟隨系統外觀」控制 —— 開高對比文字、關閉動畫或關閉跟隨即時靜止並透明，觸控照舊穿透。CN_ADVANCED_MATERIAL：中國版 Android OS 17「進階／高級材質」由相容層只讀探測 AOSP 公開能力（cross-window blur、Android 17 backdrop effect）、省電模式、動畫比例、高對比，再用容錯候選鍵 best-effort 讀系統設定；讀到就尊重、讀唔到就用 AOSP 能力，唔編造廠商私有 key、唔寫入任何系統設定。用戶可喺上面三態覆蓋（跟隨系統／完整液態／簡化靜態）；省電、高對比、關閉動畫一律優先簡化，狀態列如實顯示探測來源。</string>
     <string name="nav_glass_status">目前：%1$s</string>
-    <string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
+        <string name="nav_glass_state_backdrop">Android 17 背景渲染（毛玻璃）</string>
+<string name="nav_glass_state_follow">跟隨系統（%1$s）</string>
     <string name="nav_glass_state_fixed">固定標準玻璃</string>
     <string name="nav_glass_state_night">夜間深玻璃</string>
     <string name="nav_glass_state_contrast">高對比實色</string>
     <string name="nav_glass_state_reduced">減少動態（無陰影／模糊）</string>
     <string name="nav_glass_state_day">日間標準玻璃</string>
+    <string name="nav_glass_state_no_blur">系統停用視窗模糊 · 實色玻璃</string>
+<string name="nav_glass_material_label">進階材質（中國版 Android 17）</string>
+<string name="nav_glass_material_follow">跟隨系統</string>
+<string name="nav_glass_material_full">完整液態</string>
+<string name="nav_glass_material_simple">簡化靜態</string>
+<string name="nav_glass_material_status">進階材質 %1$s · 探測來源 %2$s</string>
 
     <!-- 主頁附近路線卡片 → 路線詳情（無地圖版） -->
     <string name="detail_title">路線詳情</string>
@@ -189,6 +197,36 @@
     <string name="detail_action_trips_cd">刷新未來三班次</string>
     <string name="detail_action_fav_cd">收藏目前車站</string>
     <string name="detail_action_direction_cd">轉換路線方向</string>
+    <!-- DETAIL_THREE_ICONS: 日曆＝服務時間及班次、通知＝服務通告、⇅＝切換方向 -->
+    <string name="detail_action_calendar_cd">服務時間及班次</string>
+    <string name="detail_action_notice_cd">服務通告</string>
+    <string name="detail_calendar_title">服務時間及班次</string>
+    <!-- GOV_SERVICE_HOURS: 服務時間及班次由政府公開資料（運輸署 GTFS）獲取 -->
+    <string name="detail_calendar_gov_header">政府公開資料 · 服務時間及班次</string>
+    <string name="detail_calendar_gov_updated">數據修正截止日期</string>
+    <string name="detail_calendar_service_days">服務日：</string>
+    <string name="detail_calendar_first_last">頭班／尾班：</string>
+    <string name="detail_calendar_service_span">服務時段：</string>
+    <string name="detail_calendar_headway">班次間隔（官方 frequencies.txt）：</string>
+    <string name="detail_calendar_more">另有</string>
+    <string name="detail_calendar_no_headway">政府班次資料未有班次間隔欄位（以固定開車時間提供）。</string>
+    <string name="detail_calendar_special">特別服務日／除外日期：</string>
+    <string name="detail_calendar_no_gov">政府班次資料未能提供呢條路線：</string>
+    <string name="detail_calendar_gov_note">資料每兩星期更新；臨時改道以營辦商公布為準。跨午夜時間標 (+1)。</string>
+    <!-- LOCAL_SERVICE_HOURS: 政府資料未載入時嘅本機官方目錄後備。 -->
+    <string name="detail_calendar_next">本地資料收錄嘅路線班次（方向／服務類型）：</string>
+    <string name="detail_calendar_no_timetable">服務時間及班次以政府公開資料為準；本機官方目錄只作後備，唔捏造時間表。</string>
+    <string name="detail_calendar_no_eta">本地路線資料搵唔到呢條路線嘅目錄列。</string>
+    <string name="detail_calendar_refresh">更新本機資料</string>
+    <string name="detail_calendar_local_header">本機路線資料（官方目錄快取）</string>
+    <string name="detail_calendar_no_snapshot">尚未建立本機路線資料快照，請到「設定 → 線路資料更新」。</string>
+    <string name="detail_calendar_csv_only">呢類交通嘅本地資料係線路／車站 CSV，官方目錄冇服務時間同班次欄位。</string>
+    <string name="detail_calendar_eta_note">附近卡片嘅即時到站班次仍由官方 ETA 提供，唔快取。</string>
+    <string name="detail_notice_title">服務通告</string>
+    <string name="detail_notice_from_eta">以下係官方 ETA 附帶嘅備註：</string>
+    <string name="detail_notice_empty">暫無服務通告。</string>
+    <string name="detail_notice_refresh">即時刷新通告</string>
+    <string name="detail_dialog_ok">確定</string>
     <string name="detail_fav_ok">已收藏 %1$s</string>
     <string name="detail_fav_need">請先點選一個車站</string>
     <string name="detail_trips_refreshed">已刷新未來三班次</string>
@@ -209,7 +247,7 @@
     <string name="eta_refresh_auto_tag">· 自動更新</string>
     <string name="eta_refresh_nearby_tag">· 附近路線已自動更新</string>
     <!-- MORE_ROUTES_PER_STOP：自動定位同站路線全收錄 -->
-    <string name="nearby_more_routes_tag"> · 同站路線全部顯示 · 每條未來三班次</string>
+    <string name="nearby_more_routes_tag"> · 半徑內所有路線全部顯示 · 每條未來三班次</string>
     <string-array name="eta_refresh_interval_labels">
         <item>15 秒</item>
         <item>30 秒</item>
@@ -227,7 +265,7 @@
 
     <string-array name="company_labels">
         <item>自動（全部）</item>
-        <item>九巴 / 龍運 KMB</item>
+        <item>九巴／龍運共用目錄 KMB</item>
         <item>城巴 CTB</item>
         <item>嶼巴 NLB</item>
         <item>綠色小巴 GMB</item>
@@ -248,7 +286,7 @@
 
     <string-array name="mode_hints">
         <item>路線號（如 40、720）／港鐵線路代碼（如 TML）</item>
-        <item>九巴 / 龍運路線號，例如 1A、40、A31</item>
+        <item>九巴／龍運共用官方目錄；會按路線自動標示所屬公司，例如 1A、40、A31</item>
         <item>城巴路線號，例如 720、5B、B8</item>
         <item>嶼巴路線號，例如 1、2、23</item>
         <item>綠小巴路線號，例如 1、101M、808</item>
@@ -272,17 +310,17 @@
     <string name="search_chip_nlb">新大嶼山巴士</string>
     <string name="search_chip_db">愉景灣/馬灣巴士</string>
     <string name="search_route_hint">路線號碼</string>
-    <string name="search_bookmark_title">我的書籤</string>
-    <string name="search_bookmark_empty">沒有資料記錄</string>
     <string name="search_history_title">搜尋紀錄</string>
-    <string name="search_history_empty">沒有搜尋紀錄，以下為官方目錄預載</string>
-    <string name="search_preload_hint">官方目錄預載 · 點列開路線詳情</string>
+    <string name="search_history_empty">沒有搜尋紀錄，以下為全部官方路線目錄</string>
+    <string name="search_preload_hint">全部官方路線目錄 · 點列開路線詳情</string>
     <string name="search_clear">清除</string>
     <string name="search_back">← 返回路線搜尋</string>
     <string name="search_no_api">此類別暫無同類公開實時 ETA API，未納入（唔捏造班次）</string>
-    <string name="search_rail_hint">港鐵：重鐵／輕鐵／港鐵接駁巴士目錄</string>
-    <string name="search_gmb_hint">專線小巴：綠色小巴官方目錄</string>
-    <string name="search_lwb_hint">龍運巴士與九巴共用同一份官方路線目錄</string>
+    <string name="search_rail_hint">港鐵類別：重鐵／輕鐵路線／港鐵接駁巴士目錄</string>
+    <string name="search_gmb_hint">小巴類別：綠色專線小巴官方目錄</string>
+    <string name="search_kmb_hint">只顯示九巴路線 · 由政府 GTFS agency 判定歸屬；龍運路線唔會出現</string>
+    <string name="search_lwb_hint">只顯示龍運路線 · 由政府 GTFS agency 判定歸屬；九巴路線唔會出現</string>
+    <string name="search_brand_unknown">政府班次資料（GTFS）未載入，未能分辨九巴／龍運；請到設定頁更新線路資料</string>
     <string name="search_dest_prefix">往 </string>
-    <string name="search_preloaded_tag">目錄預載</string>
+    <string name="search_preloaded_tag">官方目錄</string>
 </resources>
