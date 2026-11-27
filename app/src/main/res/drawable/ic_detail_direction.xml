@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DETAIL_THREE_ICONS — 第三顆白圓動作：切換方向（一上一下箭頭 ⇅）。
+  對應參考圖一最右邊嗰個圖標；循環線冇回程方向，由
+  CircularRoutes.showDirectionAction(boolean) 把呢顆設 GONE（參考圖二）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 向下箭 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M7,3.5v16.2M3.4,16.1L7,19.7l3.6,-3.6"
+        android:strokeColor="#D2232A"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.2" />
+    <!-- 向上箭 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M17,20.5V4.3M13.4,7.9L17,4.3l3.6,3.6"
+        android:strokeColor="#D2232A"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.2" />
+</vector>

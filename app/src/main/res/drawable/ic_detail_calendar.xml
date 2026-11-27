@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DETAIL_THREE_ICONS — 第一顆白圓動作：日曆（服務時間及班次）。
+  紅色 #D2232A 同 @color/brand 一致，畫喺 bg_detail_action_circle 白圓入面。
+  對應參考圖一／圖二最左邊嗰個日曆圖標。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 外框 + 頂部分隔線 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3.5,5.5h17v15h-17z"
+        android:strokeColor="#D2232A"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.8" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M3.5,9.5h17"
+        android:strokeColor="#D2232A"
+        android:strokeWidth="1.8" />
+    <!-- 兩個掛鈎 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M7.5,2.8v4.4M16.5,2.8v4.4"
+        android:strokeColor="#D2232A"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.2" />
+    <!-- 日期格（六點） -->
+    <path
+        android:fillColor="#D2232A"
+        android:pathData="M7,12h2.2v2.2H7zM10.9,12h2.2v2.2h-2.2zM14.8,12h2.2v2.2h-2.2zM7,15.8h2.2v2.2H7zM10.9,15.8h2.2v2.2h-2.2zM14.8,15.8h2.2v2.2h-2.2z" />
+</vector>

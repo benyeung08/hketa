@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DETAIL_THREE_ICONS — 第二顆白圓動作：通知／服務通告（喇叭）。
+  數據只來自官方 ETA 嘅 remark_tc，冇就顯示「暫無服務通告」，唔捏造。
+  對應參考圖一／圖二中間嗰個喇叭圖標。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 喇叭本體 -->
+    <path
+        android:fillColor="#D2232A"
+        android:pathData="M3,9.2h3.6L11.8,5v14l-5.2,-4.2H3z" />
+    <!-- 喇叭尾座 -->
+    <path
+        android:fillColor="#D2232A"
+        android:pathData="M4.2,17.4h2.2l1.6,2.6H5.8z" />
+    <!-- 兩道聲波 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M15.2,8.6a5,5 0 0 1 0,6.8"
+        android:strokeColor="#D2232A"
+        android:strokeLineCap="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M18.1,5.7a9,9 0 0 1 0,12.6"
+        android:strokeColor="#D2232A"
+        android:strokeLineCap="round"
+        android:strokeWidth="2" />
+</vector>

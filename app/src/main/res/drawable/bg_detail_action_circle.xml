@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- White circular action button in the red header (▦ / ★ / ⇄). -->
+<!--
+  DETAIL_THREE_ICONS: white circular action button in the red header.
+  Holds one of the three red vector icons: 日曆 / 通知 / ⇅ 切換方向.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
     <solid android:color="#FFFFFF" />
