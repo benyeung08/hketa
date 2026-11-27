@@ -1550,7 +1550,7 @@ if missing_release_tokens:
 
 # Both published notes files are OPTIONAL: the workflow has an if/else
 # fallback that writes a short version-matched body when a tag has no notes.
-# v1.0.2 is the CURRENT release; v1.0.0 / v1.0.1 are kept as history.
+# v1.0.3 is the CURRENT release; v1.0.0 / v1.0.1 / v1.0.2 are kept as history.
 # A missing / half-written (Chinese-only) file is reported as a drift below.
 release_notes_v100 = ROOT / "RELEASE_NOTES_v1.0.0.md"
 release_notes_v101 = ROOT / "RELEASE_NOTES_v1.0.1.md"
@@ -1657,7 +1657,7 @@ check("in-app updater stays compatible: first .apk asset wins",
       and "break;" in app_update_java
       and 'public static int compareVersions' in app_update_java)
 # RELEASE_NOTES_v1.0.1: gradle fields are the SINGLE SOURCE OF TRUTH.
-# Never hard-code the numbers here — bumping for v1.0.2 must not break CI.
+# Never hard-code the numbers here — bumping for v1.0.3 must not break CI.
 _cur_code = re.search(r"\bversionCode\s*=\s*(\d+)", app_gradle)
 _cur_name = re.search(r'\bversionName\s*=\s*"([^"]+)"', app_gradle)
 _cur_tag = "v" + (_cur_name.group(1) if _cur_name else "?")
@@ -1752,12 +1752,13 @@ check("RELEASE_NOTES_v1.0.1.md exists and is BILINGUAL + symmetric",
                         "hketa-v1.0.1-release.apk", "versionCode = 2",
                         "GMB circular trip fix", "綠小巴循環線班次修正",
                         "FE:7B:35:E1", "RELEASE_NOTES_${TAG}.md")))
-check("CURRENT gradle tag/version matches RELEASE_NOTES_v1.0.2.md (v1.0.1 kept as history)",
+check("CURRENT gradle tag/version matches RELEASE_NOTES_v1.0.3.md (v1.0.2 kept as history)",
       bool(_cur_code) and bool(_cur_name)
-      and _cur_tag == "v1.0.2"
-      and _cur_code.group(1) == "3"
-      and _cur_name.group(1) == "1.0.2"
-      and ("`" + _cur_tag + "`") in release_notes_v102.read_text(encoding="utf-8")
+      and _cur_tag == "v1.0.3"
+      and _cur_code.group(1) == "4"
+      and _cur_name.group(1) == "1.0.3"
+      and ("`" + _cur_tag + "`") in release_notes_v103.read_text(encoding="utf-8")
+      and "versionCode = 4" in release_notes_v103.read_text(encoding="utf-8")
       and "versionCode = 3" in release_notes_v102.read_text(encoding="utf-8"))
 # RELEASE_NOTES_v1.0.1 YESTERDAY/TODAY — two-day split + standalone day notes.
 _day1 = ROOT / "RELEASE_NOTES_v1.0.1_day1_2026-11-19.md"
@@ -1890,7 +1891,7 @@ check("RELEASE_NOTES_v1.0.2.md lists honest limitations (ETA / best-effort / for
           "best-effort", "前景 only 定位", "Foreground-only location",
           "唔捏造", "nothing is invented",
           "唔包含官方私有服務", "No official private services")))
-check("v1.0.0 / v1.0.1 notes are preserved as HISTORY and point to the current v1.0.2",
+check("v1.0.0 / v1.0.1 notes are preserved as HISTORY and point forward along the version chain",
       release_notes_v100.is_file() and release_notes_v101.is_file()
       and "歷史註記（2026-11-24）" in release_notes_v101.read_text(encoding="utf-8")
       and "Historical note (2026-11-24)" in release_notes_v101.read_text(encoding="utf-8")
@@ -1993,17 +1994,17 @@ check("RELEASE_NOTES_v1.0.3.md covers ALL TEN v1.0.2 follow-up change groups",
           "switches the red header", "1 往 竹園邨",
           # API_AUDIT
           "API_AUDIT", "route/CTB/", "service_type", "stop-eta",
-          "sha256", "188 情境", "423 static checks"))
+          "sha256", "188 情境", "425 static checks"))
       and "LOCAL_SERVICE_HOURS" in read(API / "LocalServiceHours.java")
       and len(re.findall(r"^\*\*[①-⑨] ", _v103_zh, re.M)) == 9
       and len(re.findall(r"^\*\*[①-⑨] ", _v103_en, re.M)) == 9)
-check("RELEASE_NOTES_v1.0.3.md states the version boundary AND the pending bump honestly",
+check("RELEASE_NOTES_v1.0.3.md states the version boundary AND the completed bump honestly",
       all(s in _v103_text for s in (
           "RELEASE_NOTES_v1.0.0.md", "RELEASE_NOTES_v1.0.1.md",
           "RELEASE_NOTES_v1.0.2.md", "版本分界", "Version boundary",
-          "版本號待 bump", "Version bump pending",
-          "versionName = 1.0.2", "versionCode = 3",
-          "1.0.3` / `4", "update_pill.xml"))
+          "版本已 bump", "Version bump complete",
+          "versionName = 1.0.3", "versionCode = 4",
+          "1.0.3` / `4", "update_pill.xml", "RELEASE_VERSION_GATE"))
       and "1.0.3` / `4" in _v103_text)
 check("RELEASE_NOTES_v1.0.3.md install / asset / fingerprint facts are correct",
       all(s in _v103_text for s in (
@@ -2045,6 +2046,19 @@ check("version bump did not break earlier features / data layer",
       and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
       and "fun signature(info: LocalDataInfo): String" in
           read(UI / "SearchLocalData.kt"))
+
+# --- V103_VERSION_BUMP: 正式 bump 到 1.0.3 / 4 -------------------------------
+check("V103_VERSION_BUMP: update_pill preview matches gradle 1.0.3 / 4",
+      'android:text="v1.0.3"' in pill_xml
+      and 'android:text="4"' in pill_xml
+      and "versionCode = 4" in app_gradle
+      and 'versionName = "1.0.3"' in app_gradle
+      and "1.0.2" not in app_gradle)
+check("V103_VERSION_BUMP: both drift gates require the bumped gradle needle",
+      'versionName = "1.0.3"' in workflow
+      and 'versionName = "1.0.3"' in read(ROOT / "scripts/preflight.py")
+      and "versionCode = 4 / versionName" in workflow
+      and "versionCode = 4 / versionName" in read(ROOT / "scripts/preflight.py"))
 
 check("signature strings all defined", all(
       name in settings_strings for name in ("signing_section", "signing_fingerprint",
@@ -2646,7 +2660,7 @@ check("KMB_LWB_SPLIT: honest degradation strings + no colour / version change",
       and "龍運路線唔會出現" in read(RES / "values/strings.xml")
       and "九巴路線唔會出現" in read(RES / "values/strings.xml")
       and 'name="search_' not in read(RES / "values-night/colors.xml")
-      and "versionCode = 3" in read(ROOT / "app/build.gradle.kts"))
+      and "versionCode = 4" in read(ROOT / "app/build.gradle.kts"))
 
 # --- JOINT_EVERY_TRIP_OPERATOR: 聯營「6 分鐘 11:27」後面逐班顯示營運商 --------
 _fmt3 = read(UI / "App1933Format.kt")
