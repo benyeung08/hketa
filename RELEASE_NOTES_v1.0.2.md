@@ -4,8 +4,8 @@
 > `v1.0.2` tag build 會自動用本檔作為該版本 Release 內文（`RELEASE_NOTES_${TAG}.md` → `body_path`），唔會誤用 `v1.0.0`／`v1.0.1` 嘅說明。
 > The `v1.0.2` tag build selects this file automatically through `RELEASE_NOTES_${TAG}.md` (`body_path`), so it can never reuse the `v1.0.0` / `v1.0.1` notes.
 
-> **版本分界／Version boundary**：`RELEASE_NOTES_v1.0.0.md` 截至 2026-11-19；`RELEASE_NOTES_v1.0.1.md` 由 2026-11-20 起整理資料層、班次邏輯同發布鏈；**`v1.0.2` 收錄今日（11-24）嘅搜尋介面、定位、卡片、導航同本地資料**；**11-25 之後嘅兩個改動（開 App 更新線路資料、還原香港出行易式分類）已獨立收錄於 `RELEASE_NOTES_v1.0.3.md`**。`v1.0.1` 說明中「至最新」係當時嘅歷史表述；**11-24 當日嘅現行描述以本檔為準**，舊檔保留作歷史、唔郁已簽名 APK／tag。
-> `RELEASE_NOTES_v1.0.0.md` covers through 2026-11-19; `RELEASE_NOTES_v1.0.1.md` starts at 2026-11-20 with the data-layer, trip-logic and release-pipeline work; **`v1.0.2` covers today (11-24): search UI, location, cards, navigation and local data**; **the two changes made on 11-25 (launch-time catalogue refresh and HKeMobility-style categories) are documented separately in `RELEASE_NOTES_v1.0.3.md`**. The "through the latest" wording in the `v1.0.1` notes is a historical snapshot; **this file is the current description of 11-24**. Older files are kept as history; no signed APK or tag is touched.
+> **版本分界／Version boundary**：`RELEASE_NOTES_v1.0.0.md` 截至 2026-11-19；`RELEASE_NOTES_v1.0.1.md` 由 2026-11-20 起整理資料層、班次邏輯同發布鏈；**`v1.0.2` 收錄今日（11-24）嘅搜尋介面、定位、卡片、導航同本地資料**；**11-25 起嘅後續改動（開 App 更新線路資料、還原香港出行易式分類、代碼優化、顯示所有路線、液態玻璃、中國版 Android 17 進階材質、單一服務商顯示、循環線頂欄兩顆動作、三個圖標語義同服務時間及班次本地化）已獨立收錄於 `RELEASE_NOTES_v1.0.3.md`**。`v1.0.1` 說明中「至最新」係當時嘅歷史表述；**11-24 當日嘅現行描述以本檔為準**，舊檔保留作歷史、唔郁已簽名 APK／tag。
+> `RELEASE_NOTES_v1.0.0.md` covers through 2026-11-19; `RELEASE_NOTES_v1.0.1.md` starts at 2026-11-20 with the data-layer, trip-logic and release-pipeline work; **`v1.0.2` covers today (11-24): search UI, location, cards, navigation and local data**; **the follow-up changes from 11-25 onwards (launch-time catalogue refresh, HKeMobility-style categories, code optimisation, all-routes display, liquid glass, China-ROM Android 17 advanced material, single-operator display, circular two-action header, three-icon meanings and local service-hours data) are documented separately in `RELEASE_NOTES_v1.0.3.md`**. The "through the latest" wording in the `v1.0.1` notes is a historical snapshot; **this file is the current description of 11-24**. Older files are kept as history; no signed APK or tag is touched.
 
 > 本檔係**純文字 Release 說明**，可直接貼入 GitHub Release 描述框；`app/build.gradle.kts` 已 bump 到 `versionCode = 3` / `versionName = 1.0.2`，要實際出 `v1.0.2` 正式版仍需 push 後打 `v1.0.2` tag，由 repo Actions 產出已簽名 APK。
 > This is a **plain-text Release note** you can paste straight into the GitHub Release description. `app/build.gradle.kts` is bumped to `versionCode = 3` / `versionName = 1.0.2`; shipping the actual `v1.0.2` APK still requires pushing and tagging `v1.0.2` so the repo Actions can build the signed release.
@@ -26,7 +26,7 @@
 - **📝 CI 錯誤蒸餾**：429／5xx／timeout 先自動重試（30s／60s 退避）；`Unresolved reference`／`error:`／AAPT2 即刻 break，唔會被重試掩蓋，真正錯誤交畀 distiller 印出
 - **🔐 簽章與版本閘門不變**：`tag ↔ build.gradle.kts ↔ aapt badging` 三方可校驗（連 `versionCode`／package／SDK），`apksigner` 驗簽後先發布；Release 只附一個 `.apk`
 - **🛠 已發佈 Release backfill**：`workflow_dispatch` 可對舊 tag 用**該 tag 自己嘅 source** 補正式版 APK，唔郁 tag／版本／Release 內文，唔會用 main 新 code 扮舊版本
-- **📄 中英雙語說明分工**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 起、`v1.0.2` 收錄 11-24、`v1.0.3` 收錄 11-25 嘅兩個改動；`RELEASE_NOTES_${TAG}.md` 按 tag 自動選用，缺檔時用版本對應簡短內文
+- **📄 中英雙語說明分工**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 起、`v1.0.2` 收錄 11-24、`v1.0.3` 收錄 11-25 起至最新嘅後續改動；`RELEASE_NOTES_${TAG}.md` 按 tag 自動選用，缺檔時用版本對應簡短內文
 - **🎨 顏色零改動**：搜尋頁、詳情頁純黑文字、液態玻璃導航欄、聯營標籤全部沿用既有色盤，本日冇新增任何色值
 
 #### 📅 2026-11-24 收尾：定位、卡片與本地資料
@@ -95,7 +95,7 @@
 - **📝 CI error distillation**: only 429 / 5xx / timeout are retried (30s / 60s back-off); `Unresolved reference`, `error:` and AAPT2 failures break immediately instead of being hidden, and the real error is printed by the distiller
 - **🔐 Signing and version gate unchanged**: `tag ↔ build.gradle.kts ↔ aapt badging` are cross-checked (including `versionCode`, package and SDK), `apksigner` runs before publishing, and the Release carries exactly one `.apk` asset
 - **🛠 Published-Release backfill**: a `workflow_dispatch` job can attach a signed release APK to an older tag using **that tag's own source**, without touching the tag, version or Release body — never disguising newer `main` code as an old build
-- **📄 Bilingual release-note split**: `v1.0.0` covers through 11-19, `v1.0.1` starts at 11-20, `v1.0.2` covers 11-24, `v1.0.3` covers the two changes from 11-25; `RELEASE_NOTES_${TAG}.md` is selected per tag, with a short version-matched fallback body when a file is missing
+- **📄 Bilingual release-note split**: `v1.0.0` covers through 11-19, `v1.0.1` starts at 11-20, `v1.0.2` covers 11-24, `v1.0.3` covers the follow-up changes from 11-25 through the latest; `RELEASE_NOTES_${TAG}.md` is selected per tag, with a short version-matched fallback body when a file is missing
 - **🎨 Zero colour changes**: the search page, pure-black detail text, liquid-glass nav and joint-route labels all reuse the existing palette; no colour value was added today
 
 #### 📅 2026-11-24 wrap-up: location, cards and local data
@@ -151,4 +151,4 @@
 ---
 
 > 📌 **改說明唔等於改 APK／Editing notes never touches the APK / tag**：改 Release 描述唔使重跑 CI，亦唔會改動已簽名嘅 APK；實際功能由對應 tag 嘅 source 構建。Editing a Release body needs no CI re-run and changes no signed APK; the actual features come from that tag's own source build.
-> 📌 11-25 嘅兩個 App 改動已移往 `RELEASE_NOTES_v1.0.3.md`；本檔只保留 11-24 嘅收錄範圍。The two 11-25 app changes now live in `RELEASE_NOTES_v1.0.3.md`; this file keeps its 11-24 scope only.
+> 📌 11-25 起嘅後續 App 改動已移往 `RELEASE_NOTES_v1.0.3.md`；本檔只保留 11-24 嘅收錄範圍。The 11-25-and-later app changes now live in `RELEASE_NOTES_v1.0.3.md`; this file keeps its 11-24 scope only.
