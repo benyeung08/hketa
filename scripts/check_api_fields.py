@@ -37,8 +37,18 @@ def check(label, condition, detail=""):
         failures.append(label)
 
 
+# CODE_OPTIMISATION: 以前 219 次 read() 每次都重新開檔讀碟（同一份
+# RouteSearch.java 被讀 12 次）。checker 全程唯讀、唔會改檔，所以按絕對
+# 路徑 memoize 係安全嘅：每份檔案一個 process 只讀一次，CI 檢查明顯提速，
+# 全部 check 條件同輸出一個字都唔變。
+_READ_CACHE = {}
+
+
 def read(path):
-    return path.read_text(encoding="utf-8") if path.exists() else ""
+    key = str(path)
+    if key not in _READ_CACHE:
+        _READ_CACHE[key] = path.read_text(encoding="utf-8") if path.exists() else ""
+    return _READ_CACHE[key]
 
 
 def all_keys(node, out):
@@ -544,9 +554,15 @@ check("manual update ignores Wi-Fi restriction",
 check("prefs: interval / wifi / last check", all(
       k in prefs_kt for k in ("INTERVAL_DAYS", "isDue", "markChecked",
                               "updateAllowed", "KEY_LAST_CHECK")))
-check("background auto-update at startup",
+# LAUNCH_CATALOGUE_REFRESH：以前呢度要求 `RouteDataPrefs.isDue`（每日／每 3 日
+# 節流）。而家開 App 就更新一次，所以改成檢查「真 code 已改用共用 gate」；
+# 用精確 `if (RouteDataPrefs.isDue(app)` 而唔係 `RouteDataPrefs.isDue` 字串，
+# 避免被 KDoc 入面「唔再用 isDue」嘅說明呃到假陽性。
+check("background catalogue auto-update at startup runs ONCE per cold start",
       "maybeAutoUpdateCatalogue" in viewmodel_kt
-      and "RouteDataPrefs.isDue" in viewmodel_kt)
+      and "CatalogueRefreshRunner.runOnce" in viewmodel_kt
+      and "if (RouteDataPrefs.isDue(app)" not in viewmodel_kt
+      and "RouteDataPrefs.isDue(app) &&" not in viewmodel_kt)
 
 # --- Settings: in-app application update --------------------------------------
 update_java = read(API / "AppUpdate.java")
@@ -848,7 +864,8 @@ check("selected tab = ONE darker inner pill + blue label (screenshot)",
       and 'R.color.nav_tab_active' in glass_kt
       and 'R.color.nav_tab_muted' in glass_kt
       and '@color/nav_tab_active' in main_layout
-      and main_layout.count('@color/nav_tab_muted') == 3)
+      # NAV_NO_FAV_TAB: 3 粒導航欄 -> 1 粒 active + 2 粒 muted
+      and main_layout.count('@color/nav_tab_muted') == 2)
 check("geometry scales with screen width; re-applied on rotation / resume",
       all(s in glass_kt for s in (
           "fun geometry(", "SIDE_RATIO_PHONE = 0.06f",
@@ -882,7 +899,7 @@ check("MainActivity re-applies glass on resume / config change; no opaque tabs",
       all(s in main_kt for s in (
           "NavGlass.apply(this, bottomTabs)",
           "override fun onConfigurationChanged",
-          "NavGlass.selectTab(this, tabs[i], i == index)"))
+          "NavGlass.selectTab(this, tabs[i], tabPages[i] == index)"))
       and "setBackgroundColor(" not in main_kt
       and "fun setupNavGlassSection" in settings_kt
       and "R.id.swNavGlass" in settings_kt
@@ -895,7 +912,154 @@ check("nav glass strings all defined", all(
                    "nav_glass_status", "nav_glass_state_follow",
                    "nav_glass_state_fixed", "nav_glass_state_night",
                    "nav_glass_state_contrast", "nav_glass_state_reduced",
-                   "nav_glass_state_day")))
+                   "nav_glass_state_day", "nav_glass_state_no_blur")))
+
+# --- CN_ANDROID17_GLASS: 中國版 Android 17 / 國內 ROM 液態玻璃相容 -------------
+compat_kt = read(UI / "NavGlassCompat.kt")
+no_blur_files = (
+    RES / "drawable/bg_nav_glass_no_blur.xml",
+    RES / "drawable/bg_nav_glass_no_blur_dark.xml",
+)
+check("CN_ANDROID17_GLASS: pure decision layer + AOSP cross-window blur probe",
+      all(s in compat_kt for s in (
+          "object NavGlassCompat", "const val API_BLUR_MIN = 31",
+          "const val API_MODERN_MIN = 35", "const val BLUR_DAY = 18",
+          "const val BLUR_NIGHT = 26", "fun blurEnabled(",
+          "fun blurRadius(night: Boolean)", "fun modernPlatform(",
+          "fun backgroundName(", "fun crossWindowBlurEnabled(context: Context)",
+          "isCrossWindowBlurEnabled", "Context.WINDOW_SERVICE",
+          "fun applyWindowBlur(", "setBackgroundBlurRadius",
+          "Window::class.java.getMethod", "runCatching",
+          "getOrDefault(false)"))
+      and "fun blurEnabled(\n        sdkInt: Int," in compat_kt
+      and "&& crossWindowBlur" in compat_kt
+      and "&& !reducedMotion" in compat_kt
+      and "&& !highContrast" in compat_kt)
+check("CN_ANDROID17_GLASS: no SDK>34 constants, vendor keys or future-only APIs",
+      all(s not in compat_kt for s in (
+          "VERSION_CODES.UPSIDE_DOWN_CAKE", "VERSION_CODES.VANILLA_ICE_CREAM",
+          "VERSION_CODES.BAKLAVA", "VERSION_CODES.",
+          "MeshGradient", "isCrossWindowBlurEnabledListener"))
+      and "Build.VERSION.SDK_INT" in compat_kt
+      and "GMS" in compat_kt)
+check("CN_ANDROID17_GLASS: opaque no-blur fallbacks keep the same 28dp pill",
+      all(f.is_file() for f in no_blur_files)
+      and all('android:radius="28dp"' in read(f)
+              and '<solid android:color="#FF' in read(f)
+              for f in no_blur_files)
+      and 'android:radius="28dp"' in read(RES / "drawable/bg_nav_glass.xml"))
+check("CN_ANDROID17_GLASS: NavGlass.apply is probe-driven and status is honest",
+      all(s in glass_kt for s in (
+          "NavGlassCompat.blurEnabled(", "NavGlassCompat.crossWindowBlurEnabled(activity)",
+          "NavGlassCompat.applyWindowBlur(activity, enabled, night)",
+          "backdropBlur(activity, bar, blurOn, night)",
+          "R.drawable.bg_nav_glass_no_blur_dark",
+          "R.drawable.bg_nav_glass_no_blur",
+          "R.string.nav_glass_state_no_blur", "blurOn", "backdropBlur(",
+          # --- NAV_LIQUID: 液態層斷言併入同一條 check，static 總數保持 399 ---
+          "object NavLiquid {", "fun enabled(follow: Boolean, reduced: Boolean, contrast: Boolean): Boolean =",
+          "fun durationMs(", "fun sheenAlpha(", "fun rimAlpha(",
+          "fun travelPx(", "fun springScale(frame: Float): Float",
+          "NAV_LIQUID", "R.id.navLiquidLayer", "R.id.navLiquidRim",
+          "R.id.navLiquidSheen", "GradientDrawable.Orientation.LEFT_RIGHT",
+          "GradientDrawable.Orientation.TOP_BOTTOM", "layer.clipToOutline = true",
+          "ValueAnimator.INFINITE", "ValueAnimator.REVERSE",
+          "RenderEffect.createBlurEffect(", "Shader.TileMode.CLAMP",
+          "fun stopLiquid()", "NavLiquid.enabled(follow, reduced, contrast)",
+          "NavLiquid.springScale(",
+          "liquid(activity, follow, night, contrast, reduced, !blurOn, material)",
+          # --- CN_ADVANCED_MATERIAL: 中國版 Android OS 17 進階材質支援 ---
+          "CN_ADVANCED_MATERIAL", "NavGlassCompat.materialProbe(activity)",
+          "NavGlassMaterial.resolve(", "material.liquid", "material.blur",
+          "R.string.nav_glass_material_status",
+          "NavGlassCompat.materialSourceLabel(probe)",
+          "NavGlassPrefs.materialMode(context)"))
+      and "!blurOn && night" in glass_kt
+      and "!blurOn -> R.drawable.bg_nav_glass_no_blur" in glass_kt
+      and "setBackgroundBlurRadius" in glass_kt
+      and 'android:id="@+id/navLiquidLayer"' in main_layout
+      and 'android:id="@+id/navLiquidRim"' in main_layout
+      and 'android:id="@+id/navLiquidSheen"' in main_layout
+      and 'android:clickable="false"' in main_layout
+      and 'NavGlass.stopLiquid()' in main_kt
+      and "NAV_LIQUID" in nav_strings
+      # 純決策層：NavGlass.kt 入面 NavLiquid object 區塊唔可以有 android 引用
+      and "android." not in glass_kt.split("object NavLiquid {", 1)[1]
+      # --- CN_ADVANCED_MATERIAL 檔級斷言（併入同一條，static 總數保持 399）---
+      and all(s in compat_kt for s in (
+          "object NavGlassMaterial {", "MODE_FOLLOW", "MODE_FULL", "MODE_SIMPLE",
+          "data class Decision(", "fun resolve(", "fun sanitizeMode(mode: Int): Int",
+          "data class MaterialProbe(", "fun materialProbe(context: Context): MaterialProbe",
+          "MATERIAL_CANDIDATE_KEYS", "MATERIAL_DISABLE_KEYS", "CN_ROM_BRANDS",
+          "Settings.Global.getString", "Settings.Secure.getString",
+          "Settings.System.getString", "PowerManager", "isPowerSaveMode",
+          "fun materialSourceLabel(probe: MaterialProbe): String",
+          "OEM_DISABLED", "OEM_ENABLED", "POWER_SAVE", "USER_SIMPLE", "USER_FULL"))
+      and "android." not in compat_kt.split("object NavGlassMaterial {", 1)[1]
+      and all(s in read(UI / "NavGlassPrefs.kt") for s in (
+          "private const val KEY_MATERIAL_MODE =",
+          "fun materialMode(context: Context): Int",
+          "fun setMaterialMode(context: Context, mode: Int)",
+          "NavGlassMaterial.sanitizeMode"))
+      and all(s in settings_kt for s in (
+          "R.id.spNavMaterial", "spNavMaterial.adapter = ArrayAdapter(",
+          "AdapterView.OnItemSelectedListener",
+          "NavGlassPrefs.setMaterialMode(this@SettingsActivity, position)",
+          "R.string.nav_glass_material_follow",
+          "R.string.nav_glass_material_full",
+          "R.string.nav_glass_material_simple"))
+      and 'android:id="@+id/spNavMaterial"' in read(RES / "layout/activity_settings.xml")
+      and all(f'<string name="{n}"' in nav_strings for n in (
+          "nav_glass_material_label", "nav_glass_material_follow",
+          "nav_glass_material_full", "nav_glass_material_simple",
+          "nav_glass_material_status"))
+      and "CN_ADVANCED_MATERIAL" in nav_strings
+      and "唔編造廠商私有 key" in nav_strings)
+check("CN_ANDROID17_GLASS: hint documents the China-ROM / Android 17 fallback",
+      all(s in nav_strings for s in (
+          '<string name="nav_glass_state_no_blur">',
+          "中國版 Android 17", "實色玻璃", "唔靠 GMS"))
+      and '<string name="nav_glass_hint" formatted="false">' in nav_strings)
+
+# --- NAV_NO_FAV_BUTTON: 取消導航欄下嘅「☆ 加入收藏」長條掣 -------------------
+detail_kt_now = read(UI / "RouteDetailActivity.kt")
+check("NAV_NO_FAV_BUTTON: the fav-add button under the glass bar is REMOVED",
+      "btnFavAdd" not in main_layout
+      and "btnFavAdd" not in main_kt
+      and '@string/fav_add' not in main_layout
+      and 'name="fav_add"' not in nav_strings
+      and "已加入收藏" not in main_kt
+      and "NAV_NO_FAV_BUTTON" in main_layout)
+check("NAV_NO_FAV_BUTTON: favourites still work from the detail page + list",
+      "vm.addCurrentFavorite()" in detail_kt_now
+      and "favoriteAdapter" in main_kt
+      and "vm.favorites()" in main_kt
+      and "到路線詳情頁撳「收藏」加入" in nav_strings
+      and "長按可移除" in nav_strings)
+# --- NAV_NO_FAV_TAB: 所有頁面導航欄都唔再有「★ 收藏」分頁 -----------------
+check("NAV_NO_FAV_TAB: 加入收藏 tab removed from EVERY page's glass nav bar",
+      'android:id="@+id/tabFav"' not in main_layout
+      and "@string/tab_fav" not in main_layout
+      and 'name="tab_fav"' not in read(RES / "values/strings.xml")
+      and "tabFav" not in main_kt
+      and "R.id.tabFav" not in main_kt
+      and "NAV_NO_FAV_TAB" in main_layout
+      and "NAV_NO_FAV_TAB" in main_kt
+      and all(f'android:id="@+id/{n}"' in main_layout for n in
+              ("bottomTabs", "tabHome", "tabSearch", "tabMore"))
+      and "listOf(tabHome, tabSearch, tabMore)" in main_kt
+      and "intArrayOf(0, 2, 3)" in main_kt
+      and "NavGlass.selectTab(this, tabs[i], tabPages[i] == index)" in main_kt
+      # 收藏入口保留：設定頁掣 + 詳情頁側 chip + 收藏頁 + 長按移除
+      and "R.id.btnFavList" in main_kt
+      and "selectTab(1)" in main_kt
+      and 'android:id="@+id/pageFav"' in main_layout
+      and 'android:id="@+id/favRecycler"' in main_layout
+      and "favoriteAdapter" in main_kt
+      and "vm.favorites()" in main_kt
+      and "R.id.chipFav" in detail_kt_now
+      and "vm.addCurrentFavorite()" in detail_kt_now
+      and "長按可移除" in nav_strings)
 
 # --- 主頁附近路線卡片 → 路線詳情（還原截圖，無地圖）-------------------------
 detail_kt = read(UI / "RouteDetailActivity.kt")
@@ -919,13 +1083,38 @@ check("route detail has NO map view / SDK / WebView at all",
 check("route detail reproduces red header + side chips + timeline list",
       all(s in detail_xml for s in (
           'android:id="@+id/detailHeader"', 'android:id="@+id/tvDetailTitle"',
-          'android:id="@+id/btnDetailBack"', 'android:id="@+id/detailActionTrips"',
-          'android:id="@+id/detailActionFav"', 'android:id="@+id/detailActionDirection"',
+          'android:id="@+id/btnDetailBack"', 'android:id="@+id/detailActionCalendar"',
+          'android:id="@+id/detailActionNotice"', 'android:id="@+id/detailActionDirection"',
           'android:id="@+id/detailSideChips"', 'android:id="@+id/chipBoard"',
           'android:id="@+id/chipNearby"', 'android:id="@+id/chipFav"',
           'android:id="@+id/chipMore"', 'android:id="@+id/detailStopsRecycler"',
           'android:id="@+id/tvStopBubble"', 'android:id="@+id/tvDetailFooter"'))
-      and '@color/brand' in detail_xml)
+      and '@color/brand' in detail_xml
+      # CIRCULAR_TWO_ACTIONS: 循環線三顆 -> 兩顆，id 全部保留
+      and 'CIRCULAR_TWO_ACTIONS' in detail_xml
+      and 'CIRCULAR_TWO_ACTIONS' in read(UI / "RouteDetailActivity.kt")
+      and "public static boolean showDirectionAction(boolean circular)" in read(API / "CircularRoutes.java")
+      and "CircularRoutes.showDirectionAction(circular)" in read(UI / "RouteDetailActivity.kt")
+      and "directionAction.visibility = if" in read(UI / "RouteDetailActivity.kt")
+      and "View.GONE" in read(UI / "RouteDetailActivity.kt")
+      # CIRCULAR_TWO_ACTIONS: 循環線只有日曆（服務時間及班次）＋通知兩顆
+      and "public static List<String> visibleHeaderActions(boolean circular)" in read(API / "CircularRoutes.java")
+      and "public static final String ACTION_CALENDAR" in read(API / "CircularRoutes.java")
+      and "CircularRoutes.visibleHeaderActions(circular)" in read(UI / "RouteDetailActivity.kt")
+      and "actions.contains(CircularRoutes.ACTION_CALENDAR)" in read(UI / "RouteDetailActivity.kt")
+      and "actions.contains(CircularRoutes.ACTION_NOTICE)" in read(UI / "RouteDetailActivity.kt")
+      and "所有循環線**只有呢兩個圖標**" in detail_xml
+      and "服務時間及班次（同單向路線同一個 dialog" in detail_xml
+      # DETAIL_THREE_ICONS: 日曆 / 通知 / ⇅ 三個 vector 圖標
+      and 'DETAIL_THREE_ICONS' in detail_xml
+      and '@drawable/ic_detail_calendar' in detail_xml
+      and '@drawable/ic_detail_notice' in detail_xml
+      and '@drawable/ic_detail_direction' in detail_xml
+      and '@string/detail_action_calendar_cd' in detail_xml
+      and '@string/detail_action_notice_cd' in detail_xml
+      and 'android:text="▦"' not in detail_xml
+      and 'android:text="★"' not in detail_xml
+      and 'android:text="⇄"' not in detail_xml)
 check("item row shows 3 arrivals + honest fare / alighting placeholders",
       all(f'android:id="@+id/tripRow{i}"' in detail_item for i in (1, 2, 3))
       and all(f'android:id="@+id/tripMin{i}"' in detail_item for i in (1, 2, 3))
@@ -1007,10 +1196,84 @@ check("preload uses official catalogues only; no invented destinations",
       and all(s in read(API / "RouteSearch.java") for s in (
           "kmbPreload", "ctbPreload", "nlbPreload", "gmbPreload",
           "railPreload", "RouteDataStore.catalogueJson",
-          "MtrCatalog.LINE_CODES", "MtrCatalog.MTR_BUS_ROUTES",
-          "目錄預載（未查方向）"))
-      and 'new ArrayList<>(out.subList(0, 24))'
-      in read(API / "RouteSearch.java"))
+          "MtrCatalog.LINE_CODES", "MtrCatalog.LRT_ROUTES",
+          "MtrCatalog.MTR_BUS_ROUTES", "目錄預載（未查方向）"))
+      # HKE_MOBILITY_CATEGORIES: 舊版一刀切 24 條會 cut 走港鐵／輕鐵／小巴，
+      # 而家改為全部官方目錄列如實返回。
+      and "ALL_ROUTES_LIMIT = Integer.MAX_VALUE" in read(API / "RouteSearch.java")
+      and "subList(0, 24)" not in read(API / "RouteSearch.java")
+      and "return out;" in read(API / "RouteSearch.java"))
+
+# --- HKE_MOBILITY_CATEGORIES: 還原香港出行易式分類 ---------------------------
+# 呢段位於 checker 前半，SEARCH_UI 段嘅 search_strings / search_colors 等
+# 變數要到後面先定義，所以呢度一律用局部 read()，唔依賴執行順序。
+hke_rules = ROOT / "app/src/main/java/hk/eta/app/ui/SearchCategoryRules.kt"
+_hke = read(hke_rules) if hke_rules.is_file() else ""
+_hke_strings = read(RES / "values/strings.xml")
+_hke_colors = read(RES / "values/colors.xml")
+_hke_night = read(RES / "values-night/colors.xml")
+check("HKE_MOBILITY_CATEGORIES: pure decision layer, no Android / no colour",
+      hke_rules.is_file()
+      and all(s in _hke for s in (
+          "object SearchCategoryRules", "fun belongs(", "fun isBusCompany(",
+          "fun isRail(", "capPerCompany(", "val ALL_ROUTES_LIMIT: Int =",
+      "ALL_ROUTES_LIMIT == Int.MAX_VALUE"))
+      and all(s not in _hke for s in (
+          "import android", "import androidx", "@color/", "getString(")))
+check("HKE_MOBILITY_CATEGORIES: operator constants match the Java data layer",
+      all(f'const val {n} = "{v}"' in _hke for n, v in (
+          ("KMB", "KMB"), ("CTB", "CTB"), ("NLB", "NLB"), ("GMB", "GMB"),
+          ("MTR", "MTR"), ("LRT", "LRT"), ("MTRB", "MTRB"), ("JOINT", "JOINT")))
+      and 'public static final String JOINT = "JOINT"' in
+          read(API / "JointRoutes.java")
+      and "HKE_MOBILITY_CATEGORIES" in _hke)
+check("HKE_MOBILITY_CATEGORIES: bus-company chips show ONLY their own routes",
+      all(s in _hke for s in (
+          "CHIP_ALL -> isBusCompany(company)",
+          "CHIP_CTB -> company == CTB || company == JOINT",
+          'CHIP_KMB -> (company == KMB || company == JOINT) && brand == "KMB"',
+          'CHIP_LWB -> (company == KMB || company == JOINT) && brand == "LWB"',
+          "CHIP_NLB -> company == NLB"))
+      and "company == KMB || company == CTB || company == NLB || company == JOINT"
+          in _hke
+      # 舊版「所有巴士類別」直接 return true，連小巴／鐵路都撈埋
+      and "CHIP_ALL -> true" not in _hke
+      and "0 -> true" not in main_kt)
+check("HKE_MOBILITY_CATEGORIES: MTR category shows heavy rail + LRT + MTR Bus",
+      "CAT_RAIL -> isRail(company)" in _hke
+      and "company == MTR || company == LRT || company == MTRB" in _hke
+      and "public static final String[] LRT_ROUTES" in
+          read(API / "MtrCatalog.java")
+      and "EtaRepository.LRT" in read(API / "RouteSearch.java")
+      and "港鐵類別：重鐵／輕鐵路線" in _hke_strings)
+check("HKE_MOBILITY_CATEGORIES: minibus routes belong to the minibus category",
+      "CAT_MINIBUS -> company == GMB" in _hke
+      and "小巴類別：綠色專線小巴官方目錄" in _hke_strings
+      and "2 -> company == EtaRepository.GMB" not in main_kt)
+check("HKE_MOBILITY_CATEGORIES: Activity delegates to the shared rule layer",
+      "company, searchCategory, busChip, GovServiceHours.Brand.brand(route)" in main_kt
+      and "SearchCategoryRules.capPerCompany(rows) { it.company }" in main_kt
+      and "rows.take(6)" not in main_kt
+      and "import hk.eta.app.api.JointRoutes" not in main_kt)
+check("ALL_ROUTES: preload returns EVERY official catalogue row, no per-company cap",
+      all(s in read(API / "RouteSearch.java") for s in (
+          "ALL_ROUTES_LIMIT = Integer.MAX_VALUE", "return out;",
+          "HKE_MOBILITY_CATEGORIES", "LRT_ROUTES.length",
+          "MTR_BUS_ROUTES.length", "LINE_CODES.length"))
+      and all(s not in read(API / "RouteSearch.java") for s in (
+          "subList(0, 24)", "added < 6", "added < 2",
+          "Math.min(4, MtrCatalog", "Math.min(3, MtrCatalog",
+          "Math.min(2, MtrCatalog", "out.size() > 40"))
+      and "3 列" not in read(RES / "values/strings.xml"))
+check("HKE_MOBILITY_CATEGORIES: colours / layout / previous rounds untouched",
+      'name="search_bg"' in _hke_colors
+      and 'name="search_' not in _hke_night
+      and all(f'android:id="@+id/{n}"' in main_layout for n in (
+          "catMtr", "catBus", "catGmb", "chipAll", "chipCtb", "chipKmb",
+          "chipLwb", "chipNlb", "chipDb"))
+      and "KOTLIN_APP_SCOPE" in viewmodel_kt
+      and "SEARCH_LOCAL_DATA" in main_kt
+      and "CatalogueRefreshRunner.runOnce" in app_kt)
 check("detail reuses open-data layer; every chip / header action has a real action",
       all(s in detail_kt for s in (
           "ViewModelProvider(this)[EtaViewModel::class.java]",
@@ -1020,8 +1283,59 @@ check("detail reuses open-data layer; every chip / header action has a real acti
           "class DetailStopAdapter", "fun submit(", "fun boardAt(",
           "fun buildTitle(", "Intent(this, SettingsActivity::class.java)"))
       and all(f'R.id.{n}' in detail_kt for n in (
-          "btnDetailBack", "detailActionTrips", "detailActionFav",
-          "detailActionDirection", "chipBoard", "chipNearby", "chipFav", "chipMore")))
+          "btnDetailBack", "detailActionCalendar", "detailActionNotice",
+          "detailActionDirection", "chipBoard", "chipNearby", "chipFav", "chipMore"))
+       # CIRCULAR_TWO_ACTIONS: 循環線收起第三顆，普通路線維持三顆
+       and "CircularRoutes.showDirectionAction(circular)" in detail_kt
+       and "View.VISIBLE" in detail_kt and "View.GONE" in detail_kt
+       and "CIRCULAR_TWO_ACTIONS" in read(API / "CircularRoutes.java")
+       # DETAIL_THREE_ICONS: 三個圖標各有實際功能
+       and "fun showServiceHours(" in detail_kt
+       and "fun showNotices(" in detail_kt
+       and "latestEtas = state.etas" in detail_kt
+       # LOCAL_SERVICE_HOURS: 服務時間及班次只讀本機路線資料，唔行即時 ETA
+       and "LocalServiceHours.lookup(company, route)" in detail_kt
+       and "TimeUtils.hhmm(info.updatedAt)" in detail_kt
+       and "info.hasSnapshot" in detail_kt
+       and "info.csvOnly" in detail_kt
+       and "info.rows" in detail_kt
+       and "detail_calendar_local_header" in detail_kt
+       and "detail_calendar_eta_note" in detail_kt
+       and "public static Info lookup(String company, String route)" in read(API / "LocalServiceHours.java")
+       and "RouteDataStore.readText(file)" in read(API / "LocalServiceHours.java")
+       and "catalogueJson" not in read(API / "LocalServiceHours.java")
+       # 日曆 dialog 已經完全唔讀即時 ETA 嘅班次時間
+       and "etaMillis" not in detail_kt
+       and "detail_calendar_no_timetable" in detail_kt
+       and "remarkTc" in detail_kt
+       and "AlertDialog.Builder(this)" in detail_kt
+       # 循環線日曆同單向完全一樣 = 服務時間及班次，唔縮水
+       and "STILL 服務時間及班次" in detail_kt
+       and "visibleHeaderActions(boolean)" in detail_kt
+       # GOV_SERVICE_HOURS: 日曆讀政府公開班次資料
+       and "GovServiceHours.lookup(" in detail_kt
+       and "RouteDataStore.serviceHoursDir()" in detail_kt
+       and "gov.available" in detail_kt
+       and "gov.headways" in detail_kt
+       and "detail_calendar_gov_header" in detail_kt
+       and "GOV_SERVICE_HOURS" in read(API / "GovServiceHours.java")
+       and "pt-headway-tc/" in read(API / "GovServiceHours.java")
+       and "DATA_LAST_UPDATED_DATE.csv" in read(API / "GovServiceHours.java")
+       and "frequencies.txt" in read(API / "GovServiceHours.java")
+       # GOV_IN_ROUTE_UPDATE: 政府班次資料正式加入「線路資料更新」
+       and "GOV_IN_ROUTE_UPDATE" in read(API / "GovServiceHours.java")
+       and "public static final String SOURCE_FILE" in read(API / "GovServiceHours.java")
+       and "public static SourceOutcome outcome(" in read(API / "GovServiceHours.java")
+       and "public static final String GOV_SOURCE" in read(API / "RouteDataStore.java")
+       and "private static final int EXTRA_SOURCES = 2" in read(API / "RouteDataStore.java")
+       and "private static SourceStatus refreshGovServiceHours(" in read(API / "RouteDataStore.java")
+       and "statuses.add(refreshGovServiceHours(pool, ctx.getFilesDir()));" in read(API / "RouteDataStore.java")
+       and "s.file == RouteDataStore.GOV_SOURCE" in read(UI / "SettingsActivity.kt")
+       and "sources_gov_files" in read(UI / "SettingsActivity.kt")
+       and "RouteDataStore.serviceHoursDir()?.listFiles()?.size" in read(UI / "MainActivity.kt")
+       and "sources_gov_files" in read(RES / "values/strings.xml")
+       and "sources_gov_skipped" in read(RES / "values/strings.xml")
+       and "政府公開班次資料" in read(RES / "values/strings.xml"))
 check("detail strings all defined", all(
       f'<string name="{name}">' in read(RES / "values/strings.xml")
       for name in ("detail_title", "detail_no_map_label", "detail_footer_honest",
@@ -1030,7 +1344,16 @@ check("detail strings all defined", all(
                    "detail_chip_more", "detail_action_trips_cd",
                    "detail_action_fav_cd", "detail_action_direction_cd",
                    "detail_fav_ok", "detail_fav_need",
-                   "detail_trips_refreshed", "detail_no_stops")))
+                   "detail_trips_refreshed", "detail_no_stops",
+                   "detail_action_calendar_cd", "detail_action_notice_cd",
+                   "detail_calendar_title", "detail_calendar_next",
+                   "detail_calendar_no_timetable", "detail_calendar_no_eta",
+                   "detail_calendar_refresh", "detail_notice_title",
+                   "detail_notice_from_eta", "detail_notice_empty",
+                   "detail_dialog_ok", "detail_calendar_local_header",
+                   "detail_calendar_no_snapshot", "detail_calendar_csv_only",
+                   "detail_calendar_eta_note", "detail_notice_refresh",
+                   "sources_gov_files", "sources_gov_skipped")))
 
 check("default_github_repo is defined",
       "default_github_repo" in read(RES / "values/strings.xml"))
@@ -1232,6 +1555,7 @@ if missing_release_tokens:
 release_notes_v100 = ROOT / "RELEASE_NOTES_v1.0.0.md"
 release_notes_v101 = ROOT / "RELEASE_NOTES_v1.0.1.md"
 release_notes_v102 = ROOT / "RELEASE_NOTES_v1.0.2.md"
+release_notes_v103 = ROOT / "RELEASE_NOTES_v1.0.3.md"
 for _f in (release_notes_v100, release_notes_v101, release_notes_v102):
     if not _f.is_file():
         print(f"[INFO] {_f.name} 未上傳；"
@@ -1522,7 +1846,23 @@ check("RELEASE_NOTES_v1.0.2.md covers TODAY's search / CI / location / card / lo
           "SameRouteOperators.partition", "different bus operators shown separately",
           "取消搜尋「進階」", '"Advanced" removed',
           "SearchLocalData.kt", "Local route data restored",
-          "368", "24 情境", "24 drift scenarios", "KOTLIN_APP_SCOPE")))
+          "399", "43 情境", "43 drift scenarios", "KOTLIN_APP_SCOPE",
+          "CN_ANDROID17_GLASS", "NAV_NO_FAV_BUTTON",
+          "LAUNCH_CATALOGUE_REFRESH", "HKE_MOBILITY_CATEGORIES")))
+# 兩個 11-25 改動嘅現行描述已搬去 v1.0.3；v1.0.2 只保留版本分界指引，
+# 唔再收錄嗰兩條 highlight（避免同一改動喺兩份 Release 說明重複）。
+check("RELEASE_NOTES_v1.0.2.md hands the 11-25-and-later follow-up changes over to v1.0.3",
+      all(s in _v102_text for s in (
+          "RELEASE_NOTES_v1.0.3.md", "11-25",
+          "11-25 起嘅後續改動", "`v1.0.3` 收錄 11-25 起至最新",
+          "The 11-25-and-later app changes now live in",
+          "`v1.0.3` covers the follow-up changes"))
+      and all(s not in _v102_text for s in (
+          "**🚇 還原香港出行易式分類**", "**🚀 開 App 就更新線路資料一次**",
+          "**🚇 HKeMobility-style categories restored**",
+          "**🚀 Refresh route data once on every app launch**",
+          "MtrCatalog.LRT_ROUTES", "SearchCategoryRules.belongs()",
+          "LaunchCatalogueRefresh.claimOnce()")))
 check("RELEASE_NOTES_v1.0.2.md does NOT duplicate the 11-19 / 11-20 historical highlights",
       all(s not in _v102_text for s in (
           "昨天（2026-11-19）", "Yesterday (2026-11-19)",
@@ -1543,7 +1883,7 @@ check("RELEASE_NOTES_v1.0.2.md is TEXT-ONLY and states the tag-source / no-APK c
           "改說明唔等於改 APK", "Editing notes never touches the APK",
           "唔使重跑 CI", "needs no CI re-run",
           "由 repo Actions 產出已簽名 APK", "repo Actions can build the signed release",
-          "11-24 之後只有文件同步", "After 11-24 only documentation was synced")))
+          "11-25 起嘅後續 App 改動已移往", "The 11-25-and-later app changes now live in")))
 check("RELEASE_NOTES_v1.0.2.md lists honest limitations (ETA / best-effort / foreground-only)",
       all(s in _v102_text for s in (
           "實時 ETA 需要網絡", "Live ETA needs network",
@@ -1555,6 +1895,149 @@ check("v1.0.0 / v1.0.1 notes are preserved as HISTORY and point to the current v
       and "歷史註記（2026-11-24）" in release_notes_v101.read_text(encoding="utf-8")
       and "Historical note (2026-11-24)" in release_notes_v101.read_text(encoding="utf-8")
       and "RELEASE_NOTES_v1.0.2.md" in release_notes_v101.read_text(encoding="utf-8"))
+# --- RELEASE_NOTES_v1.0.3: 11-25 兩個改動嘅中英雙語說明 ---------------------
+_v103_text = release_notes_v103.read_text(encoding="utf-8") \
+    if release_notes_v103.is_file() else ""
+_v103_zh = _v103_text.split("## 中文（繁體）")[1].split("\n---\n")[0] \
+    if "## 中文（繁體）" in _v103_text else ""
+_v103_en = _v103_text.split("## English")[1].split("\n---\n")[0] \
+    if "## English" in _v103_text else ""
+check("RELEASE_NOTES_v1.0.3.md exists, is BILINGUAL and fully symmetric",
+      release_notes_v103.is_file()
+      and all(s in _v103_text for s in (
+          "# HK ETA v1.0.3", "## 中文（繁體）", "## English",
+          "收錄範圍：2026-11-25 至最新（2026-11-26）", "Scope: 2026-11-25 through the latest (2026-11-26)",
+          "RELEASE_NOTES_${TAG}.md", "中英雙語 Release 說明",
+          "plain-text bilingual Release note"))
+      and len(re.findall(r"^### ", _v103_zh, re.M)) == 5
+      and len(re.findall(r"^### ", _v103_en, re.M)) == 5
+      and len(re.findall(r"^#### 📅 ", _v103_zh, re.M)) == 2
+      and len(re.findall(r"^#### 📅 ", _v103_en, re.M)) == 2
+      and len(re.findall(r"^- ", _v103_zh, re.M)) >= 30
+      and len(re.findall(r"^- ", _v103_zh, re.M))
+          == len(re.findall(r"^- ", _v103_en, re.M)))
+check("RELEASE_NOTES_v1.0.3.md covers ALL TEN v1.0.2 follow-up change groups",
+      all(s in _v103_text for s in (
+          "開 App 就更新線路資料一次", "還原香港出行易式分類",
+          "refresh route data once on app launch",
+          "HKeMobility-style search categories restored",
+          "HkEtaApp.onCreate()", "LaunchCatalogueRefresh.claimOnce()",
+          "CatalogueRefreshNotifier", "RouteDataPrefs.isDue()",
+          "SearchCategoryRules.belongs()", "MtrCatalog.LRT_ROUTES",
+          "全部官方目錄列", "EVERY official catalogue row",
+          "take(6)",
+          "港鐵類別顯示返重鐵", "MTR category shows heavy rail",
+          "小巴路線歸小巴類別", "Minibus routes belong to the minibus category",
+          # ③ 代碼優化
+          "CODE_OPTIMISATION", "代碼優化", "Code optimisation",
+          "PRELOAD_PER_COMPANY", "-12%", "memoise",
+          # ④ 顯示所有路線
+          "ALL_ROUTES", "顯示所有路線", "ALL routes shown",
+          "Int.MAX_VALUE", "120ms", "53 列",
+          # ⑤ 液態玻璃
+          "NAV_LIQUID", "液態", "Liquid layer on the glass",
+          "NavLiquid.springScale", "折射亮邊", "refraction rim", "1.032",
+          # ⑥ 中國版 Android 17 進階材質
+          "CN_ADVANCED_MATERIAL", "中國版 Android", "China-ROM Android OS 17",
+          "NavGlassMaterial.resolve()", "materialProbe()",
+          "三態 Spinner", "three-state spinner", "AOSP_NO_BLUR",
+          # ⑦ 單一服務商只顯示一間
+          "SINGLE_OPERATOR_DISPLAY", "單一服務商只顯示一間",
+          "Single-operator routes show exactly one operator",
+          "bothOperatorsPresent", "displayCompany", "markJoint()",
+          "目錄交疊 ≠ 兩間服務商", "catalogue overlap ≠ two operators",
+          # ⑧ 循環線頂欄兩顆動作
+          "CIRCULAR_TWO_ACTIONS", "循環線頂欄兩顆動作",
+          "Circular routes show exactly TWO header actions",
+          "showDirectionAction(boolean circular)", "detailActionDirection",
+          "三顆圓形動作", "three white circular actions",
+          # ⑨ 三個圖標語義（日曆＝服務時間及班次）
+          "DETAIL_THREE_ICONS", "三個圖標", "Three header icons",
+          "服務時間及班次", "service hours & trips", "ic_detail_calendar",
+          "showServiceHours(", "detail_calendar_no_timetable",
+          "remark_tc", "通告", "notice",
+          # 服務時間及班次由本地路線資料獲取
+          "LOCAL_SERVICE_HOURS", "本地路線資料", "local route catalogue",
+          "LocalServiceHours.lookup", "RouteDataStore.readText",
+          "唔行即時 ETA", "no live ETA", "not invented", "唔捏造時間表",
+          # ⑨ 數據來源升級：政府公開資料（運輸署 GTFS）
+          "GOV_SERVICE_HOURS", "政府公開資料", "government open data",
+          "pt-headway-tc", "DATA_LAST_UPDATED_DATE.csv", "frequencies.txt",
+          "GovServiceHours.lookup", "refreshGovServiceHours",
+          "數據修正截止日期", "data revision cut-off date",
+          "服務日", "service days", "頭班／尾班", "first / last bus",
+          # 政府班次資料加入「更新線路資料」
+          "GOV_IN_ROUTE_UPDATE", "加入更新線路資料", "added to route catalogue update",
+          "SOURCE_FILE", "EXTRA_SOURCES", "statuses.add(refreshGovServiceHours",
+          "資料來源狀態", "source-status list", "sources_gov_files",
+          "每兩星期更新", "bi-weekly",
+          # 取消搜尋頁「我的書籤」
+          "SEARCH_NO_BOOKMARK", "取消搜尋頁我的書籤",
+          "bookmarks removed from search", "bookmarkRecycler",
+          "收藏分頁", "favourites tab",
+          # 取消所有頁面導航欄嘅「加入收藏」tab
+          "NAV_NO_FAV_TAB", "取消導航欄收藏分頁",
+          "Favourites tab removed from nav", "tabFav",
+          "三分頁", "three tabs", "btnFavList", "chipFav",
+          # 九巴／龍運分開顯示
+          "KMB_LWB_SPLIT", "九巴路線只顯示九巴",
+          "KMB routes show only KMB", "agency_id",
+          "龍運循環線", "search_brand_unknown",
+          # 單一公司嚴格分離 + 保留混合聯營標籤
+          "STRICT_OPERATOR_SEPARATION", "城巴路線不顯示",
+          "大嶼山巴士不顯示", "保留混合聯營標籤",
+          "城巴/龍運", "keep the mixed joint label",
+          "CTB routes never show", "NLB never shows",
+          # 切換方向標題同步
+          "DIRECTION_TITLE_SYNC", "切換方向", "activeDest",
+          "switches the red header", "1 往 竹園邨",
+          # API_AUDIT
+          "API_AUDIT", "route/CTB/", "service_type", "stop-eta",
+          "sha256", "188 情境", "423 static checks"))
+      and "LOCAL_SERVICE_HOURS" in read(API / "LocalServiceHours.java")
+      and len(re.findall(r"^\*\*[①-⑨] ", _v103_zh, re.M)) == 9
+      and len(re.findall(r"^\*\*[①-⑨] ", _v103_en, re.M)) == 9)
+check("RELEASE_NOTES_v1.0.3.md states the version boundary AND the pending bump honestly",
+      all(s in _v103_text for s in (
+          "RELEASE_NOTES_v1.0.0.md", "RELEASE_NOTES_v1.0.1.md",
+          "RELEASE_NOTES_v1.0.2.md", "版本分界", "Version boundary",
+          "版本號待 bump", "Version bump pending",
+          "versionName = 1.0.2", "versionCode = 3",
+          "1.0.3` / `4", "update_pill.xml"))
+      and "1.0.3` / `4" in _v103_text)
+check("RELEASE_NOTES_v1.0.3.md install / asset / fingerprint facts are correct",
+      all(s in _v103_text for s in (
+          "hketa-v1.0.3-release.apk", "hketa-release-apk",
+          "FE:7B:35:E1…20:02:57", "SIGNING_FINGERPRINT.txt",
+          "VERSION_INFO.txt", "applicationId = hk.eta.app", "minSdk 24",
+          "AGP 8.5.2", "Gradle 8.7", "Java 17", "Kotlin 1.9.24")))
+check("RELEASE_NOTES_v1.0.3.md verification numbers match the repo and limitations are honest",
+      all(s in _v103_text for s in (
+          "ECJ 17", "68 class", "7 個 Java harness", "7 Java harnesses",
+          "38 項", "38 published-Release", "188 情境", "188** inline-preflight", "185 情境",
+          "6 份", "6** bilingual", "呢邊冇真跑 Kotlin 編譯",
+          "Kotlin was not actually compiled here", "冷啟動", "cold start",
+          "唔捏造", "nothing is invented")))
+check("ALL 6 bilingual Release-note files are symmetric",
+      (lambda pairs: all(x == y for x, y in pairs))(
+          [(len(re.findall(r"^### ", f.read_text(encoding="utf-8")
+                           .split("## 中文（繁體）")[1].split("\n---\n")[0], re.M)),
+            len(re.findall(r"^### ", f.read_text(encoding="utf-8")
+                           .split("## English")[1].split("\n---\n")[0], re.M)))
+           for f in (release_notes_v100, release_notes_v101, release_notes_v102,
+                     release_notes_v103)] +
+          [(len(re.findall(r"^- ", f.read_text(encoding="utf-8")
+                           .split("## 中文（繁體）")[1].split("\n---\n")[0], re.M)),
+            len(re.findall(r"^- ", f.read_text(encoding="utf-8")
+                           .split("## English")[1].split("\n---\n")[0], re.M)))
+           for f in (release_notes_v100, release_notes_v101, release_notes_v102,
+                     release_notes_v103)]))
+check("v1.0.2 notes still point forward to v1.0.3 (no orphaned history)",
+      "RELEASE_NOTES_v1.0.3.md" in _v102_text
+      and "RELEASE_NOTES_v1.0.2.md" in _v103_text
+      and "改說明唔等於改 APK" in _v103_text
+      and "Editing notes never touches the APK" in _v103_text)
+
 check("version bump did not break earlier features / data layer",
       "SEARCH_LOCAL_DATA" in main_kt
       and "SEARCH_NO_ADVANCED" in main_layout
@@ -1819,14 +2302,22 @@ check("SEARCH_LOCAL_DATA: snapshot files covered (11 public dataset constants)",
           "RouteDataStore.GMB_ROUTES", "RouteDataStore.GMB_STOPS",
           "RouteDataStore.MTR_LINES", "RouteDataStore.LRT_STOPS",
           "RouteDataStore.MTR_BUS_STOPS")))
+# LAUNCH_CATALOGUE_REFRESH 之後 onCreate 嘅 observe callback 都會做一次指紋
+# 比對；呢度用 finditer 搵「所有」比對點，要求至少一個位於 onResume..onPause，
+# 唔再用 .index() 攞第一個（會被 onCreate 嗰個呃到）。
+def _signature_reloads_in_resume():
+    lo = main_kt.find("override fun onResume()")
+    hi = main_kt.find("override fun onPause()")
+    if lo < 0 or hi < 0 or hi <= lo:
+        return False
+    return any(lo < m.start() < hi
+               for m in re.finditer(r"if \(renderLocalDataStatus\(\)\) \{", main_kt))
+
 check("SEARCH_LOCAL_DATA: onResume re-preloads ONLY when the local signature changed",
       "if (renderLocalDataStatus()) {" in main_kt
       and 'vm.searchRoutes(routeInput.text?.toString() ?: "")' in main_kt
       and "refreshHistory()" in main_kt
-      and main_kt.index("if (renderLocalDataStatus()) {")
-          > main_kt.index("override fun onResume()")
-      and main_kt.index("if (renderLocalDataStatus()) {")
-          < main_kt.index("override fun onPause()"))
+      and _signature_reloads_in_resume())
 check("SEARCH_LOCAL_DATA: data layer stays local-first, ETA still live-only",
       "public static JSONObject catalogueJson(String file, String... urls)" in
           read(API / "RouteDataStore.java")
@@ -1881,13 +2372,92 @@ check("KOTLIN_APP_SCOPE: every app. receiver is declared in scope (no ctor-param
 check("KOTLIN_APP_SCOPE: loadNearbyRoutes declares app before use, like refreshNearbyCards",
       (lambda vm: (
           "fun loadNearbyRoutes(radiusMeters: Int)" in vm
-          and vm.count("val app = getApplication<Application>()") >= 5
+          # maybeAutoUpdateCatalogue 改用 CatalogueRefreshRunner 之後少咗一個
+          # 局部 app 宣告；真正嘅防線係上面嘅通用作用域掃描，呢個 count 只做
+          # 「同檔案既有寫法一致」嘅輔助斷言。
+          and vm.count("val app = getApplication<Application>()") >= 4
           and (lambda block: "val app = getApplication<Application>()" in block
                and block.index("val app = getApplication<Application>()")
                    < block.index("app.getString(R.string.nearby_more_routes_tag)"))(
                    vm[vm.index("fun loadNearbyRoutes(radiusMeters: Int)"):
                       vm.index("fun queryDirect(")])))(
           read(UI / "EtaViewModel.kt")))
+
+# --- LAUNCH_CATALOGUE_REFRESH: 開 App 就更新線路資料一次 ---------------------
+launch_decision = ROOT / "app/src/main/java/hk/eta/app/ui/LaunchCatalogueRefresh.kt"
+launch_notifier = ROOT / "app/src/main/java/hk/eta/app/ui/CatalogueRefreshNotifier.kt"
+launch_runner = ROOT / "app/src/main/java/hk/eta/app/ui/CatalogueRefreshRunner.kt"
+_launch_dec = read(launch_decision) if launch_decision.is_file() else ""
+_launch_not = read(launch_notifier) if launch_notifier.is_file() else ""
+_launch_run = read(launch_runner) if launch_runner.is_file() else ""
+check("LAUNCH_CATALOGUE_REFRESH: pure decision layer has NO Android / network / colour",
+      launch_decision.is_file()
+      and all(s in _launch_dec for s in (
+          "object LaunchCatalogueRefresh", "AtomicBoolean",
+          "fun claimOnce(): Boolean", "fun shouldRefresh(",
+          "fun shouldMarkChecked(", "fun resetForTest()"))
+      and all(s not in _launch_dec for s in (
+          "import android", "import androidx", "import hk.eta.app.api",
+          "RouteDataStore", "getString(", "@color/")))
+check("LAUNCH_CATALOGUE_REFRESH: claimOnce is process-level (one auto-refresh per cold start)",
+      "private val claimed = AtomicBoolean(false)" in _launch_dec
+      and "claimed.compareAndSet(false, true)" in _launch_dec
+      and "CatalogueRefreshRunner.runOnce" in app_kt
+      and "CatalogueRefreshRunner.runOnce" in viewmodel_kt
+      and "RouteDataStore.init(this)" in app_kt
+      and app_kt.index("RouteDataStore.init(this)")
+          < app_kt.index("CatalogueRefreshRunner.runOnce"))
+def _kt_code_only(s):
+    """Strip KDoc / line comments so doc text never trips a code-level assertion."""
+    return "\n".join(
+        l.split("//")[0] for l in s.splitlines()
+        if not l.lstrip().startswith(("*", "/*"))
+    )
+
+check("LAUNCH_CATALOGUE_REFRESH: startup refresh is NOT throttled by interval / isDue",
+      all("RouteDataPrefs.isDue" not in _kt_code_only(x)
+          and "intervalDays" not in _kt_code_only(x)
+          for x in (viewmodel_kt, app_kt, _launch_run))
+      and "CatalogueRefreshRunner.runOnce" in _kt_code_only(viewmodel_kt)
+      and "每次開 App" in _launch_dec and "都更新一次" in _launch_dec)
+check("LAUNCH_CATALOGUE_REFRESH: Wi-Fi-only preference and BUSY gate are respected",
+      all(s in _launch_run for s in (
+          "RouteDataPrefs.wifiOnly(app)", "RouteDataStore.onWifi()",
+          "RouteDataStore.refreshBusy()", "RouteDataStore.refresh(false)"))
+      and "(!wifiOnly || onWifi) && !alreadyBusy" in _launch_dec
+      and "!busy && !skipped && okCount > 0" in _launch_dec)
+check("LAUNCH_CATALOGUE_REFRESH: manual Settings update is NOT blocked by the gate",
+      "RouteDataStore.refresh(false)" in settings_kt
+      and "LaunchCatalogueRefresh.claimOnce" not in settings_kt
+      and "CatalogueRefreshRunner" not in settings_kt
+      and "btnUpdate" in settings_layout)
+check("LAUNCH_CATALOGUE_REFRESH: notifier posts completion and search page reloads immediately",
+      launch_notifier.is_file()
+      and "MutableLiveData<Long>" in _launch_not
+      and "_completed.postValue(atMillis)" in _launch_not
+      and "CatalogueRefreshNotifier.notifyCompleted" in _launch_run
+      and "RouteDataPrefs.markChecked(app)" in _launch_run
+      and "CatalogueRefreshNotifier.completed.observe(this)" in main_kt
+      and "if (renderLocalDataStatus()) {" in main_kt
+      and "vm.searchRoutes(routeInput.text?.toString() ?: \"\")" in main_kt
+      and "refreshHistory()" in main_kt)
+check("LAUNCH_CATALOGUE_REFRESH: refresh internals / data layer / colours untouched",
+      "public static Report refresh(boolean wifiOnly)" in store_java
+      and "BUSY.compareAndSet(false, true)" in store_java
+      and "invalidateDownstream()" in store_java
+      and "writeAtomic" in store_java
+      and "catalogueJson" in store_java
+      and 'name="search_bg"' in read(RES / "values/colors.xml")
+      and "name=\"search_" not in read(RES / "values-night/colors.xml"))
+check("LAUNCH_CATALOGUE_REFRESH: previous rounds all intact",
+      all(s in main_kt for s in ("SEARCH_LOCAL_DATA", "SEARCH_NO_ADVANCED"))
+      and "KOTLIN_APP_SCOPE" in viewmodel_kt
+      and "fun signature(info: LocalDataInfo): String" in
+          read(UI / "SearchLocalData.kt")
+      and "SameRouteOperators.partition(list, circularHint)" in
+          read(UI / "App1933Format.kt")
+      and "NearbyMoreRoutes.select(candidates)" in viewmodel_kt
+      and "val app = getApplication<Application>()" in viewmodel_kt)
 
 # --- SEARCH_NO_ADVANCED: 取消進階、導航欄移到主搜尋頁 ----------------------
 noadv_settings = read(RES / "layout/activity_settings.xml")
@@ -1919,20 +2489,22 @@ check("SEARCH_NO_ADVANCED: bottom nav bar is now VISIBLE on the MAIN search page
                   main_kt.index("private fun restoreChrome()")])
       and (lambda s: "showSearchHome()" in s and "if (index == 2)" in s)(
           main_kt[main_kt.index("private fun selectTab(index: Int)"):
-                  main_kt.index("private fun selectTab(index: Int)") + 700]))
+                  main_kt.index("private fun selectTab(index: Int)") + 1000]))
 check("SEARCH_NO_ADVANCED: screenshot header still clean (top chrome hidden)",
       "mainHeader.visibility = View.GONE" in main_kt
       and "statusText.visibility = View.GONE" in main_kt
       and "tvAutoRefreshStatus.visibility = View.GONE" in main_kt
       and "mainHeader.visibility = View.VISIBLE" in main_kt)
-check("SEARCH_NO_ADVANCED: floating glass nav unchanged (geometry / 4 tabs / colours)",
+check("SEARCH_NO_ADVANCED: floating glass nav unchanged (geometry / 3 tabs / colours)",
       all(s in main_layout for s in (
           'android:id="@+id/bottomTabs"',
           'android:layout_gravity="bottom|center_horizontal"',
-          'android:id="@+id/tabHome"', 'android:id="@+id/tabFav"',
+          'android:id="@+id/tabHome"',
           'android:id="@+id/tabSearch"', 'android:id="@+id/tabMore"'))
+      # NAV_NO_FAV_TAB: 導航欄唔再有「★ 收藏」tab
+      and 'android:id="@+id/tabFav"' not in main_layout
       and "NavGlass.apply(this, bottomTabs)" in main_kt
-      and "NavGlass.selectTab(this, tabs[i], i == index)" in main_kt)
+      and "NavGlass.selectTab(this, tabs[i], tabPages[i] == index)" in main_kt)
 check("SEARCH_NO_ADVANCED: no colour change, 8-mode data bindings kept compatible",
       "companySpinner = findViewById(R.id.companySpinner)" in main_kt
       and "routeEdit = findViewById(R.id.routeEdit)" in main_kt
@@ -1963,8 +2535,20 @@ check("SEPARATE_OPERATORS: ONLY an exact KMB+CTB non-circular pair merges",
           "isJointPair(names[0], names[1])",
           "circular[names[0]] != true",
           "circular[names[1]] != true",
-          "OperatorGroup(JointRoutes.JOINT, etas, false)"))
-      and sep_kt.count("return listOf(OperatorGroup(JointRoutes.JOINT") == 1)
+          "OperatorGroup(JointRoutes.JOINT, etas, false)",
+          # SINGLE_OPERATOR_DISPLAY: 單公司 -> 1 張卡 / 1 個 label
+          "SINGLE_OPERATOR_DISPLAY"))
+      and sep_kt.count("return listOf(OperatorGroup(JointRoutes.JOINT") == 1
+      and all(s in read(API / "JointRoutes.java") for s in (
+          "public static boolean bothOperatorsPresent(Set<String> companies)",
+          "public static String displayCompany(Set<String> companies, String fallback)",
+          "if (!bothOperatorsPresent(companies))"))
+      and all(s in read(API / "RouteSearch.java") for s in (
+          "Map<String, Set<String>> companiesByKey",
+          "JointRoutes.bothOperatorsPresent(rowCompanies)",
+          "JointRoutes.displayCompany(rowCompanies, r.company)"))
+      # 反向：唔可以再用「目錄交疊就單列升級 JOINT」嘅舊寫法
+      and "String company = joint ? JointRoutes.JOINT : r.company;" not in read(API / "RouteSearch.java"))
 check("SEPARATE_OPERATORS: every OTHER company combination is split into its OWN card",
       "val byCompany = LinkedHashMap<String, MutableList<EtaItem>>()" in sep_kt
       and "byCompany.getOrPut(e.company)" in sep_kt
@@ -1978,7 +2562,8 @@ check("SEPARATE_OPERATORS: cardsFrom delegates and keeps 3 trips of ITS OWN comp
       "for (group in SameRouteOperators.partition(list, circularHint))" in sep_fmt_kt
       and "val cardCompany = group.company" in sep_fmt_kt
       and "val joint = cardCompany == JointRoutes.JOINT" in sep_fmt_kt
-      and "sorted.take(3).map { tripOf(it, cardCompany, joint) }" in sep_fmt_kt
+      and "val showOperator = joint || jointRoutes.contains(first.route)" in sep_fmt_kt
+      and "tripOf(it, cardCompany, showOperator)" in sep_fmt_kt
       and "val companies = sorted.map" not in sep_fmt_kt)
 check("SEPARATE_OPERATORS: split card falls back to ITS OWN stopId, not the bucket KMB id",
       'val fallbackId = if (stopId.isEmpty() || !joint) {' in sep_fmt_kt
@@ -1989,10 +2574,10 @@ check("SEPARATE_OPERATORS: same route number but different companies sort adjace
       and ".thenBy { it.company }" in read(UI / "NearbyMoreRoutes.kt")
       and "compareBy<RouteCard> { it.route }" in sep_fmt_kt)
 check("SEPARATE_OPERATORS: card meta already shows the operator label, NO UI/colour change",
-      "cardOperatorLabel(card.company)" in sep_card_kt
-      and "App1933Format.companyLabel(company)" in sep_card_kt
+      "cardOperatorLabel(card.company, card.route)" in sep_card_kt
+      and 'companyLabel(company: String, route: String = "")' in read(UI / "App1933Format.kt")
       and "public static String routeCompanyLabel(" in read(API / "JointRoutes.java")
-      and 'return "九巴 / 龍運"' in read(API / "JointRoutes.java")
+      and 'return GovServiceHours.Brand.label(company, "")' in read(API / "JointRoutes.java")
       and 'return "嶼巴"' in read(API / "JointRoutes.java")
       and "btnNearby" not in main_layout)
 check("SEPARATE_OPERATORS: search rows still only collapse KMB/CTB joint, others separate",
@@ -2005,6 +2590,188 @@ check("SEPARATE_OPERATORS: joint / circular / nearby-more-routes / data layer in
       and "public static List<EtaItem> augment" in read(API / "JointRoutes.java")
       and "public static List<StopOption> nearby(double lat" in read(API / "GeoStops.java"))
 
+# --- KMB_LWB_SPLIT: 九巴路線唔顯示龍運，龍運路線唔顯示九巴 ------------------
+_brand_java = read(API / "GovServiceHours.java")
+_hke2 = read(UI / "SearchCategoryRules.kt")
+_fmt2 = read(UI / "App1933Format.kt")
+_card2 = read(UI / "CardAdapters.kt")
+_sa2 = read(UI / "SearchAdapters.kt")
+_ad2 = read(UI / "Adapters.kt")
+check("KMB_LWB_SPLIT: brand decided ONLY by official GTFS agency_id (no route list)",
+      "public static final class Brand" in _brand_java
+      and 'a.equals("KMB") || a.equals("KMB+CTB")' in _brand_java
+      and 'a.equals("LWB") || a.equals("LWB+CTB")' in _brand_java
+      and "route_short_name" in _brand_java
+      and "agency_id" in _brand_java
+      and 'startsWith("A")' not in _brand_java
+      and 'startsWith("E")' not in _brand_java
+      and "S64" not in _brand_java)
+check("KMB_LWB_SPLIT: KMB route says 九巴, LWB route says 龍運, UNKNOWN says nothing",
+      'return "九巴"' in _brand_java
+      and 'return "龍運"' in _brand_java
+      and "return UNKNOWN;" in _brand_java
+      and '"城巴/龍運"' in _brand_java
+      and 'return "龍運循環線"' in _brand_java
+      and 'return "九巴 / 龍運"' not in read(API / "JointRoutes.java"))
+check("KMB_LWB_SPLIT: GTFS refresh invalidates the brand cache",
+      "GovServiceHours.Brand.invalidate();" in read(API / "RouteDataStore.java"))
+check("KMB_LWB_SPLIT: 九巴 / 龍運 chips are SEPARATE, unknown rows only in ALL",
+      'brand == "KMB"' in _hke2
+      and 'brand == "LWB"' in _hke2
+      and "CHIP_KMB, CHIP_LWB" not in _hke2
+      and 'brand: String = ""' in _hke2)
+check("KMB_LWB_SPLIT: Activity passes the route brand into the rule layer",
+      "GovServiceHours.Brand.brand(route)" in main_kt
+      and "matchesCategory(it.company, it.route)" in main_kt
+      and "GovServiceHours.Brand.hasData()" in main_kt
+      and "search_brand_unknown" in main_kt)
+check("KMB_LWB_SPLIT: every ROUTE-level label goes through Brand.label",
+      "GovServiceHours.Brand.label(company, route)" in _fmt2
+      and "cardOperatorLabel(card.company, card.route)" in _card2
+      and "GovServiceHours.Brand.badge(company, route)" in _sa2
+      and "App1933Format.companyLabel(item.company, item.route)" in _sa2
+      and "operatorLabel(eta.company, eta.route)" in _ad2
+      and "operatorLabel(stop.company, stop.route)" in _ad2
+      and "九巴 / 龍運" not in _ad2)
+check("KMB_LWB_SPLIT: trips, joint caption and circular badge follow the brand",
+      "GovServiceHours.Brand.tripLabel" in _fmt2
+      and "App1933Format.tripOperatorText(t, card.route)" in _card2
+      and "GovServiceHours.Brand.label(company, route)" in detail_kt
+      and "styleLabel(String company, String route)" in read(API / "CircularRoutes.java")
+      and "displayBadge(String company, String route, String dest)" in
+          read(API / "CircularRoutes.java"))
+check("KMB_LWB_SPLIT: honest degradation strings + no colour / version change",
+      all(f'<string name="{n}">' in read(RES / "values/strings.xml") for n in
+          ("search_kmb_hint", "search_lwb_hint", "search_brand_unknown"))
+      and "龍運路線唔會出現" in read(RES / "values/strings.xml")
+      and "九巴路線唔會出現" in read(RES / "values/strings.xml")
+      and 'name="search_' not in read(RES / "values-night/colors.xml")
+      and "versionCode = 3" in read(ROOT / "app/build.gradle.kts"))
+
+# --- JOINT_EVERY_TRIP_OPERATOR: 聯營「6 分鐘 11:27」後面逐班顯示營運商 --------
+_fmt3 = read(UI / "App1933Format.kt")
+_det3 = read(UI / "RouteDetailActivity.kt")
+_card3 = read(UI / "CardAdapters.kt")
+_stop3 = read(RES / "layout/item_detail_stop.xml")
+check("JOINT_EVERY_TRIP_OPERATOR: joint routes detected from the ETA batch itself, zero IO",
+      "companiesByRoute" in _fmt3
+      and "jointRoutes" in _fmt3
+      and "cs.contains(EtaRepository.KMB)" in _fmt3
+      and "cs.contains(EtaRepository.CTB)" in _fmt3
+      and "JointRoutes.isJointRoute(" not in _fmt3)
+check("JOINT_EVERY_TRIP_OPERATOR: EVERY trip carries a non-empty operator label",
+      "val showOperator = joint || jointRoutes.contains(first.route)" in _fmt3
+      and "tripOf(it, cardCompany, showOperator)" in _fmt3
+      and "tripOf(e: EtaItem, cardCompany: String, showOperator: Boolean)" in _fmt3
+      and _fmt3.count("JointRoutes.operatorLabel(") >= 2
+      and "GovServiceHours.Brand.tripLabel(e.company, e.route)" in _fmt3
+      and ".ifEmpty { JointRoutes.operatorLabel(trip.operator) }" in _fmt3)
+check("JOINT_EVERY_TRIP_OPERATOR: detail row + home chip both render it",
+      'joinToString(" · ")' in _det3
+      and "App1933Format.tripOperatorText(trip, route)" in _det3
+      and "App1933Format.tripOperatorText(t, card.route)" in _card3
+      and _stop3.count('android:layout_weight="1"') >= 3
+      and _stop3.count('android:maxLines="1"') == 3
+      and _stop3.count('android:ellipsize="end"') == 3)
+
+# --- API_AUDIT: 真實官方 API 相容 / 效能 / 安全 --------------------------------
+_rs = read(API / "RouteSearch.java")
+_ds = read(API / "RouteDataStore.java")
+_hj = read(API / "HttpJson.java")
+_er = read(API / "EtaRepository.java")
+_au = read(API / "AppUpdate.java")
+_sa = read(UI / "SettingsActivity.kt")
+_vm = read(UI / "EtaViewModel.kt")
+_dt = read(UI / "RouteDetailActivity.kt")
+check("API_AUDIT_A1: Citybus route catalogue uses the trailing-slash URL first",
+      'CTB_BASE + "/route/CTB/"' in _rs
+      and '"https://rt.data.gov.hk/v2/transport/citybus/route/CTB/"' in _ds
+      and '"https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB/"' in _ds
+      and _ds.index('"https://rt.data.gov.hk/v2/transport/citybus/route/CTB/"')
+          < _ds.index('"https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB/"')
+      and '"https://rt.data.gov.hk/v2/transport/citybus/route/CTB",' in _ds
+      and 'CTB_BASE + "/route/CTB",' in _rs)
+check("API_AUDIT_A2: NLB ' > ' ends split, raw routeName never used as dest",
+      'splitEnds(name)' in _rs
+      and '\\\\s*[>-]\\\\s+' in _rs
+      and 'afterDash(HttpJson.str(o, "routeName_c")));' in _rs
+      and '（未查方向）' in _rs
+      and 'Collections.emptyList();' in _rs
+      and '"往 " + code + " 總站"' not in _rs)
+check("API_AUDIT_A3: CTB direction never invented, conflicting dests degrade",
+      'HttpJson.str(o, "dir"), HttpJson.str(o, "bound"));' in _rs
+      and 'HttpJson.str(o, "dir"), HttpJson.str(o, "bound"), "O"' not in _rs
+      and 'b.isEmpty() || !bound.equalsIgnoreCase(b)' in _rs
+      and 'dests.size() == 1' in _rs)
+check("API_AUDIT_A4: all KMB service_types loaded and honestly labelled",
+      'kmbServiceTypes(route, direction)' in _er
+      and 'HttpJson.intOr(o, "service_type", 1)' in _er
+      and 'out.size() >= 6' in _er
+      and '.thenBy { it.serviceType }' in _vm
+      and '特別班次 ${stop.serviceType}' in _dt)
+check("API_AUDIT_A5: valid stop-eta tried first, HTTP 422 stops UA retry",
+      _er.index('"/v1/transport/batch/stop-eta/"')
+          < _er.index('"/v1/transport/batch/stopeta/"')
+      and 'e.getMessage().startsWith("HTTP 422")' in _hj
+      and 'readAll(stream,' in _hj)
+check("API_AUDIT_B/C: dest cache, 8KB error cap, APK + pinned Gradle sha256",
+      'invalidateDestCache()' in _rs
+      and 'RouteSearch.invalidateDestCache();' in _ds
+      and 'GMB_DEST_CACHE' in _rs
+      and 'Collections.emptyList();' in _rs
+      and 'Integer.MAX_VALUE : 8192' in _hj
+      and 'downloadVerified(' in _au
+      and 'AppUpdate.downloadVerified(' in _sa
+      and 'sha256Hex(f)' in _au
+      and '544c35d6bd849ae8a5ed0bcea39ba677dc40f49df7d1835561582da2009b961d' in workflow
+      and workflow.count('sha256sum "$RUNNER_TEMP/gradle-8.7-bin.zip"') >= 2)
+
+# --- DIRECTION_TITLE_SYNC: 撳 ⇅ 之後紅頂標題要跟住方向轉 --------------------
+check("DIRECTION_TITLE_SYNC: ⇅ switches the red header destination too",
+      "public static String destFor(String company, String route, String bound)" in
+          read(API / "RouteSearch.java")
+      and "RouteDataStore.readJson(file)" in read(API / "RouteSearch.java")
+      and "fun destinationForBound(stops: List<StopOption>, bound: String)" in _fmt2
+      and 'val activeDest: String = ""' in read(UI / "EtaViewModel.kt")
+      and "App1933Format.destinationForBound(stops, next)" in read(UI / "EtaViewModel.kt")
+      and "syncDirectionTitle(state)" in detail_kt
+      and "tvTitle.text = buildTitle()" in detail_kt
+      and "private fun buildCaption()" in detail_kt
+      and "titleBound = requestedBound" in detail_kt)
+check("DIRECTION_TITLE_SYNC: official dest first, terminal stop name fallback, never invented",
+      "RouteSearch.destFor(" in read(UI / "EtaViewModel.kt")
+      and "official.ifEmpty" in read(UI / "EtaViewModel.kt")
+      and "maxByOrNull { it.seq }" in _fmt2
+      and "catalogueJson 會喺缺檔時落網絡" in read(API / "RouteSearch.java")
+      and 'return "";' in read(API / "RouteSearch.java")
+      and "if (circular) return" in detail_kt
+      and "next.isEmpty() || next == dest" in detail_kt)
+
+# --- STRICT_OPERATOR_SEPARATION: 單一公司路線只顯示自己 ----------------------
+check("STRICT_OPERATOR_SEPARATION: CTB / NLB / GMB rows never carry KMB or LWB brand",
+      "CHIP_CTB -> company == CTB || company == JOINT" in _hke2
+      and "CHIP_NLB -> company == NLB" in _hke2
+      and "CAT_MINIBUS -> company == GMB" in _hke2
+      and 'CHIP_KMB -> (company == KMB || company == JOINT) && brand == "KMB"' in _hke2
+      and 'CHIP_LWB -> (company == KMB || company == JOINT) && brand == "LWB"' in _hke2
+      and 'brand == "KMB" || company == CTB' not in _hke2)
+check("STRICT_OPERATOR_SEPARATION: only real JOINT rows may show two company names",
+      "public static String jointLabel(String route)" in _brand_java
+      and 'return "城巴/龍運"' in _brand_java
+      and 'return "聯營路線"' in _brand_java
+      and "GovServiceHours.Brand.jointLabel(r.route)" in read(API / "RouteSearch.java")
+      and "GovServiceHours.Brand.jointLabel(item.route)" in _card2
+      and "GovServiceHours.Brand.jointLabel(item.route)" in _sa2
+      and "JointRoutes.JOINT_LABEL" not in _card2
+      and "JointRoutes.JOINT_LABEL" not in _sa2)
+check("STRICT_OPERATOR_SEPARATION: unknown-brand KMB routes show NO company name",
+      'return UNKNOWN;                     // 特別路線：唔顯示公司名' in _brand_java
+      and 'return "J/C"' in _brand_java
+      and "badge.isEmpty()" in _sa2
+      and 'name="search_brand_unknown"' in read(RES / "values/strings.xml"))
+check("STRICT_OPERATOR_SEPARATION: detail trip labels are route-aware too",
+      "App1933Format.tripOperatorText(trip, route)" in detail_kt)
+
 # --- MORE_ROUTES_PER_STOP: 自動定位顯示同站更多路線 -------------------------
 more_kt = read(UI / "NearbyMoreRoutes.kt")
 more_vm_kt = read(UI / "EtaViewModel.kt")
@@ -2014,11 +2781,14 @@ check("MORE_ROUTES_PER_STOP: pure Kotlin layer, no Android / network / colour",
       and "HttpJson" not in more_kt
       and "setTextColor" not in more_kt
       and "search_" not in more_kt)
-check("MORE_ROUTES_PER_STOP: widened candidate pool, entity cap, query cap",
+check("ALL_ROUTES: unlimited candidate pool / entities / queries + batched ETA",
       all(s in more_kt for s in (
-          "const val CANDIDATE_LIMIT = 24",
-          "const val ENTITY_LIMIT = 6",
-          "const val MAX_QUERIES = 12",
+          "const val CANDIDATE_LIMIT = Int.MAX_VALUE",
+          "const val ENTITY_LIMIT = Int.MAX_VALUE",
+          "const val MAX_QUERIES = Int.MAX_VALUE",
+          "const val ETA_BATCH_SIZE = 12",
+          "const val BATCH_DELAY_MS = 120L",
+          "fun batches(",
           "fun select(candidates: List<StopOption>): List<StopOption>",
           "fun entityKey(stop: StopOption): String",
           "fun entityCount(stops: List<StopOption>): Int",
@@ -2028,7 +2798,7 @@ check("MORE_ROUTES_PER_STOP: entity key matches fetchCards bucket (name else sto
       'stop.stopName.trim()' in more_kt
       and 'if (name.isEmpty()) stop.stopId else name' in more_kt
       and "stop.company +" not in more_kt)
-check("MORE_ROUTES_PER_STOP: keeps ALL aliases of a kept entity, stops at 7th entity",
+check("ALL_ROUTES: keeps ALL entities and ALL aliases (no 6 / 12 caps)",
       "if (!entities.contains(key))" in more_kt
       and "if (entities.size >= ENTITY_LIMIT) break" in more_kt
       and "if (out.size >= MAX_QUERIES) break" in more_kt
@@ -2044,7 +2814,8 @@ check("MORE_ROUTES_PER_STOP: ViewModel uses widened pool + select + sort in BOTH
           "NearbyMoreRoutes.select(candidates)",
           "NearbyMoreRoutes.sortCards(fetchCards(stops))",
           "NearbyMoreRoutes.entityCount(stops)",
-          "stops.take(NearbyMoreRoutes.MAX_QUERIES)",
+          "NearbyMoreRoutes.batches(indexed)",
+          "BATCH_DELAY_MS",
           "R.string.nearby_more_routes_tag"))
       and more_vm_kt.count("NearbyMoreRoutes.sortCards") == 2
       and "cards.sortedBy { it.rank }" not in more_vm_kt
@@ -2145,10 +2916,12 @@ check("ViewModel maps all 8 spinner positions",
 fmt_kt = read(UI / "App1933Format.kt")
 sep_kt = read(UI / "SameRouteOperators.kt")
 card_kt = read(UI / "CardAdapters.kt")
-check("APP1933 shell has 4 bottom tabs + 4 pages", all(
+check("APP1933 shell has 3 bottom tabs + 4 pages (favourites via Settings)", all(
       f'android:id="@+id/{n}"' in main_layout for n in
-      ("tabHome", "tabFav", "tabSearch", "tabMore",
-       "pageHome", "pageFav", "pageSearch", "pageMore")))
+      ("tabHome", "tabSearch", "tabMore",
+       "pageHome", "pageFav", "pageSearch", "pageMore"))
+      and 'android:id="@+id/tabFav"' not in main_layout
+      and "NAV_NO_FAV_TAB" in main_layout)
 check("APP1933 home card with 3 trip chips + big minutes", all(
       s in main_layout for s in
       ('android:id="@+id/homeRecycler"', 'android:id="@+id/tvHomeEmpty"'))
@@ -2208,9 +2981,12 @@ check("SEARCH_UI: screenshot-style category search page replaces the keypad",
           'android:id="@+id/pageSearch"', 'android:id="@+id/searchCatScroll"',
           'android:id="@+id/searchChipScroll"', 'android:id="@+id/routeInput"',
           'android:id="@+id/searchHomeView"', 'android:id="@+id/searchResultsView"',
-          'android:id="@+id/bookmarkRecycler"', 'android:id="@+id/historyRecycler"',
-          'android:id="@+id/tvBookmarkEmpty"', 'android:id="@+id/tvHistoryEmpty"',
+          'android:id="@+id/historyRecycler"', 'android:id="@+id/tvHistoryEmpty"',
           'android:id="@+id/tvCategoryNotice"'))
+      # SEARCH_NO_BOOKMARK: 搜尋頁嘅「我的書籤」區塊已取消
+      and 'android:id="@+id/bookmarkRecycler"' not in main_layout
+      and 'android:id="@+id/tvBookmarkEmpty"' not in main_layout
+      and 'android:text="@string/search_bookmark_title"' not in main_layout
       # SEARCH_NO_ADVANCED: 搜尋頁嘅「進階」掣已取消
       and 'android:id="@+id/btnAdvanced"' not in main_layout
       and '@layout/keypad' not in main_layout
@@ -2224,21 +3000,30 @@ check("SEARCH_UI: 8 category tabs + 6 operator chips with exact screenshot label
       and all(s in search_strings for s in (
           "港鐵", "巴士", "專線小巴", "渡輪", "電車", "的士", "非專線小巴",
           "居民巴士服務", "所有巴士類別", "城巴", "九巴", "龍運巴士",
-          "新大嶼山巴士", "愉景灣/馬灣巴士", "路線號碼", "我的書籤",
-          "沒有資料記錄", "搜尋紀錄")))
+          "新大嶼山巴士", "愉景灣/馬灣巴士", "路線號碼", "搜尋紀錄"))
+      # SEARCH_NO_BOOKMARK: 書籤標題同空態文案已移除
+      and "我的書籤" not in search_strings
+      and "沒有資料記錄" not in search_strings
+      and 'name="search_bookmark_title"' not in search_strings
+      and 'name="search_bookmark_empty"' not in search_strings)
 check("SEARCH_UI: activity wires the screenshot page, NOT the old keypad",
       all(s in main_kt for s in (
           "bindSearchCategories", "bindSearchChips", "selectCategory",
           "selectChip", "matchesCategory", "renderSearch", "refreshHistory",
-          "refreshBookmarks", "openHistoryItem", "showSearchHome",
+          "openHistoryItem", "showSearchHome",
           "hideChrome", "restoreChrome", "SearchHistoryAdapter",
-          "BookmarkAdapter", "SearchHistoryPrefs", "toHistoryItem",
+          "SearchHistoryPrefs", "toHistoryItem",
           "routeInput.addTextChangedListener", "vm.searchRoutes"))
+      # SEARCH_NO_BOOKMARK: 書籤 adapter／綁定／刷新函式全部移除
+      and "refreshBookmarks" not in main_kt
+      and "BookmarkAdapter" not in main_kt
+      and "R.id.bookmarkRecycler" not in main_kt
+      and "tvBookmarkEmpty" not in main_kt
       and all(s not in main_kt for s in (
            "bindKeypad", "keypadRoot", "searchBar", "keyLetter",
            "inputBuffer", "updateLetterKeys", "R.id.searchHome)"))
       and "class SearchHistoryAdapter" in search_adapters
-      and "class BookmarkAdapter" in search_adapters
+      and "class BookmarkAdapter" not in search_adapters
       and "object SearchHistoryPrefs" in search_history_kt)
 # SEARCH_UI_KOTLIN_FIX: 上一版 cut 走舊 APP1933 欄位區塊時，連仍被 7 處引用嘅
 # permissionHint 一齊移走 → Kotlin「Unresolved reference」令 assembleRelease 失敗。
@@ -2287,10 +3072,29 @@ check("SEARCH_UI: history rows show operator badge / clock / removable ✕",
       and '@color/search_bg' in result_row
       and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
           "bg_search_badge", "ic_clock", "ic_close", "ic_search")))
-check("SEARCH_UI: bookmark row + empty state use the SAME fixed dark palette",
-      '@color/search_bg' in bookmark_row
+check("SEARCH_NO_BOOKMARK: search page no longer shows 我的書籤; favourites stay",
+      # 停用資產保留（preflight 141 不變），但再無任何引用／文案／綁定
+      Path(RES / "layout/item_bookmark.xml").is_file()
+      and "R.layout.item_bookmark" not in main_kt
+      and "R.layout.item_bookmark" not in search_adapters
+      and '@+id/bookmarkRoot' not in main_layout
+      and 'SEARCH_NO_BOOKMARK' in main_kt
+      and 'SEARCH_NO_BOOKMARK' in main_layout
+      # 收藏功能本身冇取消：設定頁 btnFavList + 收藏頁 + 詳情頁 chipFav 照舊
+      and "favoriteAdapter" in main_kt
+      and "vm.favorites()" in main_kt
+      and "R.id.favRecycler" in main_kt
+      and "R.id.btnFavList" in main_kt
+      and "selectTab(1)" in main_kt
+      and "class FavoriteAdapter" in read(UI / "CardAdapters.kt")
+      and "vm.addCurrentFavorite()" in read(UI / "RouteDetailActivity.kt")
+      and "R.id.chipFav" in detail_kt
+      # 搜尋紀錄、固定色盤、其餘功能一個都冇郁
+      and "class SearchHistoryAdapter" in search_adapters
+      and "R.id.historyRecycler" in main_kt
+      and '@color/search_bg' in bookmark_row
       and '@color/search_green' in bookmark_row
-      and "沒有資料記錄" in search_strings)
+      and "搜尋紀錄" in search_strings)
 check("SEARCH_UI: colours are LOCKED — no value changed, no night override",
       all(f'<color name="{n}">{v}</color>' in search_colors for n, v in {
           "search_bg": "#1D1D1F",
@@ -2373,9 +3177,15 @@ check("JOINT_KMB_CTB: search + preload collapse KMB/CTB rows into one label",
           "public final boolean joint",
           "private static List<Result> markJoint",
           "JointRoutes.isJointRoute(r.route)",
-          "JointRoutes.JOINT_NOTE",
-          "return -1;"))
-      and search_java.count("List<Result> merged = markJoint(out);") == 2)
+          "GovServiceHours.Brand.jointNote(r.route)",
+          "return -1;",
+          # SINGLE_OPERATOR_DISPLAY: 要實際兩間先合併
+          "companiesByKey",
+          "boolean eligible",
+          "JointRoutes.bothOperatorsPresent(rowCompanies)"))
+      and search_java.count("List<Result> merged = markJoint(out);") == 2
+      and "SINGLE_OPERATOR_DISPLAY" in joint_java
+      and "SINGLE_OPERATOR_DISPLAY" in sep_kt)
 check("JOINT_KMB_CTB: ETA layer best-effort merges the partner operator",
       "JointRoutes.augment(primary, stop, this)" in read(API / "EtaRepository.java")
       and "public static List<EtaItem> augment" in joint_java
@@ -2395,11 +3205,11 @@ check("JOINT_KMB_CTB: ONE card labelled 城巴/九巴, three per-trip labels",
       and 'e.company + "|" + e.route' not in fmt_kt)
 check("JOINT_KMB_CTB: card meta / chips / search note / detail label all wired",
       "App1933Format.companyLabel" in card_kt
-      and "App1933Format.tripOperatorText(t)" in card_kt
+      and "App1933Format.tripOperatorText(t, card.route)" in card_kt
       and "item.joint" in card_kt
-      and "JointRoutes.JOINT_LABEL" in card_kt
+      and "GovServiceHours.Brand.jointLabel(item.route)" in card_kt
       and "JointRoutes.isJointCompany(company)" in detail_kt
-      and "App1933Format.tripOperatorText(trip)" in detail_kt
+      and "App1933Format.tripOperatorText(trip, route)" in detail_kt
       and 'android:id="@+id/tvNoMapLabel"' in detail_layout)
 check("JOINT_KMB_CTB: detail page queries KMB + CTB only (never all 8 modes)",
       "JointRoutes.isJointCompany(company)" in vm_kt
@@ -2434,7 +3244,7 @@ check("CIRCULAR_DISPLAY: KMB shown the App1933 way, CTB the Citybus way",
       and 'route + " 往 " + d' in circ_java
       and 'route + " " + d' in circ_java
       and "CircularRoutes.displayTitle(company, route, dest)" in detail_kt
-      and "CircularRoutes.styleLabel(company)" in detail_kt
+      and "CircularRoutes.styleLabel(company, route)" in detail_kt
       and "card.style" in card_kt)
 check("CIRCULAR_ONLY: only circular lines keep EACH operator's OWN stop name",
       "stopNameFor(" in circ_java
@@ -2444,7 +3254,7 @@ check("CIRCULAR_ONLY: only circular lines keep EACH operator's OWN stop name",
       and "fun isCircular(etas: List<EtaItem>): Boolean" in sep_kt
       and "circularHint && single" in sep_kt
       and "group.circular" in fmt_kt
-      and "CircularRoutes.styleLabel(cardCompany)" in fmt_kt
+      and "CircularRoutes.styleLabel(cardCompany, first.route)" in fmt_kt
       and "circularHint: Boolean = false" in fmt_kt)
 check("CIRCULAR_ONLY: circular rows are NOT collapsed into a joint row",
       "markCircular(" in search_java
@@ -2465,7 +3275,7 @@ check("CIRCULAR_ROUTES: wording resources + detail caption are wired",
       all(f'<string name="{n}">' in read(RES / "values/strings.xml")
           for n in ("circular_kmb_style", "circular_ctb_style",
                     "circular_name_check", "circular_name_hint"))
-      and "CircularRoutes.displayBadge(company, dest)" in detail_kt
+      and "CircularRoutes.displayBadge(company, route, dest)" in detail_kt
       and "renderFooter()" in detail_kt)
 # KOTLIN_TOPLEVEL — App1933Format.kt 有 3 個 TOP-LEVEL data class
 # (Trip / StopDisplay / RouteCard)，只有 object App1933Format 嘅成員先可以
