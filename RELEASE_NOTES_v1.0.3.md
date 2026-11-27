@@ -65,7 +65,7 @@
 - **🚫 唔編造私有 key**：品牌只排 probe 順序，唔會因為係國內 ROM 就硬開功能；**唔寫入任何系統設定、唔靠 GMS**，狀態列如實顯示 `CN_OEM_KEY`／`AOSP_BACKDROP`／`AOSP_NO_BLUR` 來源
 - **🧠 純決策層**：`NavGlassMaterial.resolve()` 出 `液態／模糊／等級／原因`；省電、高對比、減少動態一律優先簡化，連用戶揀「完整液態」都唔覆寫無障礙設定；`sanitizeMode()` 把壞值回落跟隨系統
 - **🎛️ 三態 Spinner**：設定頁新增「進階材質」（跟隨系統／完整液態／簡化靜態），只寫本 App `SharedPreferences`；11 情境決策模擬＋無障礙優先 3×2 全過
-- **📦 零新增資源**：0 新增檔／色值／依賴／權限，版本 `1.0.2`／`3`、簽章鏈同任何已簽名 APK／tag 一個都冇郁
+- **📦 零新增資源**：0 新增檔／色值／依賴／權限，當時版本 `1.0.2`／`3`（本版已 bump 到 `1.0.3`／`4`）、簽章鏈同任何已簽名 APK／tag 一個都冇郁
 
 
 **⑦ 單一服務商只顯示一間（SINGLE_OPERATOR_DISPLAY）**
@@ -75,7 +75,7 @@
 - **🧠 純決策層**：`JointRoutes.bothOperatorsPresent(Set)`／`displayCompany(Set, fallback)` 定死「真兩間 → JOINT；否則 → 原公司一個 label」；`bothContain()` 目錄判定保留做聯營候選，唔捏造第二間
 - **🔎 搜尋頁修正**：`RouteSearch.markJoint()` 先按 `(路線, 目的地)` 收集**實際出現**嘅公司，只有 `bothOperatorsPresent` 先合併；單一列維持自己所屬公司一個 label（當時係共用目錄標籤，⑩ 已按官方 GTFS 分開），唔加 `城巴/九巴` note；第三家（嶼巴／小巴）同號亦唔會被聯營吞走
 - **📇 卡片頁一致**：`SameRouteOperators.partition()` 本來就係「單公司 → 1 張卡、KMB+CTB 非循環 → 1 張聯營卡、其餘逐間拆」；`JointRoutes.augment()` 尾加 guard，partner 冇真實回報就原封不動返 primary，唔會把單公司 ETA 升級做兩間
-- **🎨 零改動**：8 營運商資料層、ETA 即時查、10 個 `search_*` 色值、`values-night` 零覆寫、當時既有 KMB/LWB 共用目錄標籤、版本 `1.0.2`／`3` 同簽章鏈一個都冇郁（⑩ 之後先至按官方 GTFS 分開標籤）
+- **🎨 零改動**：8 營運商資料層、ETA 即時查、10 個 `search_*` 色值、`values-night` 零覆寫、當時既有 KMB/LWB 共用目錄標籤、當時版本 `1.0.2`／`3`（本版已 bump 到 `1.0.3`／`4`）同簽章鏈一個都冇郁（⑩ 之後先至按官方 GTFS 分開標籤）
 
 
 **⑧ 循環線頂欄兩顆動作（CIRCULAR_TWO_ACTIONS）**
@@ -121,7 +121,7 @@
 
 ### 📦 安裝與版本
 
-- **⚠️ 版本號待 bump**：本說明係 `v1.0.3` Release 預備；`app/build.gradle.kts` 目前仍係 **`versionName = 1.0.2`／`versionCode = 3`**，實際出 `v1.0.3` 正式版前需改為 **`1.0.3` / `4`**，並同步 `update_pill.xml` 同 Release 版本閘門
+- **✅ 版本已 bump（Version bump complete）**：`app/build.gradle.kts` 現為 **`versionName = 1.0.3`／`versionCode = 4`**（`1.0.3` / `4`），`update_pill.xml` 設計預覽同步 `v1.0.3 · 4`，兩個 drift gate 同 `RELEASE_VERSION_GATE` 都指向 `v1.0.3`；`RELEASE_NOTES_${TAG}.md` 會由 `v1.0.3` tag build 自動選用。實際正式版 APK 仍要全量 push 後 `git tag v1.0.3 && git push origin v1.0.3`，由 repo Actions 產出 `hketa-v1.0.3-release.apk`；本輪唔郁任何已簽名 APK／舊 tag。
 - 下載對應 Release 的 **`hketa-v1.0.3-release.apk`**（正式版、已簽名）；Actions run 的唯一 Artifact 為 **`hketa-release-apk`**
 - `applicationId = hk.eta.app`；Android 7.0+（minSdk 24），target / compile SDK 34；簽章指紋 `FE:7B:35:E1…20:02:57`（`SIGNING_FINGERPRINT.txt` 隨 Release 附上）
 - 由舊版升級可直接覆蓋安裝（憑證一致）；若曾裝過唔同憑證嘅包，要先解除安裝
@@ -130,7 +130,7 @@
 
 ### ✅ 驗證與資料來源
 
-- `preflight` **141 個必要檔案**齊全；`static checks` **423 條全綠**（含 `LAUNCH_CATALOGUE_REFRESH` 8 條、`HKE_MOBILITY_CATEGORIES` 8 條、`ALL_ROUTES` 3 條、`NAV_LIQUID`、`CN_ADVANCED_MATERIAL`、`SINGLE_OPERATOR_DISPLAY`、`CIRCULAR_TWO_ACTIONS`、`DETAIL_THREE_ICONS` 、`LOCAL_SERVICE_HOURS` 與 `GOV_SERVICE_HOURS` 斷言）
+- `preflight` **141 個必要檔案**齊全；`static checks` **425 條全綠**（含 `LAUNCH_CATALOGUE_REFRESH` 8 條、`HKE_MOBILITY_CATEGORIES` 8 條、`ALL_ROUTES` 3 條、`NAV_LIQUID`、`CN_ADVANCED_MATERIAL`、`SINGLE_OPERATOR_DISPLAY`、`CIRCULAR_TWO_ACTIONS`、`DETAIL_THREE_ICONS` 、`LOCAL_SERVICE_HOURS` 與 `GOV_SERVICE_HOURS` 斷言）
 - 決策等價模擬：`claimOnce()` 一次冷啟動一次、8 組分類所屬、`NavLiquid` 6 情境、`NavGlassMaterial` **11 情境**＋無障礙優先 3×2、`springScale` 端點同 overshoot 全過
 - 14 個 `.java` 以 ECJ 17 實編譯 `exit 0`（68 class）；**7 個 Java harness（Circular 39→47、LocalServiceHours 23、GovServiceHours **36→66**、Joint 52）＋ 38 項 published-release backfill 全過**；`RouteSearchHarness` 預載 **53 列**含 `LRT 505`／`GMB 20M`／`CTB 2`／`MTR AEL`／`MTRB 506`，`search("1")` 仍係原本 4 列
 - Kotlin 符號對照 15 個關鍵檔／78 個 receiver／0 未定義；8 Python／13 Java／59 XML·YAML／30 bash／29 Kotlin 語法、括號、`R.*` 資源 0 缺失；色盤 10 個 `search_*` 值 + `values-night` 零覆寫
@@ -210,7 +210,7 @@
 - **🚫 No invented private keys**: brand only orders the probes and never force-enables a feature just because it is a China ROM; **no writes to system settings, no GMS**, and the status line honestly shows `CN_OEM_KEY` / `AOSP_BACKDROP` / `AOSP_NO_BLUR` sources
 - **🧠 Pure decision layer**: `NavGlassMaterial.resolve()` returns `liquid / blur / level / reason`; power-save, high-contrast and reduced-motion always win, even against a user "Full liquid" choice; `sanitizeMode()` folds bad values back to Follow system
 - **🎛️ Three-state spinner**: Settings adds "Advanced material" (Follow system / Full liquid / Simplified static), stored in this app's `SharedPreferences` only; 11 decision scenarios + 3×2 accessibility-priority cases all pass
-- **📦 Zero new resources**: 0 new files / colours / dependencies / permissions; version `1.0.2` / `3`, the signing chain and every signed APK / tag are untouched
+- **📦 Zero new resources**: 0 new files / colours / dependencies / permissions; the then-current version `1.0.2` / `3` (since bumped to `1.0.3` / `4` for this release), the signing chain and every signed APK / tag are untouched
 
 
 **⑦ Single-operator routes show exactly one operator (SINGLE_OPERATOR_DISPLAY)**
@@ -220,7 +220,7 @@
 - **🧠 Pure decision layer**: `JointRoutes.bothOperatorsPresent(Set)` / `displayCompany(Set, fallback)` fix the rule "real two → JOINT; otherwise → that company's own single label"; `bothContain()` stays as the catalogue-level joint candidate, no second operator is invented
 - **🔎 Search fixed**: `RouteSearch.markJoint()` first collects the companies **actually present** per `(route, destination)` and merges only when `bothOperatorsPresent`; a lone row keeps its own single-company label (then the shared KMB/LWB label; ⑩ splits it by official GTFS) with no `城巴/九巴` note, and a third operator (NLB / GMB) sharing the number is never swallowed by the joint row
 - **📇 Cards stay consistent**: `SameRouteOperators.partition()` already gives "1 company → 1 card, non-circular KMB+CTB → 1 joint card, everything else split per company"; `JointRoutes.augment()` now guards at the end so an unreported partner returns the primary untouched instead of upgrading a single-company ETA into two
-- **🎨 Zero changes**: the 8-operator data layer, always-live ETA, the 10 `search_*` colours, zero `values-night` overrides, the then-existing KMB/LWB shared-catalogue label, version `1.0.2` / `3` and the signing chain are all (⑩ later splits the label by official GTFS) untouched
+- **🎨 Zero changes**: the 8-operator data layer, always-live ETA, the 10 `search_*` colours, zero `values-night` overrides, the then-existing KMB/LWB shared-catalogue label, the then-current version `1.0.2` / `3` (since bumped to `1.0.3` / `4` for this release) and the signing chain are all (⑩ later splits the label by official GTFS) untouched
 
 
 **⑧ Circular routes show exactly TWO header actions (CIRCULAR_TWO_ACTIONS)**
@@ -266,7 +266,7 @@
 
 ### 📦 Install and version
 
-- **⚠️ Version bump pending**: these notes prepare the `v1.0.3` Release; `app/build.gradle.kts` is still **`versionName = 1.0.2` / `versionCode = 3`** and must move to **`1.0.3` / `4`** (plus `update_pill.xml` and the Release version gate) before the actual `v1.0.3` APK ships
+- **✅ Version bump complete**: `app/build.gradle.kts` is now **`versionName = 1.0.3` / `versionCode = 4`** (`1.0.3` / `4`); the `update_pill.xml` design-time preview matches `v1.0.3 · 4`, and both drift gates plus `RELEASE_VERSION_GATE` target `v1.0.3`. `RELEASE_NOTES_${TAG}.md` is selected automatically by the `v1.0.3` tag build. Shipping the actual signed APK still needs a full push followed by `git tag v1.0.3 && git push origin v1.0.3`, so repo Actions can produce `hketa-v1.0.3-release.apk`; no signed APK or old tag is touched here.
 - Download **`hketa-v1.0.3-release.apk`** from the matching Release (production, signed); the sole Actions Artifact is **`hketa-release-apk`**
 - `applicationId = hk.eta.app`; Android 7.0+ (minSdk 24), target / compile SDK 34; signing fingerprint `FE:7B:35:E1…20:02:57` (`SIGNING_FINGERPRINT.txt` is attached)
 - Upgrading from an older build installs over the top (same certificate); if a differently signed build was installed before, uninstall it first
@@ -275,7 +275,7 @@
 
 ### ✅ Verification and data sources
 
-- `preflight`: **141 required files** present; **423 static checks** green (including 8 `LAUNCH_CATALOGUE_REFRESH`, 8 `HKE_MOBILITY_CATEGORIES`, 3 `ALL_ROUTES`, plus the `NAV_LIQUID`, `CN_ADVANCED_MATERIAL`, `SINGLE_OPERATOR_DISPLAY`, `CIRCULAR_TWO_ACTIONS`, `DETAIL_THREE_ICONS` `LOCAL_SERVICE_HOURS` and `GOV_SERVICE_HOURS` assertions)
+- `preflight`: **141 required files** present; **425 static checks** green (including 8 `LAUNCH_CATALOGUE_REFRESH`, 8 `HKE_MOBILITY_CATEGORIES`, 3 `ALL_ROUTES`, plus the `NAV_LIQUID`, `CN_ADVANCED_MATERIAL`, `SINGLE_OPERATOR_DISPLAY`, `CIRCULAR_TWO_ACTIONS`, `DETAIL_THREE_ICONS` `LOCAL_SERVICE_HOURS` and `GOV_SERVICE_HOURS` assertions)
 - Decision-equivalence simulations: `claimOnce()` once per cold start, 8 category-membership cases, 6 `NavLiquid` scenarios, **11** `NavGlassMaterial` scenarios + 3×2 accessibility-priority cases, and `springScale` endpoints / overshoot all pass
 - 14 `.java` files compiled with ECJ 17, `exit 0` (68 classes); **7 Java harnesses (Circular 39→47, LocalServiceHours 23, GovServiceHours **36→66**, Joint 52) + 38 published-Release backfill checks pass**; `RouteSearchHarness` preloads **53 rows** including `LRT 505` / `GMB 20M` / `CTB 2` / `MTR AEL` / `MTRB 506`, while `search("1")` still returns the original 4 rows
 - Kotlin symbol cross-check across 15 key files / 78 receivers / 0 undefined; 8 Python / 13 Java / 59 XML·YAML / 30 bash / 29 Kotlin syntax, brackets and `R.*` resources: 0 missing; 10 `search_*` colours with zero `values-night` overrides

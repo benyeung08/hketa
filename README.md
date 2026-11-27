@@ -17,8 +17,8 @@
 
 介面由 `v1.0.0` 起採用 **APP1933 風格**：九巴紅色標頭、主頁附近路線卡片、底部三分頁、每條路線顯示未來三班次。**資料層完全冇改**——八種營運商、線路資料更新、App 內更新同簽名一致性全部保留。
 
-目前版本 **`v1.0.2`**（`versionCode = 3`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
-中英雙語 Release 說明：[RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md)（今日現行）、[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（歷史）、[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)（首版）。
+目前版本 **`v1.0.3`**（`versionCode = 4`）｜Android 7.0+（minSdk 24）｜target / compile SDK 34。
+中英雙語 Release 說明：[RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md)（現行）、[RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md)（歷史）、[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（歷史）、[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)（首版）。
 
 ### ✨ 功能
 
@@ -41,9 +41,9 @@
 - **🖼 本輪：搜尋頁定稿＋顏色唔變**：`activity_main.xml` 改為截圖分類式（8 tab／6 chips／紀錄；我的書籤已取消），`MainActivity.kt` 由自訂鍵盤改接新介面；全部 `search_*` 色值一個都冇郁、`values-night` 唔覆寫，純 UI＋檢查同步
 - **📅 歷史單日說明檔（備用）**：`_day1_2026-11-19.md`（11-19 介面還原）／`_day2_2026-11-20.md`（20 號至最新改動）兩份可直接貼；純文字，唔被 workflow 自動選用、唔影響 CI
 - **📝 v1.0.0 雙語說明（截至 2026-11-19）**：`RELEASE_NOTES_v1.0.0.md` 中英各 5 章 33 條對稱，收錄 APP1933 搜尋／無地圖詳情／定位授權／懸浮導航欄／ETA 自動刷新，明確唔收 11-20 改動；純文字，唔使 push code
-- **📝 v1.0.2 雙語說明（今日 2026-11-24）**：`RELEASE_NOTES_v1.0.2.md` 中英各 **5 章 43 條**完全對稱、2 段 `#### 📅` 分組（上午／收尾），收錄截圖式搜尋頁、`permissionHint` 編譯修正、只出正式版 APK、前景位置更新、同站更多路線、同號分卡、取消進階＋導航欄移位、恢復本地資料；`app/build.gradle.kts` 同步 bump 到 `versionCode = 3`／`versionName = 1.0.2`，`RELEASE_NOTES_${TAG}.md` 自動對應 `v1.0.2` tag，舊兩份說明加歷史註記、唔郁已簽名 APK
+- **📝 v1.0.2 雙語說明（2026-11-24，歷史）**：`RELEASE_NOTES_v1.0.2.md` 中英各 **5 章 43 條**完全對稱、2 段 `#### 📅` 分組（上午／收尾），收錄截圖式搜尋頁、`permissionHint` 編譯修正、只出正式版 APK、前景位置更新、同站更多路線、同號分卡、取消進階＋導航欄移位、恢復本地資料；`app/build.gradle.kts` 同步 bump 到 `versionCode = 3`／`versionName = 1.0.2`，`RELEASE_NOTES_${TAG}.md` 自動對應 `v1.0.2` tag，舊兩份說明加歷史註記、唔郁已簽名 APK
 - **📝 v1.0.1 雙語說明（本輪：2026-11-20 至最新）**：`RELEASE_NOTES_v1.0.1.md` 重寫為**只列 20 號至最新**，中英各 5 章 33 條對稱；移除「昨天／今天」舊分組同重複條目，完整收錄聯營／站名規則／正式版對應／backfill／CI 修正／GMB 循環線班次／說明分界／離線驗證
-- **🧩 三份說明互補、舊檔保留歷史**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 起（當時「至最新」係歷史表述）、**`v1.0.2` 收錄今日 11-24**；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明唔郁 APK／tag、唔使重跑 CI
+- **🧩 四份說明互補、舊檔保留歷史**：`v1.0.0` 截至 11-19、`v1.0.1` 由 11-20 起（當時「至最新」係歷史表述）、`v1.0.2` 收錄 11-24、**`v1.0.3` 收錄 11-25 起至最新（現行，`1.0.3`／`4`）**；`RELEASE_NOTES_${TAG}.md` 按 tag 各自選用，改說明唔郁 APK／tag、唔使重跑 CI
 - **📝 v1.0.1 中英雙語 Release 說明**：`RELEASE_NOTES_v1.0.1.md` 兩版各 5 章、33 條要點完全對稱，`RELEASE_NOTES_${TAG}.md` 自動對應 tag，唔會誤用 v1.0.0 內文
 - **🆕 本輪交付**：`HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` 可直接貼；另附最小包、合併包與完整專案 zip
 - **🔁 綠小巴循環線班次修正**：第一站顯示三個**唔同**班次而唔係三個同一班次；最後一站顯示**自己**嘅三個唔同班次、唔再同第一站重複（資料驅動、唔捏造班次）
@@ -94,10 +94,10 @@ gradle assembleRelease --no-daemon
 
 ```bash
 # 1) 先 bump 兩個版本欄位
-#    app/build.gradle.kts: versionCode = 3 / versionName = "1.0.2"
-git add app/build.gradle.kts && git commit -m "Bump to 1.0.2" && git push origin main
+#    app/build.gradle.kts: versionCode = 4 / versionName = "1.0.3"
+git add app/build.gradle.kts && git commit -m "Bump to 1.0.3" && git push origin main
 # 2) tag 必須同 versionName 對應
-git tag v1.0.2 && git push origin v1.0.2
+git tag v1.0.3 && git push origin v1.0.3
 ```
 
 ### 🏷 正式版 APK 與 Releases 版本對應
@@ -325,7 +325,7 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 ### 🔗 相關
 
 - Repo：https://github.com/benyeung08/hketa
-- Release 說明：[RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md)（現行）／[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- Release 說明：[RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md)（現行）／[RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md)／[RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
 - 資料來源：[DATA.GOV.HK](https://data.gov.hk) 及各營運商開放數據、[MTR Open Data](https://opendata.mtr.com.hk)
 
 ### 📄 授權與聲明
@@ -346,8 +346,8 @@ CI 第一步係**自包含預檢**（唔依賴 repo 入面任何 `.py`），會�
 
 Since `v1.0.0` the shell follows the **APP1933** layout: KMB-red header, nearby-route cards, four bottom tabs, and the next three arrivals per route. **The data layer is untouched** — all eight operators, the catalogue updater, the in-app updater and signature consistency remain.
 
-Current version **`v1.0.2`** (`versionCode = 3`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
-Bilingual release notes: [RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md) (today / current), [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (history), [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) (first release).
+Current version **`v1.0.3`** (`versionCode = 4`) | Android 7.0+ (minSdk 24) | target / compile SDK 34.
+Bilingual release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md) (current), [RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md) (history), [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (history), [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md) (first release).
 
 ### ✨ Features
 
@@ -370,9 +370,9 @@ Bilingual release notes: [RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md) (tod
 - **🖼 This round: search page locked, colours unchanged**: `activity_main.xml` now matches the screenshot categories (8 tabs / 6 chips / history (bookmarks removed)) and `MainActivity.kt` was rewired from the custom keypad; every `search_*` value is untouched, `values-night` never overrides them, UI + checks only
 - **📅 Historical single-day notes (standby)**: `_day1_2026-11-19.md` (11-19 layout work) / `_day2_2026-11-20.md` (20th-through-latest work) are paste-ready; plain text, never auto-selected by the workflow, no CI impact
 - **📝 Bilingual v1.0.0 notes (through 2026-11-19)**: `RELEASE_NOTES_v1.0.0.md` is fully symmetric at 5 sections / 33 bullets per language, covering the APP1933 search, map-free detail, location consent, floating nav bar and ETA auto-refresh, and explicitly excludes the 11-20 work; text-only, no code push needed
-- **📝 Bilingual v1.0.2 notes (today 2026-11-24)**: `RELEASE_NOTES_v1.0.2.md` is fully symmetric at **5 sections / 43 bullets per language** with 2 `#### 📅` groups (morning / wrap-up), covering the screenshot-style search page, the `permissionHint` compile fix, production-APK-only Artifacts, foreground position updates, more routes per stop, same-number operator split, Advanced removal + nav relocation and restored local data; `app/build.gradle.kts` is bumped to `versionCode = 3` / `versionName = 1.0.2`, `RELEASE_NOTES_${TAG}.md` matches the `v1.0.2` tag automatically, and the two older note files get a historical note without touching any signed APK
+- **📝 Bilingual v1.0.2 notes (2026-11-24, history)**: `RELEASE_NOTES_v1.0.2.md` is fully symmetric at **5 sections / 43 bullets per language** with 2 `#### 📅` groups (morning / wrap-up), covering the screenshot-style search page, the `permissionHint` compile fix, production-APK-only Artifacts, foreground position updates, more routes per stop, same-number operator split, Advanced removal + nav relocation and restored local data; `app/build.gradle.kts` is bumped to `versionCode = 3` / `versionName = 1.0.2`, `RELEASE_NOTES_${TAG}.md` matches the `v1.0.2` tag automatically, and the two older note files get a historical note without touching any signed APK
 - **📝 Bilingual v1.0.1 notes (this round: 2026-11-20 through the latest)**: `RELEASE_NOTES_v1.0.1.md` is rewritten to list **only 20th-through-latest**, fully symmetric at 5 sections / 33 bullets per language; the old "Yesterday / Today" split and duplicated bullets are removed, and joint routes / stop-name rules / version matching / backfill / CI fixes / the GMB circular-trip fix / the notes boundary / offline verification are all recorded
-- **🧩 Three notes, old ones kept as history**: `v1.0.0` stops at 11-19, `v1.0.1` starts at 11-20 (its "through the latest" wording is a historical snapshot), **`v1.0.2` covers today 11-24**; `RELEASE_NOTES_${TAG}.md` picks the matching file per tag, and editing notes never touches the APK / tag or needs a CI re-run
+- **🧩 Four notes, old ones kept as history**: `v1.0.0` stops at 11-19, `v1.0.1` starts at 11-20 (its "through the latest" wording is a historical snapshot), `v1.0.2` covers 11-24, **`v1.0.3` covers 11-25 through the latest (current, `1.0.3` / `4`)**; `RELEASE_NOTES_${TAG}.md` picks the matching file per tag, and editing notes never touches the APK / tag or needs a CI re-run
 - **📝 Bilingual v1.0.1 release notes**: `RELEASE_NOTES_v1.0.1.md` is fully symmetric in both languages (5 sections, 33 bullets each); `RELEASE_NOTES_${TAG}.md` matches the tag automatically and never reuses the v1.0.0 body
 - **🆕 Delivered this round**: `HK_ETA_v1.0.1_Release_說明_中英雙語_2026-11-20至最新.md` is paste-ready, plus a minimal pack, a merged pack and the full-project zip
 - **🔁 GMB circular trips fixed**: the first stop shows three DISTINCT trips instead of three copies of one, and the last stop shows its OWN three distinct trips instead of repeating the first (data-driven, never fabricated)
@@ -423,10 +423,10 @@ Pushing to `main` **or** a `v*` tag triggers `.github/workflows/build-apk.yml`, 
 
 ```bash
 # 1) bump BOTH version fields first
-#    app/build.gradle.kts: versionCode = 3 / versionName = "1.0.2"
-git add app/build.gradle.kts && git commit -m "Bump to 1.0.2" && git push origin main
+#    app/build.gradle.kts: versionCode = 4 / versionName = "1.0.3"
+git add app/build.gradle.kts && git commit -m "Bump to 1.0.3" && git push origin main
 # 2) the tag must match versionName
-git tag v1.0.2 && git push origin v1.0.2
+git tag v1.0.3 && git push origin v1.0.3
 ```
 
 ### 🏷 Production APK ↔ matching Release version
@@ -651,7 +651,7 @@ On failure, an extra `Show real Gradle error` step prints the real cause as `::e
 ### 🔗 Related
 
 - Repo: https://github.com/benyeung08/hketa
-- Release notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md) (current) / [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
+- Release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md) (current) / [RELEASE_NOTES_v1.0.2.md](RELEASE_NOTES_v1.0.2.md) / [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)
 - Data sources: [DATA.GOV.HK](https://data.gov.hk), operator open-data feeds, [MTR Open Data](https://opendata.mtr.com.hk)
 
 ### 📄 License & disclaimer
