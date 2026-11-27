@@ -514,6 +514,24 @@
                     android:textColor="@color/text"
                     android:textSize="13sp" />
 
+                <!-- CN_ADVANCED_MATERIAL: 三態覆蓋，只寫本 App 偏好，唔掂系統設定 -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/nav_glass_material_label"
+                    android:textColor="@color/text"
+                    android:textSize="13sp" />
+
+                <Spinner
+                    android:id="@+id/spNavMaterial"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="@drawable/bg_card"
+                    android:padding="6dp"
+                    android:spinnerMode="dialog" />
+
                 <TextView
                     android:id="@+id/tvNavGlassStatus"
                     android:layout_width="match_parent"

@@ -132,9 +132,12 @@
 
                 <TextView
                     android:id="@+id/tripTag1"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:layout_marginStart="10dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -173,9 +176,12 @@
 
                 <TextView
                     android:id="@+id/tripTag2"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:layout_marginStart="10dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -214,9 +220,12 @@
 
                 <TextView
                     android:id="@+id/tripTag3"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:layout_marginStart="10dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:textColor="@color/detail_aux_text"
                     android:textSize="13sp" />
             </LinearLayout>

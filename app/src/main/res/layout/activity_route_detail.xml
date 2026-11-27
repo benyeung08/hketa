@@ -27,7 +27,18 @@
     android:background="#FFFFFF"
     android:orientation="vertical">
 
-    <!-- ===== 紅色頂欄：← +「12 往 尖沙咀東（麼地道）(YT927)」+ 三個圓形動作 ===== -->
+    <!-- ===== 紅色頂欄：← +「12 往 尖沙咀東（麼地道）(YT927)」+ 圓形動作 =====
+         DETAIL_THREE_ICONS: 所有單向（非循環）路線**只有呢三個圖標** ——
+           ① 日曆  = 服務時間及班次（detailActionCalendar）
+           ② 通知  = 官方 ETA 備註／服務通告（detailActionNotice）
+           ③ 切換方向 = ⇅（detailActionDirection）
+         CIRCULAR_TWO_ACTIONS: 所有循環線**只有呢兩個圖標** ——
+           ① 日曆 = 服務時間及班次（同單向路線同一個 dialog，唔縮水）
+           ② 通知 = 服務通告
+         LOCAL_SERVICE_HOURS: 日曆 dialog 只讀本機路線資料，唔行即時 ETA。
+         循環線冇回程方向，由 CircularRoutes.visibleHeaderActions(boolean)
+         把第三顆 ⇅ 設 GONE，頭兩顆顯式 VISIBLE，對應第二張參考圖。
+         三顆都係白圓 bg_detail_action_circle + 紅色 vector，唔加／唔減 View。 -->
     <LinearLayout
         android:id="@+id/detailHeader"
         android:layout_width="match_parent"
@@ -63,35 +74,36 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/detailActionTrips"
+        <!-- ① 日曆＝服務時間及班次 -->
+        <ImageView
+            android:id="@+id/detailActionCalendar"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/bg_detail_action_circle"
             android:clickable="true"
-            android:contentDescription="@string/detail_action_trips_cd"
+            android:contentDescription="@string/detail_action_calendar_cd"
             android:focusable="true"
-            android:gravity="center"
-            android:text="▦"
-            android:textColor="@color/brand"
-            android:textSize="17sp" />
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_detail_calendar" />
 
-        <TextView
-            android:id="@+id/detailActionFav"
+        <!-- ② 通知＝服務通告（官方 ETA remark_tc） -->
+        <ImageView
+            android:id="@+id/detailActionNotice"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/bg_detail_action_circle"
             android:clickable="true"
-            android:contentDescription="@string/detail_action_fav_cd"
+            android:contentDescription="@string/detail_action_notice_cd"
             android:focusable="true"
-            android:gravity="center"
-            android:text="★"
-            android:textColor="@color/brand"
-            android:textSize="18sp" />
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_detail_notice" />
 
-        <TextView
+        <!-- ③ 切換方向＝⇅（循環線 GONE） -->
+        <ImageView
             android:id="@+id/detailActionDirection"
             android:layout_width="36dp"
             android:layout_height="36dp"
@@ -100,10 +112,9 @@
             android:clickable="true"
             android:contentDescription="@string/detail_action_direction_cd"
             android:focusable="true"
-            android:gravity="center"
-            android:text="⇄"
-            android:textColor="@color/brand"
-            android:textSize="19sp" />
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_detail_direction" />
     </LinearLayout>
 
     <!-- ===== NO_MAP_PANEL：用一條紅色路線 + 站名氣泡取代 Google 地圖 ===== -->

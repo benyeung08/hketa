@@ -195,17 +195,13 @@
 
             </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnFavAdd"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="4dp"
-                android:layout_marginEnd="12dp"
-                android:layout_marginBottom="8dp"
-                android:text="@string/fav_add"
-                android:textSize="12sp" />
+            <!--
+              NAV_NO_FAV_BUTTON: 取消「☆ 加入收藏」長條掣 —— 佢原本喺主頁
+              附近路線列表底、懸浮液態玻璃導航欄 overlay 下面（見用家截圖）。
+              收藏功能冇取消：路線詳情頁「收藏」動作、設定頁「★ 我的收藏」
+              入口、收藏頁同長按移除照舊，只係唔再喺導航欄下顯示呢個掣，
+              亦唔留任何隱藏 View（NAV_NO_FAV_TAB 連導航欄嗰粒 tab 都取消）。
+            -->
         </LinearLayout>
 
         <!-- ============================ 收藏 ============================ -->
@@ -250,7 +246,7 @@
 
         <!-- ============ 搜尋（SEARCH_UI_2026-11-23：對照截圖嘅深色分類式版面） ============
              固定深色底＋綠色重點；頂部 8 個交通類別 tab、第二排營運商 chips、
-             綠框「路線號碼」、我的書籤／搜尋紀錄。
+             綠框「路線號碼」、搜尋紀錄（我的書籤已取消）。
              底層 8 種查詢模式、官方目錄預載、點列開詳情頁（帶方向）、
              站序／方向／篩選全部保留，一個都無郁。 -->
         <LinearLayout
@@ -670,7 +666,7 @@
                     android:paddingBottom="180dp" />
             </LinearLayout>
 
-            <!-- 輸入為空：我的書籤 ＋ 搜尋紀錄（對照截圖） -->
+            <!-- SEARCH_NO_BOOKMARK: 輸入為空只剩搜尋紀錄；「我的書籤」區塊已取消 -->
             <LinearLayout
                 android:id="@+id/searchHomeView"
                 android:layout_width="match_parent"
@@ -679,47 +675,6 @@
                 android:orientation="vertical"
                 android:visibility="visible">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="18dp"
-                    android:paddingEnd="18dp"
-                    android:paddingBottom="10dp"
-                    android:text="@string/search_bookmark_title"
-                    android:textColor="@color/search_text"
-                    android:textSize="19sp"
-                    android:textStyle="bold" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginStart="18dp"
-                    android:layout_marginEnd="18dp"
-                    android:background="@color/search_divider" />
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="0.26">
-
-                    <TextView
-                        android:id="@+id/tvBookmarkEmpty"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingStart="18dp"
-                        android:paddingTop="14dp"
-                        android:paddingEnd="18dp"
-                        android:text="@string/search_bookmark_empty"
-                        android:textColor="@color/search_muted"
-                        android:textSize="17sp" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/bookmarkRecycler"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:clipToPadding="false"
-                        android:paddingBottom="180dp" />
-                </FrameLayout>
 
                 <TextView
                     android:layout_width="match_parent"
@@ -996,6 +951,8 @@
     <!--
       NAV_GEOMETRY / NAV_OVERLAY_POSITION: 對照截圖嘅深灰黑「藥丸」導航欄 ——
       高 56dp、水平置中、左右收窄（NavGlass.geometry() 按屏寬動態調整）、
+      NAV_NO_FAV_TAB: 導航欄只係「主頁／搜尋／應用程式設置」三分頁，
+      「★ 收藏」tab 已取消（收藏頁改由設定頁「★ 我的收藏」掣進入）。
       全圓角 (radius = 28dp = 高度一半)。
       ★ 位置改咗：唔再係貼底 8dp 嘅「佔位列」，而係 FrameLayout 嘅
         overlay（layout_gravity=bottom|center_horizontal），並由
@@ -1033,16 +990,6 @@
             android:textSize="10sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/tabFav"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:lineSpacingExtra="1dp"
-            android:text="@string/tab_fav"
-            android:textColor="@color/nav_tab_muted"
-            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/tabSearch"
@@ -1066,5 +1013,49 @@
             android:textColor="@color/nav_tab_muted"
             android:textSize="10sp" />
     </LinearLayout>
+
+    <!--
+      NAV_LIQUID: 疊喺玻璃藥丸上面嘅「液態」層 —— 同 bottomTabs 用完全
+      相同嘅幾何（NavGlass.geometry() 會一併重算），但 clickable=false，
+      觸控照舊穿透落四個分頁。
+        · navLiquidRim   ：由上淡出嘅折射亮邊 + 1dp 內描邊
+        · navLiquidSheen：168dp 白色漸變高光，由 NavGlass 用
+                          ValueAnimator 左右來回流動（API 31+ 加 RenderEffect）
+      兩層嘅 alpha / 動畫 / RenderEffect 全部由 NavLiquid 純決策層按
+      「跟隨系統外觀／高對比／減少動態」控制；關閉時 alpha=0、完全靜態。
+      layer 由 Kotlin setClipToOutline(true) 裁成同一個 28dp 圓角，
+      高光唔會漏出藥丸邊。
+    -->
+    <FrameLayout
+        android:id="@+id/navLiquidLayer"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="28dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="28dp"
+        android:layout_marginBottom="96dp"
+        android:clickable="false"
+        android:clipChildren="true"
+        android:elevation="6.2dp"
+        android:focusable="false">
+
+        <View
+            android:id="@+id/navLiquidRim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0.7"
+            android:clickable="false"
+            android:focusable="false" />
+
+        <View
+            android:id="@+id/navLiquidSheen"
+            android:layout_width="168dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="start|center_vertical"
+            android:alpha="0.55"
+            android:clickable="false"
+            android:focusable="false" />
+    </FrameLayout>
 
 </FrameLayout>
