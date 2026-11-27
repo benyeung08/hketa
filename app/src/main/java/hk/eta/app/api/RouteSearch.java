@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Set;
@@ -34,6 +35,46 @@ public final class RouteSearch {
     private static final String CTB_BASE = "https://rt.data.gov.hk/v2/transport/citybus";
     private static final String NLB_BASE = "https://rt.data.gov.hk/v2/transport/nlb";
     private static final String GMB_BASE = "https://data.etagmb.gov.hk";
+
+    /**
+     * ALL_ROUTES: 顯示**所有**官方目錄路線，唔再設每公司 3 列／頭 24 列／
+     * 40 列搜尋上限。配額設為 Integer.MAX_VALUE = 無上限，保留同一個
+     * 單一來源（ui 層 SearchCategoryRules 引用佢），日後想改返配額只需改呢度。
+     */
+    public static final int ALL_ROUTES_LIMIT = Integer.MAX_VALUE;
+
+    /**
+     * CODE_OPTIMISATION: 以前 preload() / searchInternal() 每次呼叫都 new 一個
+     * anonymous Comparator（用戶每打一個字就 new 一次）。兩個排序規則唔同
+     * （預載按路線號、搜尋按精確匹配），所以分開兩個 static final 實例，
+     * 唔強行合併，語義完全不變。
+     */
+    private static final Comparator<Result> PRELOAD_ORDER = new Comparator<Result>() {
+        @Override
+        public int compare(Result a, Result b) {
+            int c = rank(a.company) - rank(b.company);
+            if (c != 0) {
+                return c;
+            }
+            c = a.route.compareToIgnoreCase(b.route);
+            return c != 0 ? c : a.dest.compareTo(b.dest);
+        }
+    };
+
+    private static final Comparator<Result> SEARCH_ORDER = new Comparator<Result>() {
+        @Override
+        public int compare(Result a, Result b) {
+            int c = rank(a.company) - rank(b.company);
+            if (c != 0) {
+                return c;
+            }
+            // Exact matches first, then prefix matches, then by destination.
+            if (a.exact != b.exact) {
+                return a.exact ? -1 : 1;
+            }
+            return a.dest.compareTo(b.dest);
+        }
+    };
 
     private static final String[] COMPANY_ORDER = {
             EtaRepository.KMB, EtaRepository.CTB, EtaRepository.NLB,
@@ -105,8 +146,8 @@ public final class RouteSearch {
                 out.add(r);
                 continue;
             }
-            String style = CircularRoutes.styleLabel(r.company);
-            String badge = CircularRoutes.displayBadge(r.company, r.dest);
+            String style = CircularRoutes.styleLabel(r.company, r.route);
+            String badge = CircularRoutes.displayBadge(r.company, r.route, r.dest);
             String dest = CircularRoutes.displayTitle(r.company, "", r.dest)
                     .trim();
             // dest keeps the official circular suffix; the "route" prefix is
@@ -131,6 +172,28 @@ public final class RouteSearch {
      * hard-coded route-number list.
      */
     private static List<Result> markJoint(List<Result> in) {
+        // SINGLE_OPERATOR_DISPLAY: 先收集「實際出現」嘅官方公司。
+        // isJointRoute() 只代表兩份目錄都有呢個路線號；若呢批結果只有
+        // 一列 KMB（或一列 CTB），佢仍然係單一服務商，必須顯示自己一個
+        // label，唔可以單靠目錄交疊就升級做「城巴/九巴」兩間。
+        Map<String, Set<String>> companiesByKey = new HashMap<>();
+        for (Result r : in) {
+            if (r.circular) {
+                continue;
+            }
+            if ((EtaRepository.KMB.equals(r.company)
+                    || EtaRepository.CTB.equals(r.company))
+                    && JointRoutes.isJointRoute(r.route)) {
+                String k = r.route.trim().toUpperCase(Locale.US) + "|"
+                        + r.dest.replace("往 ", "").trim();
+                Set<String> set = companiesByKey.get(k);
+                if (set == null) {
+                    set = new HashSet<>();
+                    companiesByKey.put(k, set);
+                }
+                set.add(r.company);
+            }
+        }
         List<Result> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (Result r : in) {
@@ -141,20 +204,28 @@ public final class RouteSearch {
                 out.add(r);
                 continue;
             }
-            boolean joint = (EtaRepository.KMB.equals(r.company)
+            String rowKey = r.route.trim().toUpperCase(Locale.US) + "|"
+                    + r.dest.replace("往 ", "").trim();
+            Set<String> rowCompanies = companiesByKey.get(rowKey);
+            boolean eligible = (EtaRepository.KMB.equals(r.company)
                     || EtaRepository.CTB.equals(r.company))
                     && JointRoutes.isJointRoute(r.route);
-            String company = joint ? JointRoutes.JOINT : r.company;
+            boolean joint = eligible
+                    && JointRoutes.bothOperatorsPresent(rowCompanies);
+            // 第三家（NLB / GMB …）即使同號都維持自己一列，唔會被聯營吞走。
+            String company = eligible
+                    ? JointRoutes.displayCompany(rowCompanies, r.company)
+                    : r.company;
             String note = r.note;
-            if (joint && !note.contains(JointRoutes.JOINT_LABEL)) {
+            // KMB_LWB_SPLIT: 聯營 note 都要按路線歸屬（龍運聯營 -> 城巴/龍運）。
+            String jointLabel = GovServiceHours.Brand.jointLabel(r.route);
+            if (joint && !note.contains(jointLabel)) {
                 note = note.isEmpty()
-                        ? JointRoutes.JOINT_NOTE
-                        : JointRoutes.JOINT_LABEL + " · " + note;
+                        ? GovServiceHours.Brand.jointNote(r.route)
+                        : jointLabel + " · " + note;
             }
             if (joint) {
-                String key = company + "|"
-                        + r.route.trim().toUpperCase(Locale.US) + "|"
-                        + r.dest.replace("往 ", "").trim();
+                String key = company + "|" + rowKey;
                 if (!seen.add(key)) {
                     continue;
                 }
@@ -166,6 +237,106 @@ public final class RouteSearch {
     }
 
     private RouteSearch() {
+    }
+
+    /**
+     * DIRECTION_TITLE_SYNC + API_AUDIT — 撳 ⇅ 之後紅頂「1 往 尖沙咀碼頭」
+     * 要跟住轉做「1 往 竹園邨」。由**官方目錄嘅方向級 dest_tc** 取值：
+     *   KMB / JOINT -> kmb_routes.json 嘅 (route, bound)
+     *   CTB         -> ctb_routes.json 嘅 (route, dir|bound)
+     * 只讀本機快取（RouteDataStore.readJson），**永不落網絡**。
+     *
+     * API_AUDIT_A3: 官方 CTB 目錄冇方向欄，唔再默認 "O"，如實返回 ""。
+     * API_AUDIT_A4: 同一 (route,bound) 有多個 service_type 而 dest_tc
+     *              唔同（真實目錄 52 組）時唔揀第一筆，返回 "" 靠站序降級。
+     * API_AUDIT_B2: 結果做 in-memory 快取，唔再每次切換都 parse 342KB。
+     */
+    private static final Map<String, Map<String, String>> DEST_CACHE =
+            new LinkedHashMap<>();
+    private static final Map<String, List<String>> GMB_DEST_CACHE =
+            new LinkedHashMap<>();
+
+    /** Called by RouteDataStore.invalidateDownstream() after a catalogue refresh. */
+    public static void invalidateDestCache() {
+        synchronized (DEST_CACHE) {
+            DEST_CACHE.clear();
+            GMB_DEST_CACHE.clear();
+        }
+    }
+
+    public static String destFor(String company, String route, String bound) {
+        if (route == null || route.isEmpty()
+                || bound == null || bound.isEmpty()) {
+            return "";
+        }
+        String file;
+        boolean kmbStyle;
+        if (EtaRepository.KMB.equals(company)
+                || JointRoutes.isJointCompany(company)) {
+            file = RouteDataStore.KMB_ROUTES;
+            kmbStyle = true;
+        } else if (EtaRepository.CTB.equals(company)) {
+            file = RouteDataStore.CTB_ROUTES;
+            kmbStyle = false;
+        } else {
+            return "";
+        }
+        String key = file + "|" + route.toUpperCase(Locale.US)
+                + "|" + bound.toUpperCase(Locale.US);
+        synchronized (DEST_CACHE) {
+            Map<String, String> memo = DEST_CACHE.get(file);
+            if (memo != null && memo.containsKey(key)) {
+                return memo.get(key);
+            }
+        }
+        String answer = "";
+        try {
+            // readJson 只讀本機 snapshot；catalogueJson 會喺缺檔時落網絡，
+            // 呢度刻意唔用，避免切換方向掣變做網絡請求。
+            JSONObject root = RouteDataStore.readJson(file);
+            JSONArray data = root == null ? null : root.optJSONArray("data");
+            if (data != null) {
+                List<String> dests = new ArrayList<>();
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject o = data.optJSONObject(i);
+                    if (o == null) {
+                        continue;
+                    }
+                    if (!route.equalsIgnoreCase(HttpJson.str(o, "route"))) {
+                        continue;
+                    }
+                    // 冇方向欄 = 官方目錄唔提供方向級目的地，唔估、唔配對。
+                    String b = kmbStyle
+                            ? HttpJson.str(o, "bound")
+                            : HttpJson.firstNonEmpty(HttpJson.str(o, "dir"),
+                                    HttpJson.str(o, "bound"));
+                    if (b.isEmpty() || !bound.equalsIgnoreCase(b)) {
+                        continue;
+                    }
+                    String d = HttpJson.firstNonEmpty(
+                            HttpJson.str(o, "dest_tc"),
+                            HttpJson.str(o, "dest_en"),
+                            HttpJson.str(o, "orig_tc"));
+                    if (!d.isEmpty() && !dests.contains(d)) {
+                        dests.add(d);
+                    }
+                }
+                if (dests.size() == 1) {
+                    answer = dests.get(0);
+                }
+            }
+        } catch (Exception ignored) {
+            // 快取壞咗就如實降級，唔估目的地。
+        }
+        synchronized (DEST_CACHE) {
+            Map<String, String> memo = DEST_CACHE.get(file);
+            if (memo == null) {
+                memo = new LinkedHashMap<>();
+                DEST_CACHE.put(file, memo);
+            }
+            memo.put(key, answer);
+        }
+        return answer;
     }
 
     /** Never throws: one unavailable operator must not hide the others. */
@@ -181,15 +352,15 @@ public final class RouteSearch {
     }
 
     /**
-     * PRELOADED rows for the search home page (the dark empty area in the
-     * reference screenshot). Called BEFORE the user types a single digit, so
-     * "12 往 海麗邨 ›" style rows are already visible on entry.
+     * ALL_ROUTES: the FULL official route catalogue for the search home page.
+     * Called before the user types a single digit, so EVERY route of EVERY
+     * operator is already visible on entry (not just a handful of previews).
      *
      * Every row comes from the SAME official route catalogues as search():
      * local snapshot first, live API as fallback. No destination is invented —
      * if a catalogue has no direction-level destination, that operator is
-     * skipped. GMB directions need one live lookup per route, so preload only
-     * shows its route codes with an explicit "目錄預載（未查方向）" note.
+     * skipped. GMB directions need one live lookup per route, so its rows show
+     * route codes with an explicit "目錄預載（未查方向）" note.
      */
     public static List<Result> preload() {
         final List<Result> out = new ArrayList<>();
@@ -214,21 +385,26 @@ public final class RouteSearch {
         List<Result> merged = markJoint(out);
         out.clear();
         out.addAll(merged);
-        Collections.sort(out, new Comparator<Result>() {
-            @Override
-            public int compare(Result a, Result b) {
-                int c = rank(a.company) - rank(b.company);
-                if (c != 0) {
-                    return c;
-                }
-                c = a.route.compareToIgnoreCase(b.route);
-                return c != 0 ? c : a.dest.compareTo(b.dest);
-            }
-        });
-        if (out.size() > 24) {
-            return new ArrayList<>(out.subList(0, 24));
+        Collections.sort(out, PRELOAD_ORDER);
+        // ALL_ROUTES: 唔再一刀切頭 24 列、唔再每公司 3 列。全部官方目錄列
+        // 如實返回（RecyclerView 懶渲染，幾百列都唔會一次性 inflate）。
+        if (ALL_ROUTES_LIMIT == Integer.MAX_VALUE) {
+            return out;
         }
-        return out;
+        Map<String, Integer> seen = new HashMap<>();
+        List<Result> capped = new ArrayList<>();
+        for (Result r : out) {
+            Integer n = seen.get(r.company);
+            if (n == null) {
+                n = 0;
+            }
+            if (n >= ALL_ROUTES_LIMIT) {
+                continue;
+            }
+            seen.put(r.company, n + 1);
+            capped.add(r);
+        }
+        return capped;
     }
 
     private static void kmbPreload(List<Result> out) throws Exception {
@@ -239,8 +415,8 @@ public final class RouteSearch {
         if (data == null) {
             return;
         }
-        int added = 0;
-        for (int i = 0; i < data.length() && added < 6; i++) {
+        // ALL_ROUTES: 全部官方目錄列，唔再只攞頭 6 條。
+        for (int i = 0; i < data.length(); i++) {
             JSONObject o = data.optJSONObject(i);
             if (o == null) {
                 continue;
@@ -256,21 +432,21 @@ public final class RouteSearch {
             String bound = HttpJson.firstNonEmpty(HttpJson.str(o, "bound"), "O");
             out.add(new Result(EtaRepository.KMB, route, "往 " + dest, bound,
                     toServiceType(HttpJson.str(o, "service_type")), "", true));
-            added++;
         }
     }
 
     private static void ctbPreload(List<Result> out) throws Exception {
         JSONObject root = RouteDataStore.catalogueJson(
                 RouteDataStore.CTB_ROUTES,
+                CTB_BASE + "/route/CTB/",
                 CTB_BASE + "/route/CTB",
-                "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB");
+                "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB/");
         JSONArray data = root.optJSONArray("data");
         if (data == null) {
             return;
         }
-        int added = 0;
-        for (int i = 0; i < data.length() && added < 6; i++) {
+        // ALL_ROUTES: 全部官方目錄列，唔再只攞頭 6 條。
+        for (int i = 0; i < data.length(); i++) {
             JSONObject o = data.optJSONObject(i);
             if (o == null) {
                 continue;
@@ -283,11 +459,12 @@ public final class RouteSearch {
             if (route.isEmpty() || dest.isEmpty()) {
                 continue;
             }
+            // API_AUDIT_A3: 官方 CTB 目錄 408/408 列都冇 dir/bound。
+            // 唔再默認 "O" —— 留空等詳情頁用官方 route-stop 嘅 dir 判定。
             String bound = HttpJson.firstNonEmpty(
-                    HttpJson.str(o, "dir"), HttpJson.str(o, "bound"), "O");
+                    HttpJson.str(o, "dir"), HttpJson.str(o, "bound"));
             out.add(new Result(EtaRepository.CTB, route, "往 " + dest,
                     bound, 1, "", true));
-            added++;
         }
     }
 
@@ -300,8 +477,8 @@ public final class RouteSearch {
             return;
         }
         final String note = "大嶼山巴士 (資料由DATA.GOV.HK提供)";
-        int added = 0;
-        for (int i = 0; i < routes.length() && added < 2; i++) {
+        // ALL_ROUTES: 全部嶼巴路線（兩端方向都保留）。
+        for (int i = 0; i < routes.length(); i++) {
             JSONObject o = routes.optJSONObject(i);
             if (o == null) {
                 continue;
@@ -329,7 +506,6 @@ public final class RouteSearch {
                 out.add(new Result(EtaRepository.NLB, route,
                         "往 " + start + " - 嶼巴", "ALL", 1, note, true));
             }
-            added++;
         }
     }
 
@@ -349,32 +525,41 @@ public final class RouteSearch {
             if (list == null) {
                 continue;
             }
-            int added = 0;
-            for (int i = 0; i < list.length() && added < 2; i++) {
+            // ALL_ROUTES: 三個分區嘅全部小巴路線編號。
+            for (int i = 0; i < list.length(); i++) {
                 String code = list.optString(i, "");
                 if (code.isEmpty()) {
                     continue;
                 }
                 out.add(new Result(EtaRepository.GMB, code,
-                        "往 " + code + " 總站", "1", 1,
+                        "往 " + code + "（未查方向）", "1", 1,
                         "綠色小巴 (資料由DATA.GOV.HK提供) · " + names[r]
                                 + " · 目錄預載（未查方向）", true));
-                added++;
-            }
+                }
         }
     }
 
-    /** Rail rows use the project's own official line / MTR Bus code tables. */
+    /**
+     * Rail rows use the project's own official line / LRT / MTR Bus code tables.
+     * HKE_MOBILITY_CATEGORIES: 補返輕鐵（LRT）列，令「港鐵（重鐵、輕鐵路線）」
+     * 類別喺未輸入任何字之前都有官方目錄列，唔再空白。
+     */
     private static void railPreload(List<Result> out) {
-        for (int i = 0; i < Math.min(4, MtrCatalog.LINE_CODES.length); i++) {
+        for (int i = 0; i < MtrCatalog.LINE_CODES.length; i++) {
             out.add(new Result(EtaRepository.MTR, MtrCatalog.LINE_CODES[i],
-                    "往 " + MtrCatalog.LINE_NAMES[i] + " 沿線", "ALL", 1,
+                    "往 " + MtrCatalog.LINE_NAMES[i], "ALL", 1,
                     "港鐵 (資料由DATA.GOV.HK提供)", true));
         }
-        for (int i = 0; i < Math.min(2, MtrCatalog.MTR_BUS_ROUTES.length); i++) {
+        for (int i = 0; i < MtrCatalog.LRT_ROUTES.length; i++) {
+            String code = MtrCatalog.LRT_ROUTES[i];
+            out.add(new Result(EtaRepository.LRT, code,
+                    "往 " + code + "（未查方向）", "ALL", 1,
+                    "輕鐵 (資料由DATA.GOV.HK提供)", true));
+        }
+        for (int i = 0; i < MtrCatalog.MTR_BUS_ROUTES.length; i++) {
             String code = MtrCatalog.MTR_BUS_ROUTES[i];
             out.add(new Result(EtaRepository.MTRB, code,
-                    "往 " + code + " 總站", "ALL", 1,
+                    "往 " + code + "（未查方向）", "ALL", 1,
                     "港鐵接駁巴士 (資料由DATA.GOV.HK提供)", true));
         }
     }
@@ -408,30 +593,9 @@ public final class RouteSearch {
         List<Result> merged = markJoint(out);
         out.clear();
         out.addAll(merged);
-        Collections.sort(out, new Comparator<Result>() {
-            @Override
-            public int compare(Result a, Result b) {
-                int c = rank(a.company) - rank(b.company);
-                if (c != 0) {
-                    return c;
-                }
-                // Exact matches first, then prefix matches, then by destination.
-                if (a.exact != b.exact) {
-                    return a.exact ? -1 : 1;
-                }
-                return a.dest.compareTo(b.dest);
-            }
-        });
-        // Keep the list usable on a phone: exact matches always survive.
-        if (out.size() > 40) {
-            List<Result> trimmed = new ArrayList<>();
-            for (Result r : out) {
-                if (r.exact || trimmed.size() < 24) {
-                    trimmed.add(r);
-                }
-            }
-            return trimmed;
-        }
+        Collections.sort(out, SEARCH_ORDER);
+        // ALL_ROUTES: 唔再 cut 40／24 列；所有符合輸入嘅官方目錄列都返回，
+        // 精確匹配仍由 SEARCH_ORDER 排最前。RecyclerView 懶渲染，唔會一次性 inflate。
         return out;
     }
 
@@ -505,8 +669,9 @@ public final class RouteSearch {
     private static void ctb(List<Result> out, String q, boolean allowPrefix) throws Exception {
         JSONObject root = RouteDataStore.catalogueJson(
                 RouteDataStore.CTB_ROUTES,
+                CTB_BASE + "/route/CTB/",
                 CTB_BASE + "/route/CTB",
-                "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB");
+                "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB/");
         JSONArray data = root.optJSONArray("data");
         if (data == null) {
             return;
@@ -532,8 +697,10 @@ public final class RouteSearch {
                     HttpJson.str(o, "dest_tc"),
                     HttpJson.str(o, "dest_en"),
                     HttpJson.str(o, "orig_tc"));
+            // API_AUDIT_A3: 官方 CTB 目錄 408/408 列都冇 dir/bound。
+            // 唔再默認 "O" —— 留空等詳情頁用官方 route-stop 嘅 dir 判定。
             String bound = HttpJson.firstNonEmpty(
-                    HttpJson.str(o, "dir"), HttpJson.str(o, "bound"), "O");
+                    HttpJson.str(o, "dir"), HttpJson.str(o, "bound"));
             out.add(new Result(EtaRepository.CTB, route, "往 " + dest,
                     bound, 1, "", exact));
         }
@@ -571,8 +738,7 @@ public final class RouteSearch {
             String end = HttpJson.firstNonEmpty(
                     HttpJson.str(o, "loc_end_name_c"),
                     HttpJson.str(o, "loc_end_name_e"),
-                    afterDash(HttpJson.str(o, "routeName_c")),
-                    HttpJson.str(o, "routeName_c"));
+                    afterDash(HttpJson.str(o, "routeName_c")));
             String start = HttpJson.firstNonEmpty(
                     HttpJson.str(o, "loc_start_name_c"),
                     HttpJson.str(o, "loc_start_name_e"),
@@ -608,6 +774,9 @@ public final class RouteSearch {
         regionNames.put("HKI", "香港島");
         regionNames.put("KLN", "九龍");
         regionNames.put("NT", "新界");
+        // API_AUDIT_B1: 每次按鍵最多 2 次 live 方向查詢（官方規格原本
+        // 就咁承諾）；其餘精確匹配同所有 prefix 匹配都出「未查方向」列。
+        int liveLookups = 0;
         for (Map.Entry<String, String> region : regionNames.entrySet()) {
             JSONArray list = routes.optJSONArray(region.getKey());
             if (list == null) {
@@ -622,10 +791,18 @@ public final class RouteSearch {
                 if (!exact && !(allowPrefix && code.toUpperCase(Locale.US).startsWith(q))) {
                     continue;
                 }
-                List<String> dests = gmbDestinations(region.getKey(), code);
+                // API_AUDIT_B1: 只對精確匹配做 live 方向查詢；prefix
+                // 匹配直接出「（未查方向）」列，避免每次按鍵幾秒網絡等待。
+                boolean doLive = exact && liveLookups < 2;
+                List<String> dests = doLive
+                        ? gmbDestinations(region.getKey(), code)
+                        : Collections.emptyList();
+                if (doLive) {
+                    liveLookups++;
+                }
                 if (dests.isEmpty()) {
                     out.add(new Result(EtaRepository.GMB, code,
-                            "往 " + code + " 總站", "1", 1,
+                            "往 " + code + "（未查方向）", "1", 1,
                             note + " · " + region.getValue(), exact));
                 } else {
                     for (int d = 0; d < dests.size(); d++) {
@@ -639,39 +816,48 @@ public final class RouteSearch {
     }
 
     private static List<String> gmbDestinations(String region, String code) {
+        String key = region + "/" + code.toUpperCase(Locale.US);
+        synchronized (GMB_DEST_CACHE) {
+            List<String> hit = GMB_DEST_CACHE.get(key);
+            if (hit != null) {
+                return hit;
+            }
+        }
         List<String> out = new ArrayList<>();
         try {
             JSONObject detail = HttpJson.getObject(
                     GMB_BASE + "/route/" + HttpJson.seg(region) + "/" + HttpJson.seg(code));
             JSONArray variants = detail.optJSONArray("data");
-            if (variants == null) {
-                return out;
-            }
-            for (int i = 0; i < variants.length(); i++) {
-                JSONObject v = variants.optJSONObject(i);
-                if (v == null) {
-                    continue;
-                }
-                JSONArray dirs = v.optJSONArray("directions");
-                if (dirs == null) {
-                    continue;
-                }
-                for (int j = 0; j < dirs.length(); j++) {
-                    JSONObject d = dirs.optJSONObject(j);
-                    if (d == null) {
+            if (variants != null) {
+                for (int i = 0; i < variants.length(); i++) {
+                    JSONObject v = variants.optJSONObject(i);
+                    if (v == null) {
                         continue;
                     }
-                    String dest = HttpJson.firstNonEmpty(
-                            HttpJson.str(d, "dest_tc"),
-                            HttpJson.str(d, "dest_en"),
-                            HttpJson.str(d, "orig_tc"));
-                    if (!dest.isEmpty() && !out.contains(dest)) {
-                        out.add(dest);
+                    JSONArray dirs = v.optJSONArray("directions");
+                    if (dirs == null) {
+                        continue;
+                    }
+                    for (int j = 0; j < dirs.length(); j++) {
+                        JSONObject d = dirs.optJSONObject(j);
+                        if (d == null) {
+                            continue;
+                        }
+                        String dest = HttpJson.firstNonEmpty(
+                                HttpJson.str(d, "dest_tc"),
+                                HttpJson.str(d, "dest_en"),
+                                HttpJson.str(d, "orig_tc"));
+                        if (!dest.isEmpty() && !out.contains(dest)) {
+                            out.add(dest);
+                        }
                     }
                 }
             }
         } catch (Exception ignored) {
-            // Offline / rate-limited: fall back to a generic destination row.
+            // Offline / rate-limited: fall back to an honest "未查方向" row.
+        }
+        synchronized (GMB_DEST_CACHE) {
+            GMB_DEST_CACHE.put(key, out);
         }
         return out;
     }
@@ -681,15 +867,15 @@ public final class RouteSearch {
     /** Rail modes have no "destination" catalogue; keep them discoverable. */
     private static void rail(List<Result> out, String q) {
         if (MtrCatalog.isLineCode(q)) {
-            out.add(new Result(EtaRepository.MTR, q, "往 " + q + " 沿線",
+            out.add(new Result(EtaRepository.MTR, q, "往 " + q + "（未查方向）",
                     "ALL", 1, "港鐵 (資料由DATA.GOV.HK提供)", true));
         }
         if (q.matches("\\d{3}")) {
-            out.add(new Result(EtaRepository.LRT, q, "往 " + q + " 沿線",
+            out.add(new Result(EtaRepository.LRT, q, "往 " + q + "（未查方向）",
                     "ALL", 1, "輕鐵 (資料由DATA.GOV.HK提供)", true));
         }
         if (q.startsWith("K") || q.equals("506")) {
-            out.add(new Result(EtaRepository.MTRB, q, "往 " + q + " 總站",
+            out.add(new Result(EtaRepository.MTRB, q, "往 " + q + "（未查方向）",
                     "ALL", 1, "港鐵接駁巴士 (資料由DATA.GOV.HK提供)", true));
         }
     }
@@ -705,14 +891,29 @@ public final class RouteSearch {
         }
     }
 
+    /**
+     * API_AUDIT_A2: 官方 NLB routeName_c 66/66 用 " > "
+     * （例「大澳 > 梅窩碼頭」、「紅磡 (紅鸞道)  > 昂坪」有雙空格），
+     * 舊合成 fixture 用 " - "。兩個分隔符同任意空白都相容；
+     * 拆唔到就返回空，唔會把成個「起點 > 終點」當目的地。
+     */
+    private static String[] splitEnds(String name) {
+        if (name == null) {
+            return new String[]{"", ""};
+        }
+        String[] parts = name.trim().split("\\s*[>-]\\s+", 2);
+        if (parts.length < 2) {
+            return new String[]{"", ""};
+        }
+        return new String[]{parts[0].trim(), parts[1].trim()};
+    }
+
     private static String beforeDash(String name) {
-        int i = name.indexOf(" - ");
-        return i > 0 ? name.substring(0, i).trim() : "";
+        return splitEnds(name)[0];
     }
 
     private static String afterDash(String name) {
-        int i = name.indexOf(" - ");
-        return i >= 0 ? name.substring(i + 3).trim() : "";
+        return splitEnds(name)[1];
     }
 
     /** Exposed for the offline functional test. */

@@ -38,6 +38,17 @@ public final class MtrCatalog {
             "K74", "K75A", "K75P", "K75S", "K76", "K76S"
     };
 
+    /**
+     * HKE_MOBILITY_CATEGORIES: 官方輕鐵路線號碼表，同 LINE_CODES／
+     * MTR_BUS_ROUTES 一樣係項目自有嘅官方碼表（唔係即時 API、唔捏造班次）。
+     * 之前 railPreload() 只出重鐵＋港鐵接駁巴士，港鐵類別見唔到輕鐵；
+     * 而家預載會補返輕鐵列，令「港鐵（重鐵、輕鐵路線）類別」顯示返。
+     */
+    public static final String[] LRT_ROUTES = {
+            "505", "507", "610", "614", "614P", "615", "615P",
+            "705", "706", "751", "751P", "761P"
+    };
+
     private static final String HEAVY_CSV =
             "https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv";
     private static final String LRT_CSV =

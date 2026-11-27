@@ -53,6 +53,12 @@ public final class RouteDataStore {
 
     private static final String MTR_DATA = "https://opendata.mtr.com.hk/data/";
     private static final String DIR = "route_data";
+    /** GOV_SERVICE_HOURS: 運輸署「公共交通服務班次資料」本機快取目錄。 */
+    private static final String GOV_DIR = "service_hours";
+    /** GOV_IN_ROUTE_UPDATE: 政府班次資料喺「線路資料更新」嘅正式來源 key。 */
+    public static final String GOV_SOURCE = GovServiceHours.SOURCE_FILE;
+    /** buildNlbStops() + 政府班次資料，兩個額外來源。 */
+    private static final int EXTRA_SOURCES = 2;
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
 
     private static volatile Context appContext;
@@ -104,9 +110,15 @@ public final class RouteDataStore {
             new Dataset(KMB_STOPS, "九巴／龍運全量站點（選用）", true, true,
                     "https://data.etabus.gov.hk/v1/transport/kmb/stop",
                     "https://data.etabus.gov.hk/v1/transport/kmb/stop/"),
+            // API_AUDIT_A1: 兩個 v2 變體實測**都會間歇性 timeout** ——
+            // 同一日先後測到 /route/CTB/ 200 而 /route/CTB timeout，
+            // 之後再測又反轉（/route/CTB 200 / 112,506 B / 1.48s）。
+            // 所以唔係「邊個斜線先啱」，而係舊版得一個 URL、冇 fallback。
+            // 兩個變體都列入 getFirst()，邊個通就用邊個；v1 只做最後後備。
             new Dataset(CTB_ROUTES, "城巴路線清單", true, false,
+                    "https://rt.data.gov.hk/v2/transport/citybus/route/CTB/",
                     "https://rt.data.gov.hk/v2/transport/citybus/route/CTB",
-                    "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB"),
+                    "https://rt.data.gov.hk/v1/transport/citybus-nwfb/route/CTB/"),
             // urls is deliberately empty: derived from single-stop API, see stopCacheStatus().
             new Dataset(CTB_STOPS, "城巴站名快取（單站 API 按需）", true, true),
             new Dataset(NLB_ROUTES, "嶼巴路線清單", true, false,
@@ -186,7 +198,8 @@ public final class RouteDataStore {
         }
 
         static Report empty() {
-            return new Report(false, false, "尚未更新", 0L, 0, DATASETS.length + 1, 0,
+            return new Report(false, false, "尚未更新", 0L, 0,
+                    DATASETS.length + EXTRA_SOURCES, 0,
                     new ArrayList<SourceStatus>());
         }
     }
@@ -255,11 +268,101 @@ public final class RouteDataStore {
                             o.optString("error", ""), o.optLong("at", 0L)));
                 }
             }
-            int total = root.optInt("total", DATASETS.length + 1);
+            int total = root.optInt("total", DATASETS.length + EXTRA_SOURCES);
             return new Report(false, false, root.optString("message", ""),
                     root.optLong("updated_at", 0L), ok, total, records, list);
         } catch (Exception e) {
             return Report.empty();
+        }
+    }
+
+    /** GOV_SERVICE_HOURS: 畀詳情頁日曆 dialog 讀政府班次資料快取。 */
+    public static File serviceHoursDir() {
+        Context ctx = appContext;
+        return ctx == null ? null : new File(ctx.getFilesDir(), GOV_DIR);
+    }
+
+    /**
+     * GOV_SERVICE_HOURS — 由政府公開資料（DATA.GOV.HK 運輸署 GTFS）下載
+     * 5 個較細嘅 .txt + 數據修正截止日期 CSV，寫入本機快取。
+     * 同「開 App 更新線路資料一次」共用同一個 refresh()／process 閘，
+     * 失敗靜默、唔影響原有目錄 Report，亦唔捏造任何班次。
+     * stop_times.txt（約 50 MB）刻意唔下載：官方字典講明 frequencies.txt
+     * 已定義班次間隔，trips.txt 嘅 trip_id 尾段已係開車時間。
+     */
+    private static SourceStatus refreshGovServiceHours(ExecutorService pool,
+                                                       File parent) {
+        final long now = System.currentTimeMillis();
+        final String label = GovServiceHours.SOURCE_LABEL;
+        // KMB_LWB_SPLIT: routes.txt 更新完要重建九巴／龍運歸屬快取。
+        GovServiceHours.Brand.invalidate();
+        try {
+            final File gdir = new File(parent, GOV_DIR);
+            if (!gdir.exists() && !gdir.mkdirs()) {
+                return new SourceStatus(GOV_SOURCE, label, false, 0,
+                        "無法建立本機班次資料目錄", now, true);
+            }
+            List<Callable<Boolean>> tasks = new ArrayList<Callable<Boolean>>();
+            final String[] urls = new String[GovServiceHours.FILES.length + 1];
+            final String[] names = new String[GovServiceHours.FILES.length + 1];
+            for (int i = 0; i < GovServiceHours.FILES.length; i++) {
+                urls[i] = GovServiceHours.BASE_TC + GovServiceHours.FILES[i];
+                names[i] = GovServiceHours.FILES[i];
+            }
+            urls[GovServiceHours.FILES.length] = GovServiceHours.LAST_UPDATED_URL;
+            names[GovServiceHours.FILES.length] = GovServiceHours.LAST_UPDATED_FILE;
+            for (int k = 0; k < urls.length; k++) {
+                final String url = urls[k];
+                final String name = names[k];
+                tasks.add(new Callable<Boolean>() {
+                    @Override
+                    public Boolean call() {
+                        try {
+                            String body = HttpJson.getText(url);
+                            if (body == null || body.isEmpty()) {
+                                return Boolean.FALSE;
+                            }
+                            writeAtomic(new File(gdir, name), body);
+                            return Boolean.TRUE;
+                        } catch (Exception e) {
+                            return Boolean.FALSE;
+                        }
+                    }
+                });
+            }
+            // 獨立 45s 上限；唔會拖垮原本 120s 嘅目錄下載。
+            List<Future<Boolean>> futures = pool.invokeAll(tasks, 45L, TimeUnit.SECONDS);
+            int okCore = 0;
+            int okTotal = 0;
+            List<String> failed = new ArrayList<String>();
+            for (int k = 0; k < futures.size(); k++) {
+                Future<Boolean> f = futures.get(k);
+                boolean good = false;
+                if (!f.isCancelled()) {
+                    try {
+                        good = Boolean.TRUE.equals(f.get());
+                    } catch (Exception ignored) {
+                        good = false;
+                    }
+                }
+                if (good) {
+                    okTotal++;
+                    if (k < GovServiceHours.FILES.length) {
+                        okCore++;
+                    }
+                } else {
+                    failed.add(names[k]);
+                }
+            }
+            GovServiceHours.SourceOutcome out =
+                    GovServiceHours.outcome(okCore, okTotal, failed);
+            // GOV_IN_ROUTE_UPDATE: 正式加入 statuses -> meta.json / Report /
+            // 設定頁「資料來源狀態」同主頁本機資料狀態列都見到。
+            return new SourceStatus(GOV_SOURCE, label, out.ok, out.count,
+                    out.error, now, out.skipped);
+        } catch (Exception e) {
+            return new SourceStatus(GOV_SOURCE, label, false, 0,
+                    "政府班次資料更新失敗：" + e.getMessage(), now, true);
         }
     }
 
@@ -374,6 +477,9 @@ public final class RouteDataStore {
                 // Snapshot files are still valid even if meta write fails.
             }
 
+            // GOV_IN_ROUTE_UPDATE: 政府班次資料係「線路資料更新」嘅正式來源，
+            // 同一個 process 閘下載，結果計入 statuses / meta / Report。
+            statuses.add(refreshGovServiceHours(pool, ctx.getFilesDir()));
             invalidateDownstream();
             return new Report(false, false, message, now, ok,
                     statuses.size(), records, statuses);
@@ -392,6 +498,16 @@ public final class RouteDataStore {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File f : files) {
+                    f.delete();
+                }
+            }
+        }
+        // GOV_SERVICE_HOURS: 「清除本機資料」都要清埋政府班次資料快取。
+        File gdir = serviceHoursDir();
+        if (gdir != null) {
+            File[] gfiles = gdir.listFiles();
+            if (gfiles != null) {
+                for (File f : gfiles) {
                     f.delete();
                 }
             }
@@ -561,6 +677,9 @@ public final class RouteDataStore {
     }
 
     public static void invalidateDownstream() {
+        // API_AUDIT_B2: 目錄更新後要清掉 RouteSearch 嘅 in-memory
+        // destFor / GMB 方向快取，否則紅頂標題會繼續用舊快照。
+        RouteSearch.invalidateDestCache();
         MtrCatalog.invalidateCaches();
         GeoStops.invalidate();
         EtaRepository.clearCaches();

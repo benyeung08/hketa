@@ -185,9 +185,11 @@ public final class EtaRepository {
      * sample request disagree on "stopeta" vs "stop-eta", so both are attempted.
      */
     private List<EtaItem> batchStopEta(String company, String stopId) throws Exception {
+        // API_AUDIT_A5: 官方規格同實測都係 /stop-eta/ (200)；
+        // /stopeta/ 實測 422 Invalid/Missing parameter(s)。有效嘅排第一。
         String[] paths = {
-                "/v1/transport/batch/stopeta/",
-                "/v1/transport/batch/stop-eta/"
+                "/v1/transport/batch/stop-eta/",
+                "/v1/transport/batch/stopeta/"
         };
         IOException last = null;
         for (String path : paths) {
@@ -456,10 +458,53 @@ public final class EtaRepository {
     // ============================================================ KMB / CTB
 
     public List<StopOption> kmbStops(String route, String direction) throws Exception {
-        String url = KMB_BASE + "/route-stop/"
-                + HttpJson.seg(route) + "/" + HttpJson.seg(direction) + "/1";
-        return parseRouteStops(HttpJson.getObject(url), KMB, route, direction,
-                safeNames(KMB), true);
+        // API_AUDIT_A4: 官方 route list 入面同一 (route,bound) 可以有多個
+        // service_type（真實目錄 223 組、182 個路線號；3D 去程 type1
+        // 15 站 vs type2 12 站）。舊版硬編 /1，特別班次站序同 ETA 全部
+        // 靜靜漏咗。呢度由**本機**官方目錄列舉（零額外目錄請求），
+        // StopOption.serviceType 已帶住，etaFor() 會用佢查對應班次。
+        Map<String, String> names = safeNames(KMB);
+        List<StopOption> out = new ArrayList<>();
+        for (int st : kmbServiceTypes(route, direction)) {
+            String url = KMB_BASE + "/route-stop/"
+                    + HttpJson.seg(route) + "/" + HttpJson.seg(direction) + "/" + st;
+            out.addAll(parseRouteStops(HttpJson.getObject(url), KMB, route,
+                    direction, names, true));
+        }
+        return out;
+    }
+
+    /** Bounded: at most 6 route-stop requests per direction. */
+    private static List<Integer> kmbServiceTypes(String route, String direction) {
+        List<Integer> out = new ArrayList<>();
+        out.add(1);   // 正常班次永遠做 baseline
+        String bound = "outbound".equals(direction) ? "O" : "I";
+        try {
+            JSONObject root = RouteDataStore.readJson(RouteDataStore.KMB_ROUTES);
+            JSONArray data = root == null ? null : root.optJSONArray("data");
+            if (data != null) {
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject o = data.optJSONObject(i);
+                    if (o == null) {
+                        continue;
+                    }
+                    if (!route.equalsIgnoreCase(HttpJson.str(o, "route"))
+                            || !bound.equalsIgnoreCase(HttpJson.str(o, "bound"))) {
+                        continue;
+                    }
+                    int st = HttpJson.intOr(o, "service_type", 1);
+                    if (st > 1 && st < 100 && !out.contains(st)) {
+                        out.add(st);
+                    }
+                    if (out.size() >= 6) {
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // 本機目錄未下載 / 壞咗：如實降級去只攞正常班次。
+        }
+        return out;
     }
 
     public List<StopOption> ctbStops(String route, String direction) throws Exception {

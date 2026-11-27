@@ -316,6 +316,62 @@ public final class AppUpdate {
         return target;
     }
 
+    /**
+     * API_AUDIT_C1 — 可選嘅 APK 完整性校驗。
+     * Release body 有 "sha256: <64 hex>" 就校 SHA-256；冇就只校
+     * Release 宣告嘅 size（向後兼容所有已發佈 Release，唔會無端端拒裝）。
+     * 兩者都唔符合就刪除暫存檔並拒絕，唔交畀系統安裝器。
+     */
+    public static File downloadVerified(String url, File dir, String fileName,
+                                        Progress progress,
+                                        String expectedSha256, long expectedSize)
+            throws IOException {
+        File f = download(url, dir, fileName, progress);
+        if (expectedSize > 0L && f.length() != expectedSize) {
+            f.delete();
+            throw new IOException("APK 大小與 Release 不符，已拒絕");
+        }
+        String want = expectedSha256 == null
+                ? "" : expectedSha256.trim().toLowerCase(Locale.US);
+        if (want.matches("[a-f0-9]{64}") && !want.equals(sha256Hex(f))) {
+            f.delete();
+            throw new IOException("APK SHA-256 與 Release 不符，已拒絕");
+        }
+        return f;
+    }
+
+    /** Extracts an optional "sha256: <64 hex>" line from a Release body. */
+    public static String sha256FromNotes(String notes) {
+        if (notes == null) {
+            return "";
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)sha-?256\\s*[:=]\\s*([a-f0-9]{64})")
+                .matcher(notes);
+        return m.find() ? m.group(1).toLowerCase(Locale.US) : "";
+    }
+
+    private static String sha256Hex(File f) throws IOException {
+        try {
+            java.security.MessageDigest md =
+                    java.security.MessageDigest.getInstance("SHA-256");
+            try (InputStream in = new java.io.FileInputStream(f)) {
+                byte[] buffer = new byte[16384];
+                int n;
+                while ((n = in.read(buffer)) > 0) {
+                    md.update(buffer, 0, n);
+                }
+            }
+            StringBuilder sb = new StringBuilder();
+            for (byte b : md.digest()) {
+                sb.append(String.format("%02x", b & 0xff));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 不可用", e);
+        }
+    }
+
     public static String humanSize(long bytes) {
         if (bytes <= 0L) {
             return "大小未知";

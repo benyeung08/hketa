@@ -59,6 +59,28 @@ public final class JointRoutes {
     }
 
     /**
+     * SINGLE_OPERATOR_DISPLAY —「除咗聯營巴士路線顯示兩間巴士服務商外，
+     * 巴士路線只有一間服務商就顯示一間」。
+     *
+     * `isJointRoute()` 只代表**兩份官方目錄都有同一個路線號**，唔代表呢一批
+     * 結果／班次真係由兩間公司營運。只有 KMB 同 CTB **同時實際出現**先算
+     * 兩間；只得其中一間（或第三家、或目錄交疊但 partner 冇回報）一律維持
+     * 該公司自己一個 label，絕不升級做「城巴/九巴」。
+     *
+     * 純函式、無網絡、可離線測；JOINT 仍然只係 UI marker，唔入 OPERATORS。
+     */
+    public static boolean bothOperatorsPresent(Set<String> companies) {
+        return companies != null
+                && companies.contains(EtaRepository.KMB)
+                && companies.contains(EtaRepository.CTB);
+    }
+
+    /** 顯示用公司：真兩間 -> JOINT（城巴/九巴）；否則原公司一個 label。 */
+    public static String displayCompany(Set<String> companies, String fallback) {
+        return bothOperatorsPresent(companies) ? JOINT : fallback;
+    }
+
+    /**
      * Pure, offline-testable predicate. Both sets must be present; a missing
      * catalogue must NEVER be guessed as "joint" or "not joint".
      */
@@ -254,15 +276,18 @@ public final class JointRoutes {
         return company == null ? "" : company;
     }
 
-    /** Label for the ROUTE (card meta): JOINT -> 城巴/九巴, KMB -> 九巴 / 龍運. */
+    /**
+     * KMB_LWB_SPLIT: 唔再一律寫混合嘅九巴／龍運標籤。路線級標籤統一交由
+     * GovServiceHours.Brand.label(company, route) 按官方 GTFS agency_id 判定；
+     * 呢個無 route 嘅相容入口對 KMB 返回空字串（唔顯示公司名、唔誤標）。
+     */
     public static String routeCompanyLabel(String company) {
+        // 無 route 嘅相容入口（離線 harness／舊呼叫）：聯營沿用既有混合標籤，
+        // 但單一 KMB 一律交畀 Brand.label 返回空字串，唔再回傳混合公司名。
         if (JOINT.equals(company)) {
             return JOINT_LABEL;
         }
-        if (EtaRepository.KMB.equals(company)) {
-            return "九巴 / 龍運";
-        }
-        return operatorLabel(company);
+        return GovServiceHours.Brand.label(company, "");
     }
 
     /**
@@ -314,6 +339,15 @@ public final class JointRoutes {
             }
         }
         if (out.size() == base.size()) {
+            return base;
+        }
+        // SINGLE_OPERATOR_DISPLAY: partner 冇真實回報就維持 primary 一間，
+        // 唔會因為目錄交疊就把單公司路線顯示成「城巴/九巴」兩間。
+        Set<String> companies = new HashSet<>();
+        for (EtaItem e : out) {
+            companies.add(e.getCompany());
+        }
+        if (!bothOperatorsPresent(companies)) {
             return base;
         }
         Collections.sort(out, new Comparator<EtaItem>() {

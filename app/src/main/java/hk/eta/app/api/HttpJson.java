@@ -109,6 +109,13 @@ public final class HttpJson {
                         return body;
                     } catch (IOException e) {
                         last = e;
+                        // API_AUDIT_A5/B3: HTTP 422 係官方確認「參數錯」
+                        // （例如 /batch/stopeta/），換 User-Agent 唔會改變
+                        // 結果；直接試下一個 URL，慳一次無謂 HTTP。
+                        if (e.getMessage() != null
+                                && e.getMessage().startsWith("HTTP 422")) {
+                            break;
+                        }
                     }
                 }
             }
@@ -161,7 +168,10 @@ public final class HttpJson {
         int code = conn.getResponseCode();
         InputStream stream = (code >= 200 && code < 300)
                 ? conn.getInputStream() : conn.getErrorStream();
-        String body = readAll(stream);
+        // API_AUDIT_C: WAF error page 可以好大；錯誤回應只留頭 8KB 做 log，
+        // 成功回應唔設上限（官方 stop list 可達 1MB）。
+        String body = readAll(stream,
+                (code >= 200 && code < 300) ? Integer.MAX_VALUE : 8192);
         if (code < 200 || code >= 300) {
             // Keep the first line only: a WAF HTML page is huge and useless in log.
             String head = body.trim();
@@ -177,7 +187,7 @@ public final class HttpJson {
         return body;
     }
 
-    private static String readAll(InputStream stream) throws IOException {
+    private static String readAll(InputStream stream, int maxBytes) throws IOException {
         if (stream == null) {
             return "";
         }
@@ -185,8 +195,17 @@ public final class HttpJson {
         BufferedReader reader = new BufferedReader(new InputStreamReader(stream, "UTF-8"));
         try {
             String line;
+            int total = 0;
             while ((line = reader.readLine()) != null) {
+                if (total + line.length() + 1 > maxBytes) {
+                    int take = Math.max(0, maxBytes - total);
+                    if (take > 0) {
+                        sb.append(line, 0, Math.min(line.length(), take));
+                    }
+                    break;
+                }
                 sb.append(line).append('\n');
+                total += line.length() + 1;
             }
         } finally {
             reader.close();

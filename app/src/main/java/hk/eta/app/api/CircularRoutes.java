@@ -55,6 +55,44 @@ public final class CircularRoutes {
     }
 
     /**
+     * DETAIL_THREE_ICONS / CIRCULAR_TWO_ACTIONS — 詳情頁紅頂欄嘅圖標 id，
+     * 按顯示次序排。語義同循環／單向無關，兩顆定三顆都係同一套圖標：
+     *   CALENDAR  = 日曆 = 服務時間及班次（本機路線資料，LOCAL_SERVICE_HOURS）
+     *   NOTICE    = 通知 = 服務通告（官方 ETA remark_tc）
+     *   DIRECTION = ⇅  = 切換路線方向（循環線冇回程方向，唔顯示）
+     */
+    public static final String ACTION_CALENDAR = "CALENDAR";
+    public static final String ACTION_NOTICE = "NOTICE";
+    public static final String ACTION_DIRECTION = "DIRECTION";
+
+    /**
+     * CIRCULAR_TWO_ACTIONS — 單一來源、純函式、可離線測：
+     *  **循環線只有兩顆** —— 日曆（服務時間及班次）＋ 通知（服務通告）；
+     *  單向（非循環）路線先係三顆，多一顆 ⇅ 切換方向。
+     *
+     * 官方定義：循環線得一個總站、行返去同一個總站，route-stop 資料入面
+     * **冇回程方向（NO inbound direction）**，所以第三顆「⇄」對佢係無意義
+     * 嘅死掣。注意兩顆入面嘅**日曆圖標同單向路線完全一樣，都係服務時間及
+     * 班次**，唔會因為少咗方向掣就改功能、亦唔會捏造時間表。
+     *
+     * 只決定可見性，唔改任何 id、色值、drawable 或點擊邏輯。
+     */
+    public static List<String> visibleHeaderActions(boolean circular) {
+        List<String> out = new ArrayList<>();
+        out.add(ACTION_CALENDAR);   // 服務時間及班次 — 循環線都有
+        out.add(ACTION_NOTICE);     // 服務通告 — 循環線都有
+        if (!circular) {
+            out.add(ACTION_DIRECTION);
+        }
+        return out;
+    }
+
+    /** 保留既有細粒度判定；而家由上面嘅單一來源派生，唔會兩套規則打架。 */
+    public static boolean showDirectionAction(boolean circular) {
+        return visibleHeaderActions(circular).contains(ACTION_DIRECTION);
+    }
+
+    /**
      * Pure predicate on the OFFICIAL destination string. Both the Chinese
      * "(循環線)" and the English "(Circular)" forms are accepted. No route
      * number list is hard-coded.
@@ -156,9 +194,30 @@ public final class CircularRoutes {
         return "";
     }
 
+    /** KMB_LWB_SPLIT: 循環線 badge 都要按路線歸屬，龍運唔寫「九巴」。 */
+    public static String styleLabel(String company, String route) {
+        if (EtaRepository.KMB.equals(company)) {
+            return GovServiceHours.Brand.circularStyle(company, route);
+        }
+        return styleLabel(company);
+    }
+
     /** e.g. "九巴循環線 · 往 尖沙咀(循環線)" / "城巴循環線 · 荷李活道(循環線)" */
     public static String displayBadge(String company, String dest) {
         String label = styleLabel(company);
+        if (label.isEmpty()) {
+            return "";
+        }
+        String d = cleanDest(dest);
+        if (d.isEmpty()) {
+            return label;
+        }
+        return label + (EtaRepository.KMB.equals(company) ? " · 往 " : " · ") + d;
+    }
+
+    /** KMB_LWB_SPLIT: 帶 route 嘅版本按官方 GTFS 歸屬出 badge。 */
+    public static String displayBadge(String company, String route, String dest) {
+        String label = styleLabel(company, route);
         if (label.isEmpty()) {
             return "";
         }
