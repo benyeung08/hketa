@@ -14,7 +14,7 @@ android {
         // Bump these before tagging vX.Y.Z: the in-app updater compares
         // versionName with the GitHub Release tag_name.
         versionCode = 3
-        versionName = "1.0.2"
+        versionName = "1.0.3"
     }
 
     /**
