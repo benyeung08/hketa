@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- NO_NETWORK_GATE：網絡能力由系統權限宣告，App 內唔會再用
+         ConnectivityManager / NetworkCapabilities 預先檢查「有冇網」、
+         Wi-Fi 或流動數據去擋低任何功能；請求成敗交畀實際連線如實回報。 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
