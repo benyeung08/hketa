@@ -27,8 +27,7 @@
     <string name="update_note_live_eta">實時 ETA 仍每次向官方 API 即時查詢</string>
     <string name="auto_update">自動更新</string>
     <string name="interval_label">檢查頻率</string>
-    <string name="wifi_only">僅在 Wi-Fi 下自動更新</string>
-    <string name="auto_hint">預設每日於 Wi-Fi 檢查一次。手動更新不受此限制；設為「手動」則完全不自動下載。</string>
+    <string name="auto_hint">每次開 App 自動更新一次線路資料（任何網絡，已取消僅 Wi-Fi 限制同「必須啟用手機網絡」預檢）；手動更新隨時可用；實時 ETA 仍每次即時查詢；冇可用連線時由請求本身如實失敗，唔預先擋低、唔捏造班次。</string>
     <string name="sources_title">資料來源狀態</string>
     <string name="sources_placeholder">尚未更新。按「立即更新線路資料」後會顯示每個來源的結果。</string>
     <!-- GOV_IN_ROUTE_UPDATE: 政府班次資料喺「資料來源狀態」嘅顯示格式 -->
@@ -185,11 +184,15 @@
     <string name="joint_trip_prefix">該班次：</string>
     <string name="joint_operator_ctb">城巴</string>
     <string name="joint_operator_kmb">九巴</string>
-    <string name="detail_footer_honest">車資與預計落車時間：公開 ETA 數據唔包含呢兩項，故顯示「—」，唔會捏造 $5.6／15:31 呢類數字；三班次同站名全部嚟自官方即時 API。</string>
+    <string name="detail_footer_honest">沿途各站嘅「預計到站時間」係官方即時 ETA，按站逐個查、兩層顯示「×× 分鐘／××:××」，官方冇回報就如實「—」；車資同「預計落車時間」公開 ETA 仍然唔包含，繼續顯示「—」，唔捏造 $5.6／15:31 呢類數字；上車站三班次同站名全部嚟自官方即時 API。</string>
     <string name="detail_fare_na">車資 —</string>
     <string name="detail_alight">落車</string>
     <string name="detail_na">—</string>
     <string name="detail_no_eta">暫無到站班次（可能非服務時間、臨時改道或 API 暫停）</string>
+    <!-- SECOND_STOP_PREDICTIONS -->
+    <string name="detail_predict_label">預計到站</string>
+    <string name="detail_predict_na">暫無預計到站（官方未回報）</string>
+    <string name="detail_predict_unit">分鐘</string>
     <string name="detail_chip_board">上車</string>
     <string name="detail_chip_nearby">鄰近</string>
     <string name="detail_chip_fav">收藏</string>
