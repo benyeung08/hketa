@@ -1,9 +1,6 @@
 package hk.eta.app.api;
 
 import android.content.Context;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -210,28 +207,6 @@ public final class RouteDataStore {
         return BUSY.get();
     }
 
-    public static boolean onWifi() {
-        Context ctx = appContext;
-        if (ctx == null) {
-            return false;
-        }
-        try {
-            ConnectivityManager cm =
-                    (ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm == null) {
-                return false;
-            }
-            Network network = cm.getActiveNetwork();
-            if (network == null) {
-                return false;
-            }
-            NetworkCapabilities caps = cm.getNetworkCapabilities(network);
-            return caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     public static long lastUpdated() {
         return meta().updatedAt;
     }
@@ -366,8 +341,8 @@ public final class RouteDataStore {
         }
     }
 
-    /** Manual / scheduled refresh. wifiOnly = true skips when not on Wi-Fi. */
-    public static Report refresh(boolean wifiOnly) {
+    /** Any-network refresh: no Wi-Fi gate. BUSY still guards concurrent runs. */
+    public static Report refresh() {
         if (!BUSY.compareAndSet(false, true)) {
             return Report.busy();
         }
@@ -376,9 +351,6 @@ public final class RouteDataStore {
             Context ctx = appContext;
             if (ctx == null) {
                 return Report.skipped("尚未初始化，請重新開啟 App");
-            }
-            if (wifiOnly && !onWifi()) {
-                return Report.skipped("已設為僅 Wi-Fi 更新，目前沒有 Wi-Fi 連線");
             }
             final File dir = new File(ctx.getFilesDir(), DIR);
             if (!dir.exists() && !dir.mkdirs()) {
