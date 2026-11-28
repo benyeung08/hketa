@@ -1,11 +1,11 @@
 # HK ETA v1.0.3 · 香港實時到站 / Hong Kong real-time ETA
 
-> **收錄範圍：2026-11-25 至最新（2026-11-26）**｜**Scope: 2026-11-25 through the latest (2026-11-26)**。
-> 本版收錄 `v1.0.2` 之後嘅**全部後續改動**：開 App 更新一次、香港出行易式分類、代碼優化、顯示所有路線、液態玻璃加入液態、中國版 Android OS 17 進階材質、單一服務商只顯示一間、循環線頂欄兩顆動作、三個圖標語義，同埋服務時間及班次改由政府公開資料（運輸署 GTFS）獲取。
-> This release covers **every follow-up change** after `v1.0.2`: refresh route data once on app launch, HKeMobility-style search categories, code optimisation, all-routes display, the liquid layer on the glass bar, China-ROM Android OS 17 advanced material, single-operator routes showing exactly one operator, circular routes showing two header actions, the three header-icon meanings, and service hours & trips now coming from government open data (Transport Department GTFS).
+> **收錄範圍：2026-11-25 至最新（2026-11-27）**｜**Scope: 2026-11-25 through the latest (2026-11-27)**。
+> 本版收錄 `v1.0.2` 之後嘅**全部後續改動**：開 App 更新一次、香港出行易式分類、代碼優化、顯示所有路線、液態玻璃加入液態、中國版 Android OS 17 進階材質、單一服務商只顯示一間、循環線頂欄兩顆動作、三個圖標語義，同埋服務時間及班次改由政府公開資料（運輸署 GTFS）獲取；再加 **⑪ 取消「僅在 Wi-Fi 下自動更新」限制**、**⑫ 取消「必須啟用手機網絡」網絡預檢、補齊 `INTERNET`／`ACCESS_NETWORK_STATE` 兩個網絡權限**，同 **⑬ 第二站起顯示沿途各站嘅官方預計到站時間（兩層「×× 分鐘／××:××」）**。
+> This release covers **every follow-up change** after `v1.0.2`: refresh route data once on app launch, HKeMobility-style search categories, code optimisation, all-routes display, the liquid layer on the glass bar, China-ROM Android OS 17 advanced material, single-operator routes showing exactly one operator, circular routes showing two header actions, the three header-icon meanings, and service hours & trips now coming from government open data (Transport Department GTFS), plus **⑪ the Wi-Fi-only restriction removed**, **⑫ the "mobile network must be enabled" pre-check removed, with both `INTERNET` / `ACCESS_NETWORK_STATE` permissions declared**, and **⑬ official predicted arrival times for every stop from the second stop onwards (two layers: "×× min / ××:××")**.
 
-> **版本分界／Version boundary**：`RELEASE_NOTES_v1.0.0.md` 截至 2026-11-19；`RELEASE_NOTES_v1.0.1.md` 由 2026-11-20 起整理資料層、班次邏輯同發布鏈；`RELEASE_NOTES_v1.0.2.md` 收錄 2026-11-24 嘅搜尋介面、定位、卡片、導航、本地資料同 Kotlin 編譯修正；**`v1.0.3` 收錄 11-25 起至最新嘅九組後續改動**。`v1.0.2` 說明已移除相應 highlight，舊檔保留作歷史、唔郁已簽名 APK／tag。
-> `RELEASE_NOTES_v1.0.0.md` covers through 2026-11-19; `RELEASE_NOTES_v1.0.1.md` starts at 2026-11-20 with the data-layer, trip-logic and release-pipeline work; `RELEASE_NOTES_v1.0.2.md` covers 2026-11-24 (search UI, location, cards, navigation, local data and the Kotlin compile fix); **`v1.0.3` covers the nine follow-up change groups from 11-25 through the latest**. The matching bullets were removed from the `v1.0.2` notes; older files are kept as history and no signed APK or tag is touched.
+> **版本分界／Version boundary**：`RELEASE_NOTES_v1.0.0.md` 截至 2026-11-19；`RELEASE_NOTES_v1.0.1.md` 由 2026-11-20 起整理資料層、班次邏輯同發布鏈；`RELEASE_NOTES_v1.0.2.md` 收錄 2026-11-24 嘅搜尋介面、定位、卡片、導航、本地資料同 Kotlin 編譯修正；**`v1.0.3` 收錄 11-25 起至最新嘅**十三組**後續改動**。`v1.0.2` 說明已移除相應 highlight，舊檔保留作歷史、唔郁已簽名 APK／tag。
+> `RELEASE_NOTES_v1.0.0.md` covers through 2026-11-19; `RELEASE_NOTES_v1.0.1.md` starts at 2026-11-20 with the data-layer, trip-logic and release-pipeline work; `RELEASE_NOTES_v1.0.2.md` covers 2026-11-24 (search UI, location, cards, navigation, local data and the Kotlin compile fix); **`v1.0.3` covers **thirteen** follow-up change groups from 11-25 through the latest**. The matching bullets were removed from the `v1.0.2` notes; older files are kept as history and no signed APK or tag is touched.
 
 > 本檔係**純文字中英雙語 Release 說明**，可直接貼入 GitHub Release 描述框；`RELEASE_NOTES_${TAG}.md` 會由 `v1.0.3` tag build 自動選用做該版本 Release 內文。
 > This is a **plain-text bilingual Release note** you can paste straight into the GitHub Release description; `RELEASE_NOTES_${TAG}.md` is selected automatically by the `v1.0.3` tag build as that version's Release body.
@@ -14,7 +14,7 @@
 
 ## 中文（繁體）
 
-### 🆕 本版更新重點（2026-11-25 → 最新 2026-11-26）
+### 🆕 本版更新重點（2026-11-25 → 最新 2026-11-27）
 
 #### 📅 2026-11-25：目錄更新、分類還原、代碼優化
 
@@ -22,9 +22,9 @@
 
 - **🚀 每次開 App 自動更新一次**：`HkEtaApp.onCreate()` 喺 `RouteDataStore.init(this)` 之後，每個 process 觸發一次 `RouteDataStore.refresh(false)`；放喺 Application 而唔係 Activity，因為 `onCreate` 每個 process 只行一次，最對應「一次」
 - **🧩 純 Kotlin process 閘**：`LaunchCatalogueRefresh.claimOnce()`（`AtomicBoolean.compareAndSet`）保證一次冷啟動只下載一次；`CatalogueRefreshRunner.runOnce()` 係 Application 同 `EtaViewModel` 共用嘅單一入口，ViewModel 只做安全後備，唔會重複下載
-- **🚫 唔再受排程節流**：移除 `RouteDataPrefs.isDue()` 嘅每日／每 3 日／每星期判斷，連設定「0 = 手動」都照更新；但**尊重「僅 Wi-Fi 更新」**、`RouteDataStore.refreshBusy()` 讓路，`BUSY` 原子閘雙重保險
+- **🚫 唔再受排程節流**：移除 `RouteDataPrefs.isDue()` 嘅每日／每 3 日／每星期判斷，連設定「0 = 手動」都照更新；**任何網絡都放行（⑪ 已取消僅 Wi-Fi 限制），亦唔再預先檢查手機網絡（⑫）**；`RouteDataStore.refreshBusy()` 讓路，`BUSY` 原子閘雙重保險
 - **🔄 完成即時生效**：成功後寫 `markChecked`，`CatalogueRefreshNotifier`（Application 級 `LiveData`）通知 `MainActivity` 即刻 `renderLocalDataStatus()` ＋ `searchRoutes()` ＋ `refreshHistory()`，新快照唔使等下一次 `onResume`；`observe(this)` 喺 DESTROY 自動移除
-- **🖐 手動更新唔受影響**：設定頁「線路資料更新」照舊隨時撳隨時更新；失敗／冇 Wi-Fi 靜默跳過、唔自動重試、唔假裝成功，唔干擾 ETA 查詢
+- **🖐 手動更新唔受影響**：設定頁「線路資料更新」照舊隨時撳隨時更新；**唔預先擋低**，連線失敗由請求本身如實回報、唔自動重試、唔假裝成功（⑫），唔干擾 ETA 查詢
 - **📌 「一次」嘅定義**：一次冷啟動（一個 process）一次；按 Home 返前景、轉螢幕、切分頁都唔會再跑
 
 **② 搜尋功能還原香港出行易式分類（HKE_MOBILITY_CATEGORIES）**
@@ -42,7 +42,7 @@
 - **⚡ 每次 keystroke 唔再 new Comparator**：抽出 `PRELOAD_ORDER`／`SEARCH_ORDER` 兩個 `static final`；checker `read()` 加 memoize，同一份 source 實測 **142 ms → 125 ms（約 -12%）**，兩版輸出完全一致
 - **🧪 行為等價**：15 列逐個類別對照，港鐵／所有巴士／小巴／城巴／九巴／嶼巴／全部 **7 組新舊列數同順序完全一致**；未用 import 掃描 0 個，版本同兩份 Release 說明一個字都唔使改
 
-#### 📅 2026-11-26（最新）：所有路線、液態玻璃、進階材質
+#### 📅 2026-11-27（最新）：所有路線、液態玻璃、進階材質
 
 **④ 顯示所有路線（ALL_ROUTES：定位附近路線 ＋ 搜尋）**
 
@@ -116,7 +116,7 @@
 - **實時 ETA**：每站未來三班次、分鐘／時鐘／備註；前景重新整理間隔 15／30／45／60 秒可調（預設 30 秒）
 - **附近路線**：先授權後自動定位、依設定半徑 50–2000 m 排序、前景位置更新、**半徑內所有路線**（分批 ETA 查詢防 429）、同號唔同公司分卡、**單公司只顯示一間／真聯營先顯示城巴/九巴**
 - **搜尋**：截圖式分類頁、**全部官方目錄列**、搜尋紀錄（我的書籤已取消）、本機資料狀態列、**單一列維持自己所屬公司一個 label**、點列開詳情
-- **設定**：線路資料更新（手動／僅 Wi-Fi、清除本機資料、開 App 自動一次、**含政府班次資料 GTFS**）、半徑、ETA 刷新、導航欄外觀、**進階材質三態**；詳情頁**循環線頂欄兩顆動作**；單向路線**三個圖標：日曆（服務時間及班次＝政府公開資料）／通知／切換方向**
+- **設定**：線路資料更新（手動／任何網絡＋必須連線、清除本機資料、開 App 自動一次、**含政府班次資料 GTFS**）、半徑、ETA 刷新、導航欄外觀、**進階材質三態**；詳情頁**循環線頂欄兩顆動作**；單向路線**三個圖標：日曆（服務時間及班次＝政府公開資料）／通知／切換方向**
 - **懸浮液態玻璃導航欄**：56dp 藥丸、28dp 圓角、3 分頁，折射亮邊＋流動高光＋回彈，主搜尋頁常駐；中國版 Android 17 按進階材質狀態誠實降級；**路線詳情紅頂欄：單向路線三顆圖標（日曆／通知／⇅）、循環線兩顆**
 
 ### 📦 安裝與版本
@@ -130,11 +130,11 @@
 
 ### ✅ 驗證與資料來源
 
-- `preflight` **141 個必要檔案**齊全；`static checks` **425 條全綠**（含 `LAUNCH_CATALOGUE_REFRESH` 8 條、`HKE_MOBILITY_CATEGORIES` 8 條、`ALL_ROUTES` 3 條、`NAV_LIQUID`、`CN_ADVANCED_MATERIAL`、`SINGLE_OPERATOR_DISPLAY`、`CIRCULAR_TWO_ACTIONS`、`DETAIL_THREE_ICONS` 、`LOCAL_SERVICE_HOURS` 與 `GOV_SERVICE_HOURS` 斷言）
+- `preflight` **142 個必要檔案**齊全；`static checks` **436 條全綠**（含 `LAUNCH_CATALOGUE_REFRESH` 8 條、`HKE_MOBILITY_CATEGORIES` 8 條、`ALL_ROUTES` 3 條、`NAV_LIQUID`、`CN_ADVANCED_MATERIAL`、`SINGLE_OPERATOR_DISPLAY`、`CIRCULAR_TWO_ACTIONS`、`DETAIL_THREE_ICONS` 、`LOCAL_SERVICE_HOURS` 與 `GOV_SERVICE_HOURS` 斷言）
 - 決策等價模擬：`claimOnce()` 一次冷啟動一次、8 組分類所屬、`NavLiquid` 6 情境、`NavGlassMaterial` **11 情境**＋無障礙優先 3×2、`springScale` 端點同 overshoot 全過
 - 14 個 `.java` 以 ECJ 17 實編譯 `exit 0`（68 class）；**7 個 Java harness（Circular 39→47、LocalServiceHours 23、GovServiceHours **36→66**、Joint 52）＋ 38 項 published-release backfill 全過**；`RouteSearchHarness` 預載 **53 列**含 `LRT 505`／`GMB 20M`／`CTB 2`／`MTR AEL`／`MTRB 506`，`search("1")` 仍係原本 4 列
 - Kotlin 符號對照 15 個關鍵檔／78 個 receiver／0 未定義；8 Python／13 Java／59 XML·YAML／30 bash／29 Kotlin 語法、括號、`R.*` 資源 0 缺失；色盤 10 個 `search_*` 值 + `values-night` 零覆寫
-- inline preflight **188 情境** drift 全部 0 秒精確命中（All **188** inline-preflight drift scenarios detected in 0 seconds）；`scripts/preflight.py` 另有 **185 情境**；README 中英 23 章 125 條對稱；**6 份** Release 說明中英對稱（**6** bilingual Release-note files symmetric）；舊 repo 用合併包覆蓋 → 全專案 hash 0 差異
+- inline preflight **194 情境** drift 全部 0 秒精確命中（All **194** inline-preflight drift scenarios detected in 0 seconds）；`scripts/preflight.py` 另有 **191 情境**；README 中英 23 章 125 條對稱；**6 份** Release 說明中英對稱（**6** bilingual Release-note files symmetric）；舊 repo 用合併包覆蓋 → 全專案 hash 0 差異
 - 路線／站名／座標來自香港政府官方開放數據（DATA.GOV.HK、data.etabus.gov.hk、rt.data.gov.hk、data.etagmb.gov.hk）；實時到站時間向官方 API 即時查詢
 
 **⑩ 九巴路線不顯示龍運、龍運路線不顯示九巴（KMB_LWB_SPLIT）**
@@ -142,11 +142,30 @@
 - **🚌 九巴路線只顯示九巴，龍運路線只顯示龍運；城巴路線不顯示九巴/龍運，九巴及龍運路線各不顯示城巴；大嶼山巴士不顯示龍運/城巴（STRICT_OPERATOR_SEPARATION）**：KMB 官方 `/route/` 目錄同時收錄兩間公司但**冇公司欄位**，所以唔靠 `A／E／S／R／N` 前綴估（會撞）。新增 `GovServiceHours.Brand`（嵌喺政府 GTFS 類別入面），**只讀 `routes.txt` 嘅 `agency_id`**：`KMB`／`KMB+CTB` → 九巴、`LWB`／`LWB+CTB` → 龍運；同一路線號兩邊都出現或官方冇記錄 → UNKNOWN。所有**單一公司路線**（九巴／龍運／城巴／嶼巴／綠小巴／港鐵／輕鐵／港鐵巴士）嘅路線級標籤（主頁卡片 meta、搜尋結果列、站序／ETA 列、左側 badge、逐班次「該班次：…」、詳情頁 caption）都只寫自己一間，**任何第二間公司名都唔會出現**；`JointRoutes.routeCompanyLabel()` 唔再一律回傳混合標籤。**用家決定：保留混合聯營標籤** —— 真聯營線（兩份官方目錄都有）繼續顯示 `城巴/九巴`，龍運聯營（R8／S1）顯示 `城巴/龍運`，判唔到歸屬只寫「聯營路線」，唔會把龍運聯營線誤標成九巴。**實測官方目錄 770 條路線：575 條九巴、55 條龍運、88 條九巴聯營、2 條龍運聯營，49 條特別路線 GTFS 冇記錄如實降級**。**DIRECTION_TITLE_SYNC**：撳 ⇅ 切換方向後，紅頂「1 往 尖沙咀碼頭」而家會跟住轉做「1 往 竹園邨」——`RouteSearch.destFor()` 只讀本機官方目錄嘅方向級 `dest_tc`（KMB／JOINT 用 KMB 目錄、CTB 用 CTB 目錄，**永不落網絡**），冇方向級目的地就用官方站序終點站名降級，零捏造
 - **🔘 公司按鈕都分開＋誠實降級**：`SearchCategoryRules.belongs()` 加 `brand` 參數，九巴 chip 只收 `brand=KMB`、龍運 chip 只收 `brand=LWB`，城巴 chip 只收 `CTB`（或真聯營）、嶼巴 chip 只收 `NLB`，判唔到嘅特別路線只留喺「所有巴士類別」，**唔會兩邊都出現**。`Brand.jointLabel(route)` 令聯營 note／後備 note／搜尋列 note／詳情頁 caption 全部按路線歸屬：龍運聯營（R8／S1）顯示 `城巴/龍運`、逐班次寫「該班次：龍運」、搜尋 badge `L/C`；龍運循環線 badge 改 `龍運循環線`，唔再寫九巴。`RouteDataStore.refreshGovServiceHours()` 會 `Brand.invalidate()`，更新線路資料後即刻用新 `routes.txt` 重建歸屬。GTFS 未載入時兩個 chip 顯示 `search_brand_unknown` 提示去設定頁更新，UNKNOWN 路線**唔顯示公司名、badge 留空或中性 `J/C`、唔捏造**。`EtaViewModel.toggleDirection()` 一齊計 `activeDest`，`RouteDetailActivity.syncDirectionTitle()` 同步 `dest`／`tvTitle`／caption（`buildCaption()` 抽出共用）；循環線冇 ⇅ 掣、維持兩顆圖標；`RouteSearchHarness` 用官方格式快照實測 O／I 兩方向目的地。8 營運商 ETA 資料層、10 個 `search_*` 色值、`values-night` 零覆寫、版本 `1.0.2`／`3` 同簽章鏈一個都冇郁
 
+
+**⑪ 取消「僅在 Wi-Fi 下自動更新」限制（NO_WIFI_LIMIT）**
+
+- **🚫 移除 Wi-Fi-only 閘**：設定頁「僅在 Wi-Fi 下自動更新」開關、`swWifi`／`wifi_only` 字串、`KEY_WIFI_ONLY`、`RouteDataPrefs.onWifi()`、`TRANSPORT_WIFI` 判斷全部清走；`RouteDataStore.refresh()` 改為**任何網絡都自動更新**，連流動數據（mobile data）都照更新
+- **🧩 決策層簡化**：`LaunchCatalogueRefresh.shouldRefresh(alreadyBusy)` 只睇 `BUSY` 讓路；`fun shouldRefresh(alreadyBusy: Boolean)` 唔再問網絡類型，`CatalogueRefreshRunner` 共用單一入口；`RouteDataStore.refresh()` 無參數、原子寫入、`invalidateDownstream()` 全部沿用
+- **📝 誠實口徑**：`auto_hint` 改「任何網絡，已取消僅 Wi-Fi 限制同『必須啟用手機網絡』預檢」；舊 Release 說明（v1.0.0／1／2）保留歷史「僅 Wi-Fi」描述唔郁，版本分界以本檔為準
+
+**⑫ 取消「必須啟用手機網絡」網絡預檢（NO_NETWORK_GATE）**
+
+- **🚫 兩個限制都冇咗**：⑪ 嘅「僅在 Wi-Fi 下自動更新」開關（`swWifi`）一早移除；本輪再把 ⑫ 嘅「必須啟用手機網絡先可以使用需要網絡嘅功能」預檢都拆走 —— 純 Java `NetworkGate.java`／`NetworkRequirement.kt` 兩個檔刪除，六個入口（開 App 更新、手動更新、檢查更新、下載 APK、實時 ETA／下拉刷新、通告即時刷新）嘅 `NetworkRequirement.guard(` 全部清走，`ConnectivityManager`／`NetworkCapabilities`／`NET_CAPABILITY_*`／`TRANSPORT_CELLULAR` 檢查 0 殘留
+- **🔓 加入／保留網絡權限**：`AndroidManifest.xml` 明確宣告 **`android.permission.INTERNET` ＋ `android.permission.ACCESS_NETWORK_STATE`** 兩個網絡權限；但**權限只係宣告，唔再用嚟預先擋低任何功能** —— 需要網絡嘅功能一律照發請求，冇可用連線時由各來源／`try/catch` 如實回報失敗，唔寫 `markChecked`、唔假裝成功、唔捏造班次
+- **🧹 提示同開關都清走**：`network_required`／`network_offline_status`／`network_gate_hint`／`network_gate_title` 四條字串、設定頁 `tvNetworkHint` 提示 View、`CatalogueRefreshNotifier.offline` 狀態通知全部移除；`auto_hint` 如實寫「已取消僅 Wi-Fi 限制同『必須啟用手機網絡』預檢」；`RouteDataStore` 資料層、`swWifi`、色盤同版本號一個都冇郁
+
+**⑬ 第二站起顯示沿途各站預計到站時間（SECOND_STOP_PREDICTIONS）**
+
+- **🕑 兩層排版**：圖一上車站（第 1 站）照舊展開官方三班次；圖二原本得返時間軸紅線、右邊全空白，而家由**第二站起**每站補上「預計到站」兩層 —— **第一層「×× 分鐘」**（藍色大字）、**第二層「××:××」**（HKT 時鐘）；左邊時間軸舊「落車／—」placeholder 收起，唔再同右邊重複（`predictContainer`／`tvPredictMin`／`tvPredictClock`）
+- **📡 數字係官方即時 ETA，唔係推算**：新增純 Java `PredictedArrivals.java`（零 Android／可離線測）揀選中站之後最多 18 個站，`EtaViewModel.loadStopPredictions()` 每批 12 個 `async` + 120ms 讓路逐站查 `repo.etaFor()`，只認同路線最早一班；官方冇回報就如實顯示「暫無預計到站（官方未回報）」，**唔按站距估、唔編時間表、唔捏造數字**
+- **🧠 唔撞 429、唔跟 30 秒 loop 重查**：`predictKey`（站序＋上車站＋路線＋方向）去重，`state.stopPredictions` patch 後唔會再打 API；只喺入頁／轉方向／改上車站／下拉時更新；`detail_footer_honest` 分清「沿途站預計到站時間」（有官方 ETA）同「車資／預計落車時間」（仍然「—」）
+
 ### ⚠️ 已知限制
 
 - **呢邊冇真跑 Kotlin 編譯**：冇 `kotlinc`／Android SDK／Gradle／repo 權限；Kotlin 只做符號對照同靜態檢查，Java 有 ECJ 實編譯，**冇交付已編譯 APK、冇代為 push**；實機結果以下一次 CI run 同裝置為準
 - **「開 App」＝冷啟動**：按 Home 返前景唔會再更新；想「每次返前景都更新」要改 `onResume()` 並放棄 process 閘（會明顯增加 API 請求，官方有 429 速率限制）
-- **設定頁更新頻率對自動更新唔再生效**：「每日／每 3 日／每星期」只影響歷史排程描述；「僅 Wi-Fi」同「清除本機資料」仍然生效
+- **設定頁更新頻率對自動更新唔再生效**：「每日／每 3 日／每星期」只影響歷史排程描述；「僅 Wi-Fi」限制（⑪）同「必須啟用手機網絡」預檢（⑫）都已取消；**「清除本機資料」仍然生效**
 - **「還原」按分類行為理解**：截圖式版面同色盤原封不動；小巴 tab 仍叫「專線小巴」（香港出行易官方用字）；愉景灣／馬灣、渡輪、電車、的士、非專線小巴、居民巴士服務如實留空
 - **所有路線＝更多請求**：官方實際只有 1 條就顯示 1 條、查失敗就略過，**唔捏造**；分批＋讓路已做，必要時喺設定調長 ETA 自動更新間隔或關掉自動更新
 - **進階材質係容錯探測**：中國版 ROM 私有開關讀唔到會顯示 `AOSP_*` 來源並按 AOSP 能力降級，屬設計；Android 17 專屬系統開關要等正式 SDK，唔編造 key
@@ -159,7 +178,7 @@
 
 ## English
 
-### 🆕 Highlights (2026-11-25 → latest 2026-11-26)
+### 🆕 Highlights (2026-11-25 → latest 2026-11-27)
 
 #### 📅 2026-11-25: catalogue refresh, category restore, code optimisation
 
@@ -167,9 +186,9 @@
 
 - **🚀 One automatic update on every launch**: `HkEtaApp.onCreate()` triggers one `RouteDataStore.refresh(false)` per process right after `RouteDataStore.init(this)`; it lives in the Application rather than an Activity because `onCreate` runs exactly once per process, which is what "once" means
 - **🧩 Pure-Kotlin process gate**: `LaunchCatalogueRefresh.claimOnce()` (`AtomicBoolean.compareAndSet`) guarantees one download per cold start; `CatalogueRefreshRunner.runOnce()` is the single entry shared by the Application and `EtaViewModel`, with the ViewModel only a safe fallback so the two never duplicate a download
-- **🚫 No more schedule throttling**: the `RouteDataPrefs.isDue()` daily / 3-day / weekly check is removed, so even "0 = manual" still updates on launch; the **Wi-Fi-only preference is still honoured**, `RouteDataStore.refreshBusy()` is skipped and the `BUSY` atomic gate is a second safeguard
+- **🚫 No more schedule throttling**: the `RouteDataPrefs.isDue()` daily / 3-day / weekly check is removed, so even "0 = manual" still updates on launch; **any network is allowed (⑪ removed the Wi-Fi-only preference) and there is no mobile-network pre-check either (⑫)**; `RouteDataStore.refreshBusy()` is skipped and the `BUSY` atomic gate is a second safeguard
 - **🔄 Completion takes effect immediately**: on success `markChecked` is written and `CatalogueRefreshNotifier` (Application-level `LiveData`) makes `MainActivity` run `renderLocalDataStatus()` + `searchRoutes()` + `refreshHistory()` at once, so the new snapshot does not wait for the next `onResume()`; `observe(this)` is removed on DESTROY
-- **🖐 Manual updates are unaffected**: the Settings "route data update" button still works any time; failures / no Wi-Fi are skipped silently, never retried and never reported as success, and never disturb ETA queries
+- **🖐 Manual updates are unaffected**: the Settings "route data update" button still works any time; there is **no pre-check**; a failed request is reported honestly, never auto-retried and never reported as success (⑫), and never disturbs ETA queries
 - **📌 What "once" means**: one cold start (one process); returning from Home, rotating the screen or switching tabs does not trigger another run
 
 **② HKeMobility-style search categories restored (HKE_MOBILITY_CATEGORIES)**
@@ -187,7 +206,7 @@
 - **⚡ No new Comparator per keystroke**: `PRELOAD_ORDER` / `SEARCH_ORDER` are extracted as `static final`; the checker `read()` is memoised, measured on the same source **142 ms → 125 ms (about -12%)** with byte-identical output
 - **🧪 Behaviour-equivalent**: 15 rows compared category by category — heavy rail / all bus / minibus / Citybus / KMB / NLB / all **7 groups have identical counts and order**; 0 unused imports, and neither the version nor either Release note needed a single edit
 
-#### 📅 2026-11-26 (latest): all routes, liquid glass, advanced material
+#### 📅 2026-11-27 (latest): all routes, liquid glass, advanced material
 
 **④ ALL routes shown (ALL_ROUTES: nearby + search)**
 
@@ -261,7 +280,7 @@
 - **Real-time ETA**: up to three upcoming trips per stop with minutes / clock / remarks; foreground refresh at 15 / 30 / 45 / 60 s (default 30 s)
 - **Nearby routes**: consent-first auto-location, configurable 50–2000 m radius, foreground position updates, **all routes inside the radius** (batched ETA against 429), same-number operator split, **one label for one operator / 城巴/九巴 only for a real joint service**
 - **Search**: screenshot-style category page, **EVERY official catalogue row**, history (bookmarks removed), local-data status row, **a lone row keeps its own single-company label**, tap-through to detail
-- **Settings**: route catalogue update (manual / Wi-Fi-only, clear local data, one launch-time refresh, **including government GTFS headway data**), radius, ETA refresh, nav appearance, **advanced material three-state spinner**; the detail header shows **three icons on one-way routes (calendar = service hours & trips from government open data / notice / ⇅) and two on circular routes**
+- **Settings**: route catalogue update (manual / any network, no connection pre-check, clear local data, one launch-time refresh, **including government GTFS headway data**), radius, ETA refresh, nav appearance, **advanced material three-state spinner**; the detail header shows **three icons on one-way routes (calendar = service hours & trips from government open data / notice / ⇅) and two on circular routes**
 - **Floating liquid-glass nav**: 56dp pill, 28dp radius, 3 tabs, refraction rim + flowing sheen + spring, always visible on the search page; China-ROM Android 17 degrades honestly per the advanced-material state; **detail red header: three icons on one-way routes (calendar = service hours & trips / notice / ⇅), two on circular routes**
 
 ### 📦 Install and version
@@ -275,11 +294,11 @@
 
 ### ✅ Verification and data sources
 
-- `preflight`: **141 required files** present; **425 static checks** green (including 8 `LAUNCH_CATALOGUE_REFRESH`, 8 `HKE_MOBILITY_CATEGORIES`, 3 `ALL_ROUTES`, plus the `NAV_LIQUID`, `CN_ADVANCED_MATERIAL`, `SINGLE_OPERATOR_DISPLAY`, `CIRCULAR_TWO_ACTIONS`, `DETAIL_THREE_ICONS` `LOCAL_SERVICE_HOURS` and `GOV_SERVICE_HOURS` assertions)
+- `preflight`: **142 required files** present; **436 static checks** green (including 8 `LAUNCH_CATALOGUE_REFRESH`, 8 `HKE_MOBILITY_CATEGORIES`, 3 `ALL_ROUTES`, plus the `NAV_LIQUID`, `CN_ADVANCED_MATERIAL`, `SINGLE_OPERATOR_DISPLAY`, `CIRCULAR_TWO_ACTIONS`, `DETAIL_THREE_ICONS` `LOCAL_SERVICE_HOURS` and `GOV_SERVICE_HOURS` assertions)
 - Decision-equivalence simulations: `claimOnce()` once per cold start, 8 category-membership cases, 6 `NavLiquid` scenarios, **11** `NavGlassMaterial` scenarios + 3×2 accessibility-priority cases, and `springScale` endpoints / overshoot all pass
 - 14 `.java` files compiled with ECJ 17, `exit 0` (68 classes); **7 Java harnesses (Circular 39→47, LocalServiceHours 23, GovServiceHours **36→66**, Joint 52) + 38 published-Release backfill checks pass**; `RouteSearchHarness` preloads **53 rows** including `LRT 505` / `GMB 20M` / `CTB 2` / `MTR AEL` / `MTRB 506`, while `search("1")` still returns the original 4 rows
 - Kotlin symbol cross-check across 15 key files / 78 receivers / 0 undefined; 8 Python / 13 Java / 59 XML·YAML / 30 bash / 29 Kotlin syntax, brackets and `R.*` resources: 0 missing; 10 `search_*` colours with zero `values-night` overrides
-- All **188** inline-preflight drift scenarios detected in 0 seconds by both gates; `scripts/preflight.py` covers **185** drift scenarios; README 23 sections / 125 bullets symmetric in Chinese and English; **6** bilingual Release-note files symmetric; overlaying the merged pack on an old repo gives 0 hash differences across the project
+- All **191** inline-preflight drift scenarios detected in 0 seconds by both gates; `scripts/preflight.py` covers **188** drift scenarios; README 23 sections / 125 bullets symmetric in Chinese and English; **6** bilingual Release-note files symmetric; overlaying the merged pack on an old repo gives 0 hash differences across the project
 - Routes / stop names / coordinates come from Hong Kong government open data (DATA.GOV.HK, data.etabus.gov.hk, rt.data.gov.hk, data.etagmb.gov.hk); live ETAs are queried from the official APIs
 
 **⑩ KMB routes show only KMB, LWB routes show only LWB (KMB_LWB_SPLIT)**
@@ -287,11 +306,30 @@
 - **🚌 KMB routes show only KMB, LWB routes show only LWB; CTB routes never show KMB/LWB, KMB and LWB routes never show CTB, NLB never shows LWB/CTB (STRICT_OPERATOR_SEPARATION)**: the official KMB `/route/` catalogue covers both companies but has **no company field**, so `A / E / S / R / N` prefixes are NOT used as a guess (they collide). A new `GovServiceHours.Brand` reads **only `agency_id` from GTFS `routes.txt`**: `KMB` / `KMB+CTB` -> KMB, `LWB` / `LWB+CTB` -> LWB; a route number present on both sides, or absent from GTFS, is UNKNOWN. **Every single-company route** (KMB / LWB / CTB / NLB / GMB / MTR / LRT / MTRB) now shows only its own name in home card meta, search rows, stop / ETA rows, the left badge, per-trip "該班次：…" and the detail caption — **no second company name ever appears**; `JointRoutes.routeCompanyLabel()` no longer returns a mixed label. **User decision: keep the mixed joint label** — genuine joint routes (present in BOTH official catalogues) still show `城巴/九巴`, LWB joint routes (R8 / S1) show `城巴/龍運`, and an undeterminable one says only "聯營路線" rather than mislabelling LWB as KMB. **Measured on the live catalogue: 770 routes — 575 KMB, 55 LWB, 88 KMB joint, 2 LWB joint, 49 special routes with no GTFS row degrade honestly**. **DIRECTION_TITLE_SYNC**: pressing ⇅ now switches the red header from "1 往 尖沙咀碼頭" to "1 往 竹園邨" too — `RouteSearch.destFor()` reads ONLY the local official catalogue's direction-level `dest_tc` (KMB / JOINT use the KMB catalogue, CTB the CTB one, **never a network call**); operators without direction-level destinations fall back to the official terminal stop name from the route-stop sequence, nothing invented
 - **🔘 Operator chips split too + honest degradation**: `SearchCategoryRules.belongs()` takes a `brand`; the KMB chip only admits `brand=KMB`, the LWB chip only `brand=LWB`, the CTB chip only `CTB` (or a genuine joint row), the NLB chip only `NLB`, and unclassifiable special routes stay solely under "All bus categories" — **never on both**. `Brand.jointLabel(route)` makes the joint note / fallback note / search-row note / detail caption route-aware: LWB joint routes (R8 / S1) show `城巴/龍運` with "該班次：龍運" and badge `L/C`, and an LWB circular badge becomes `龍運循環線` instead of KMB. `RouteDataStore.refreshGovServiceHours()` calls `Brand.invalidate()` so a catalogue update immediately rebuilds ownership from the new `routes.txt`. If GTFS is not loaded both chips show `search_brand_unknown` pointing to Settings; UNKNOWN routes show **no company label**, a blank or neutral `J/C` badge, and **nothing is invented**. `EtaViewModel.toggleDirection()` now also computes `activeDest`, and `RouteDetailActivity.syncDirectionTitle()` syncs `dest`, the title and the caption (a shared `buildCaption()`); circular routes keep their two icons with no ⇅ button, and `RouteSearchHarness` verifies both O / I destinations against official-shaped snapshots. The 8-operator ETA data layer, 10 `search_*` colours, zero `values-night` overrides, version `1.0.2` / `3` and the signing chain are untouched
 
+
+**⑪ Wi-Fi-only restriction removed (NO_WIFI_LIMIT)**
+
+- **🚫 Wi-Fi-only gate gone**: the "僅在 Wi-Fi 下自動更新" toggle, `swWifi` / `wifi_only` strings, `KEY_WIFI_ONLY`, `RouteDataPrefs.onWifi()` and every `TRANSPORT_WIFI` check are removed; `RouteDataStore.refresh()` now updates on **any network**, including mobile data
+- **🧩 Simpler decision**: `LaunchCatalogueRefresh.shouldRefresh(alreadyBusy)` only yields to `BUSY`; `fun shouldRefresh(alreadyBusy: Boolean)` no longer inspects the network type, `CatalogueRefreshRunner` stays the single shared entry, and `RouteDataStore.refresh()` keeps its no-arg atomic write + `invalidateDownstream()`
+- **📝 Honest wording**: `auto_hint` now reads "any network, Wi-Fi-only restriction and mobile-network pre-check removed"; older notes (v1.0.0 / 1 / 2) keep their historical "Wi-Fi-only" wording untouched, with this file as the version boundary
+
+**⑫ Network pre-check removed (NO_NETWORK_GATE)**
+
+- **🚫 Both restrictions are gone**: the ⑪ "僅在 Wi-Fi 下自動更新" toggle (`swWifi`) was already removed; this round also removes the ⑫ "mobile network must be enabled before any network feature works" pre-check — the pure-Java `NetworkGate.java` and `NetworkRequirement.kt` files are deleted, every `NetworkRequirement.guard(` call is stripped from all six entries (launch refresh, manual update, update check, APK download, live ETA / pull-to-refresh, notice refresh), and `ConnectivityManager` / `NetworkCapabilities` / `NET_CAPABILITY_*` / `TRANSPORT_CELLULAR` checks have zero residue
+- **🔓 Network permissions added / kept**: `AndroidManifest.xml` explicitly declares **both `android.permission.INTERNET` and `android.permission.ACCESS_NETWORK_STATE`**; the permissions are **declarations only and are never used to block a feature up front** — every network feature simply issues its request, and when no usable connection exists each source / `try/catch` reports the failure honestly, without writing `markChecked`, faking success or inventing trips
+- **🧹 Prompts and toggles removed**: the four strings `network_required` / `network_offline_status` / `network_gate_hint` / `network_gate_title`, the Settings `tvNetworkHint` view and the `CatalogueRefreshNotifier.offline` status event are all gone; `auto_hint` honestly states that both the Wi-Fi-only restriction and the mobile-network pre-check are removed; the `RouteDataStore` data layer, `swWifi`, the palette and the version number are untouched
+
+**⑬ Predicted arrival times for every stop from the second stop onwards (SECOND_STOP_PREDICTIONS)**
+
+- **🕑 Two stacked layers**: the boarding stop (stop 1, first image) still expands the official three arrivals; the second image used to be only the timeline red line with an empty right-hand side, and now **every stop from the second onwards** gets a "predicted arrival" block — **layer 1 "×× min"** (large blue number) and **layer 2 "××:××"** (HKT clock). The old left-rail "alight / —" placeholder is hidden so the two layers never duplicate (`predictContainer` / `tvPredictMin` / `tvPredictClock`)
+- **📡 Official live ETA, NOT a guessed timetable**: pure-Java `PredictedArrivals.java` (zero Android imports, offline-testable) selects up to 18 stops after the boarding stop; `EtaViewModel.loadStopPredictions()` queries `repo.etaFor()` in batches of 12 `async` calls with a 120 ms pause, keeping only the earliest SAME-route arrival. If the official feed reports nothing, the row honestly shows "no predicted arrival (not reported)" — **no distance-based estimation, no invented timetable, no fabricated numbers**
+- **🧠 No 429 storm, no 30-second re-query**: `predictKey` (stop ids + boarding stop + route + direction) de-duplicates, so patching `state.stopPredictions` never re-issues requests; it refreshes only on entry / direction switch / boarding-stop change / pull-to-refresh. `detail_footer_honest` now separates "per-stop predicted arrival" (real official ETA) from "fare / predicted alighting time" (still "—")
+
 ### ⚠️ Known limitations
 
 - **Kotlin was not actually compiled here**: no `kotlinc` / Android SDK / Gradle / repo access; Kotlin received symbol and static checks only, Java was really compiled with ECJ, and **no compiled APK was delivered and no push was made** — real-device behaviour depends on the next CI run and the device
 - **"Launch" means a cold start**: returning from Home does not refresh again; refreshing on every foreground return requires moving to `onResume()` and dropping the process gate (which would noticeably increase API calls against the official 429 rate limit)
-- **The Settings update interval no longer governs auto-update**: the daily / 3-day / weekly wording is historical only; "Wi-Fi only" and "clear local data" still apply
+- **The Settings update interval no longer governs auto-update**: the daily / 3-day / weekly wording is historical only; the Wi-Fi-only restriction (⑪) and the mobile-network pre-check (⑫) are both removed; **"clear local data" still applies**
 - **"Restored" refers to category behaviour**: the screenshot layout and palette are untouched; the minibus tab is still labelled "專線小巴" (the official HKeMobility wording); Discovery Bay / Ma Wan, ferry, tram, taxi, non-franchised minibus and residents' bus stay honestly empty
 - **All routes means more requests**: if the official feed reports only 1 trip, 1 is shown and failed queries are skipped — **nothing is invented**; batching + pacing is in place, and the ETA auto-refresh interval can be lengthened or disabled in Settings
 - **Advanced material is a tolerant probe**: when a China-ROM private toggle cannot be read, the status shows an `AOSP_*` source and degrades by AOSP capability by design; a dedicated Android 17 system switch needs the official SDK — no invented keys
@@ -303,4 +341,4 @@
 ---
 
 > 📌 **改說明唔等於改 APK／Editing notes never touches the APK / tag**：改 Release 描述唔使重跑 CI，亦唔會改動已簽名嘅 APK；實際功能由對應 tag 嘅 source 構建。Editing a Release body needs no CI re-run and changes no signed APK; the actual features come from that tag's own source build.
-> 📌 `v1.0.2` 之後嘅全部九組後續改動現行描述以本檔為準；`RELEASE_NOTES_v1.0.2.md` 已移除相應 highlight。All nine follow-up change groups after `v1.0.2` are described here; the matching bullets were removed from `RELEASE_NOTES_v1.0.2.md`.
+> 📌 `v1.0.2` 之後嘅全部十三組後續改動現行描述以本檔為準；`RELEASE_NOTES_v1.0.2.md` 已移除相應 highlight。All thirteen follow-up change groups after `v1.0.2` are described here; the matching bullets were removed from `RELEASE_NOTES_v1.0.2.md`.
