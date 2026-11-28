@@ -88,6 +88,52 @@
             android:textColor="@color/detail_aux_text"
             android:textSize="12sp" />
 
+        <!-- SECOND_STOP_PREDICTIONS：第二站起嘅兩層「預計到站時間」。
+             第一層「×× 分鐘」、第二層「××:××」，數字係官方即時 ETA，
+             唔係推算；冇回報就顯示 detail_predict_na「—」。 -->
+        <LinearLayout
+            android:id="@+id/predictContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvPredictLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/detail_predict_label"
+                android:textColor="@color/detail_aux_text"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tvPredictMin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/detail_minutes"
+                android:textSize="25sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvPredictClock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/detail_aux_text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvPredictNa"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/detail_predict_na"
+                android:textColor="@color/detail_aux_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <!-- 三班次：只喺上車站展開 -->
         <LinearLayout
             android:id="@+id/tripContainer"
