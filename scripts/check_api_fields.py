@@ -502,9 +502,11 @@ check("Application initialises RouteDataStore", "RouteDataStore.init(this)" in a
 check("settings entry on main screen", "btnSettings" in main_layout
       and "btnSettings" in read(UI / "MainActivity.kt")
       and "SettingsActivity::class.java" in read(UI / "MainActivity.kt"))
-check("settings layout has manual update", "btnUpdate" in settings_layout
-      and "spInterval" in settings_layout and "swWifi" in settings_layout
-      and "tvSources" in settings_layout and "btnClear" in settings_layout)
+check("settings layout has manual update, NO Wi-Fi toggle", "btnUpdate" in settings_layout
+      and "spInterval" in settings_layout and "tvSources" in settings_layout
+      and "btnClear" in settings_layout
+      and "swWifi" not in settings_layout
+      and "wifi_only" not in settings_layout)
 check("10 official catalogue datasets + derived NLB stops",
       store_java.count("new Dataset(") == 10
       and "buildNlbStops" in store_java and "NLB_STOPS" in store_java)
@@ -541,19 +543,22 @@ check("CTB route list has v1 fallback",
 check("atomic snapshot writes", "writeAtomic" in store_java and '.tmp' in store_java)
 check("refresh guarded against concurrent runs", "AtomicBoolean" in store_java
       and "compareAndSet" in store_java)
-check("Wi-Fi-only gate", "onWifi" in store_java
-      and "TRANSPORT_WIFI" in store_java and "onWifi()" in prefs_kt)
+check("NO Wi-Fi-only gate (restriction cancelled)", "onWifi" not in store_java
+      and "TRANSPORT_WIFI" not in store_java and "wifiOnly" not in store_java
+      and "onWifi()" not in prefs_kt and "KEY_WIFI_ONLY" not in prefs_kt
+      and "public static Report refresh()" in store_java)
 check("snapshot invalidation fans out", all(
       c in store_java for c in ("MtrCatalog.invalidateCaches()",
                                 "GeoStops.invalidate()", "EtaRepository.clearCaches()")))
 check("data layer prefers local snapshots",
       "catalogueJson" in repo_java and "catalogCsv" in catalog_java
       and "datasetJson" in geo_java and "RouteDataStore.NLB_STOPS" in geo_java)
-check("manual update ignores Wi-Fi restriction",
-      "RouteDataStore.refresh(false)" in settings_kt)
-check("prefs: interval / wifi / last check", all(
+check("manual update runs on any network",
+      "RouteDataStore.refresh()" in settings_kt)
+check("prefs: interval / last check only (no Wi-Fi key)", all(
       k in prefs_kt for k in ("INTERVAL_DAYS", "isDue", "markChecked",
-                              "updateAllowed", "KEY_LAST_CHECK")))
+                              "KEY_LAST_CHECK"))
+      and "updateAllowed" not in prefs_kt and "wifiOnly" not in prefs_kt)
 # LAUNCH_CATALOGUE_REFRESH：以前呢度要求 `RouteDataPrefs.isDue`（每日／每 3 日
 # 節流）。而家開 App 就更新一次，所以改成檢查「真 code 已改用共用 gate」；
 # 用精確 `if (RouteDataPrefs.isDue(app)` 而唔係 `RouteDataPrefs.isDue` 字串，
@@ -1907,7 +1912,7 @@ check("RELEASE_NOTES_v1.0.3.md exists, is BILINGUAL and fully symmetric",
       release_notes_v103.is_file()
       and all(s in _v103_text for s in (
           "# HK ETA v1.0.3", "## 中文（繁體）", "## English",
-          "收錄範圍：2026-11-25 至最新（2026-11-26）", "Scope: 2026-11-25 through the latest (2026-11-26)",
+          "收錄範圍：2026-11-25 至最新（2026-11-27）", "Scope: 2026-11-25 through the latest (2026-11-27)",
           "RELEASE_NOTES_${TAG}.md", "中英雙語 Release 說明",
           "plain-text bilingual Release note"))
       and len(re.findall(r"^### ", _v103_zh, re.M)) == 5
@@ -1917,7 +1922,7 @@ check("RELEASE_NOTES_v1.0.3.md exists, is BILINGUAL and fully symmetric",
       and len(re.findall(r"^- ", _v103_zh, re.M)) >= 30
       and len(re.findall(r"^- ", _v103_zh, re.M))
           == len(re.findall(r"^- ", _v103_en, re.M)))
-check("RELEASE_NOTES_v1.0.3.md covers ALL TEN v1.0.2 follow-up change groups",
+check("RELEASE_NOTES_v1.0.3.md covers ALL THIRTEEN v1.0.2 follow-up change groups",
       all(s in _v103_text for s in (
           "開 App 就更新線路資料一次", "還原香港出行易式分類",
           "refresh route data once on app launch",
@@ -1994,7 +1999,22 @@ check("RELEASE_NOTES_v1.0.3.md covers ALL TEN v1.0.2 follow-up change groups",
           "switches the red header", "1 往 竹園邨",
           # API_AUDIT
           "API_AUDIT", "route/CTB/", "service_type", "stop-eta",
-          "sha256", "188 情境", "425 static checks"))
+          "sha256", "194 情境", "436 static checks",
+          # ⑪ 取消「僅在 Wi-Fi 下自動更新」
+          "NO_WIFI_LIMIT", "取消「僅在 Wi-Fi 下自動更新」限制",
+          "Wi-Fi-only restriction removed", "任何網絡都自動更新",
+          "any network", "swWifi", "wifi_only", "KEY_WIFI_ONLY",
+          "fun shouldRefresh(alreadyBusy: Boolean)", "RouteDataStore.refresh()",
+          "流動數據", "mobile data",
+          # ⑫ 取消「必須啟用手機網絡」網絡預檢
+          "NO_NETWORK_GATE", "取消「必須啟用手機網絡」",
+          "Network pre-check removed", "唔預先擋低",
+          "no pre-check", "auto_hint",
+          # ⑬ 第二站起沿途各站預計到站時間
+          "SECOND_STOP_PREDICTIONS", "第二站起顯示沿途各站",
+          "Predicted arrival times for every stop", "PredictedArrivals.java",
+          "loadStopPredictions(", "predictContainer",
+          "tvPredictMin", "tvPredictClock", "十三組", "thirteen"))
       and "LOCAL_SERVICE_HOURS" in read(API / "LocalServiceHours.java")
       and len(re.findall(r"^\*\*[①-⑨] ", _v103_zh, re.M)) == 9
       and len(re.findall(r"^\*\*[①-⑨] ", _v103_en, re.M)) == 9)
@@ -2015,7 +2035,7 @@ check("RELEASE_NOTES_v1.0.3.md install / asset / fingerprint facts are correct",
 check("RELEASE_NOTES_v1.0.3.md verification numbers match the repo and limitations are honest",
       all(s in _v103_text for s in (
           "ECJ 17", "68 class", "7 個 Java harness", "7 Java harnesses",
-          "38 項", "38 published-Release", "188 情境", "188** inline-preflight", "185 情境",
+          "38 項", "38 published-Release", "194 情境", "194** inline-preflight", "191 情境",
           "6 份", "6** bilingual", "呢邊冇真跑 Kotlin 編譯",
           "Kotlin was not actually compiled here", "冷啟動", "cold start",
           "唔捏造", "nothing is invented")))
@@ -2046,6 +2066,109 @@ check("version bump did not break earlier features / data layer",
       and "NearbyMoreRoutes.select(candidates)" in read(UI / "EtaViewModel.kt")
       and "fun signature(info: LocalDataInfo): String" in
           read(UI / "SearchLocalData.kt"))
+
+# --- NO_WIFI_LIMIT: 取消「僅在 Wi-Fi 下自動更新」--------------------------------
+_nowifi_dec = read(UI / "LaunchCatalogueRefresh.kt")
+_nowifi_run = read(UI / "CatalogueRefreshRunner.kt")
+_all_wifi_sources = "\n".join((
+    store_java, prefs_kt, _nowifi_dec, _nowifi_run, settings_kt,
+    settings_layout, app_kt, read(RES / "values/strings.xml")))
+check("NO_WIFI_LIMIT: every production Wi-Fi gate symbol is gone",
+      all(s not in _all_wifi_sources for s in (
+          "wifiOnly", "WifiOnly", "KEY_WIFI_ONLY", "onWifi()",
+          "TRANSPORT_WIFI", "NetworkCapabilities", "swWifi", "wifi_only",
+          "僅在 Wi-Fi 下自動更新", "僅 Wi-Fi 更新", "refresh(false)"))
+      and "fun shouldRefresh(alreadyBusy: Boolean)" in _nowifi_dec
+      and "RouteDataStore.refresh()" in _nowifi_run)
+check("NO_WIFI_LIMIT: v1.0.3 notes document group ⑪ in BOTH languages",
+      "**⑪ 取消「僅在 Wi-Fi 下自動更新」限制（NO_WIFI_LIMIT）**" in _v103_text
+      and "**⑪ Wi-Fi-only restriction removed (NO_WIFI_LIMIT)**" in _v103_text
+      and "十三組" in _v103_text and "thirteen" in _v103_text.lower()
+      and "436 static checks" in _v103_text)
+
+# --- NO_NETWORK_GATE: 取消「必須啟用手機網絡」預檢 ---------------------------
+_all_app_src = "\n".join(
+    p.read_text(encoding="utf-8")
+    for p in sorted(ROOT.glob("app/src/main/java/**/*"))
+    if p.is_file() and p.suffix in (".java", ".kt"))
+_all_res_src = "\n".join(
+    p.read_text(encoding="utf-8")
+    for p in sorted(ROOT.glob("app/src/main/res/**/*.xml"))
+    if p.is_file())
+check("NO_NETWORK_GATE: both network-gate source files are removed",
+      not (API / "NetworkGate.java").exists()
+      and not (UI / "NetworkRequirement.kt").exists()
+      and "NetworkGate" not in _all_app_src
+      and "NetworkRequirement" not in _all_app_src)
+check("NO_NETWORK_GATE: zero guard calls / zero connectivity inspection",
+      "NetworkRequirement.guard(" not in _all_app_src
+      and "ConnectivityManager" not in _all_app_src
+      and "NetworkCapabilities" not in _all_app_src
+      and "NET_CAPABILITY_INTERNET" not in _all_app_src
+      and "TRANSPORT_CELLULAR" not in _all_app_src
+      and "notifyOffline(" not in _all_app_src
+      and "RouteDataStore.refresh()" in read(UI / "CatalogueRefreshRunner.kt")
+      and "vm.refresh()" in read(UI / "MainActivity.kt"))
+check("NO_NETWORK_GATE: no prompt strings / no hint View, Wi-Fi toggle stays gone",
+      all(s not in _all_app_src and s not in _all_res_src
+          for s in ("network_required", "network_offline_status",
+                    "network_gate_hint", "network_gate_title",
+                    "tvNetworkHint", "必須有有效網絡連線"))
+      and "swWifi" not in settings_layout
+      and "wifi_only" not in settings_layout
+      and "已取消僅 Wi-Fi 限制同「必須啟用手機網絡」預檢"
+          in read(RES / "values/strings.xml"))
+check("NO_NETWORK_GATE: BOTH network permissions declared, but ZERO pre-check",
+      "android.permission.INTERNET" in read(ROOT / "app/src/main/AndroidManifest.xml")
+      and "android.permission.ACCESS_NETWORK_STATE"
+          in read(ROOT / "app/src/main/AndroidManifest.xml")
+      and "NetworkGate" not in _all_app_src
+      and "NetworkRequirement" not in _all_app_src
+      and "wifiOnly" not in store_java
+      and "onWifi()" not in prefs_kt)
+check("NO_NETWORK_GATE: all six entries keep honest catch / Report degradation",
+      "catch (e: Exception)" in read(UI / "EtaViewModel.kt")
+      and "catch (e: Exception)" in read(UI / "SettingsActivity.kt")
+      and "Report" in read(API / "RouteDataStore.java")
+      and "downloadAndInstall()" in read(UI / "SettingsActivity.kt")
+      and "vm.refresh()" in read(UI / "RouteDetailActivity.kt")
+      and "vm.refresh()" in read(UI / "MainActivity.kt"))
+check("NO_NETWORK_GATE: v1.0.3 notes document group ⑫ cancellation in BOTH languages",
+      "**⑫ 取消「必須啟用手機網絡」網絡預檢（NO_NETWORK_GATE）**" in _v103_text
+      and "**⑫ Network pre-check removed (NO_NETWORK_GATE)**" in _v103_text
+      and "十三組" in _v103_text and "thirteen" in _v103_text.lower()
+      and "436 static checks" in _v103_text)
+
+# --- SECOND_STOP_PREDICTIONS: 第二站起沿途各站預計到站時間 ---------------------
+_pred_java = read(API / "PredictedArrivals.java")
+_pred_vm = read(UI / "EtaViewModel.kt")
+_pred_act = read(UI / "RouteDetailActivity.kt")
+_pred_xml = read(RES / "layout/item_detail_stop.xml")
+_pred_str = read(RES / "values/strings.xml")
+check("SECOND_STOP_PREDICTIONS: pure Java decision layer is offline-testable",
+      "public final class PredictedArrivals" in _pred_java
+      and "MAX_STOPS = 18" in _pred_java
+      and "targets(int stopCount" in _pred_java
+      and "firstForRoute(" in _pred_java
+      and "minutesLabel(" in _pred_java
+      and "clockLabel(" in _pred_java
+      and "android." not in _pred_java)
+check("SECOND_STOP_PREDICTIONS: two-layer ViewModel / adapter wiring, no invented data",
+      "stopPredictions" in _pred_vm
+      and "loadStopPredictions(" in _pred_vm
+      and "chunked(12)" in _pred_vm and "delay(120L)" in _pred_vm
+      and "predictContainer" in _pred_xml
+      and "tvPredictMin" in _pred_xml and "tvPredictClock" in _pred_xml
+      and "tvPredictNa" in _pred_xml
+      and "predictKey" in _pred_act
+      and "submit(visible, selectedId, trips, state.stopPredictions)" in _pred_act
+      and "detail_predict_na" in _pred_str
+      and "detail_footer_honest" in _pred_str)
+check("SECOND_STOP_PREDICTIONS: v1.0.3 notes document group ⑬ in BOTH languages",
+      "**⑬ 第二站起顯示沿途各站預計到站時間（SECOND_STOP_PREDICTIONS）**" in _v103_text
+      and "**⑬ Predicted arrival times for every stop from the second stop onwards (SECOND_STOP_PREDICTIONS)**" in _v103_text
+      and "十三組" in _v103_text and "thirteen" in _v103_text.lower()
+      and "436 static checks" in _v103_text)
 
 # --- V103_VERSION_BUMP: 正式 bump 到 1.0.3 / 4 -------------------------------
 check("V103_VERSION_BUMP: update_pill preview matches gradle 1.0.3 / 4",
@@ -2434,14 +2557,16 @@ check("LAUNCH_CATALOGUE_REFRESH: startup refresh is NOT throttled by interval / 
           for x in (viewmodel_kt, app_kt, _launch_run))
       and "CatalogueRefreshRunner.runOnce" in _kt_code_only(viewmodel_kt)
       and "每次開 App" in _launch_dec and "都更新一次" in _launch_dec)
-check("LAUNCH_CATALOGUE_REFRESH: Wi-Fi-only preference and BUSY gate are respected",
+check("LAUNCH_CATALOGUE_REFRESH: NO Wi-Fi gate, BUSY gate still respected",
       all(s in _launch_run for s in (
-          "RouteDataPrefs.wifiOnly(app)", "RouteDataStore.onWifi()",
-          "RouteDataStore.refreshBusy()", "RouteDataStore.refresh(false)"))
-      and "(!wifiOnly || onWifi) && !alreadyBusy" in _launch_dec
+          "LaunchCatalogueRefresh.shouldRefresh(",
+          "RouteDataStore.refreshBusy()", "RouteDataStore.refresh()"))
+      and "wifiOnly" not in _launch_run and "onWifi()" not in _launch_run
+      and "fun shouldRefresh(alreadyBusy: Boolean)" in _launch_dec
+      and "!alreadyBusy" in _launch_dec and "wifiOnly" not in _launch_dec
       and "!busy && !skipped && okCount > 0" in _launch_dec)
 check("LAUNCH_CATALOGUE_REFRESH: manual Settings update is NOT blocked by the gate",
-      "RouteDataStore.refresh(false)" in settings_kt
+      "RouteDataStore.refresh()" in settings_kt
       and "LaunchCatalogueRefresh.claimOnce" not in settings_kt
       and "CatalogueRefreshRunner" not in settings_kt
       and "btnUpdate" in settings_layout)
@@ -2456,7 +2581,8 @@ check("LAUNCH_CATALOGUE_REFRESH: notifier posts completion and search page reloa
       and "vm.searchRoutes(routeInput.text?.toString() ?: \"\")" in main_kt
       and "refreshHistory()" in main_kt)
 check("LAUNCH_CATALOGUE_REFRESH: refresh internals / data layer / colours untouched",
-      "public static Report refresh(boolean wifiOnly)" in store_java
+      "public static Report refresh()" in store_java
+      and "wifiOnly" not in store_java and "NetworkCapabilities" not in store_java
       and "BUSY.compareAndSet(false, true)" in store_java
       and "invalidateDownstream()" in store_java
       and "writeAtomic" in store_java
@@ -3087,7 +3213,7 @@ check("SEARCH_UI: history rows show operator badge / clock / removable ✕",
       and all(Path(RES / f"drawable/{n}.xml").is_file() for n in (
           "bg_search_badge", "ic_clock", "ic_close", "ic_search")))
 check("SEARCH_NO_BOOKMARK: search page no longer shows 我的書籤; favourites stay",
-      # 停用資產保留（preflight 141 不變），但再無任何引用／文案／綁定
+      # 停用資產保留（preflight 已由 141 降為 139），但再無任何引用／文案／綁定
       Path(RES / "layout/item_bookmark.xml").is_file()
       and "R.layout.item_bookmark" not in main_kt
       and "R.layout.item_bookmark" not in search_adapters
