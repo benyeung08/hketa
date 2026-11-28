@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
  *
  * LAUNCH_CATALOGUE_REFRESH: 開 App 就自動更新一次線路資料。放喺 Application
  * 而唔係 Activity，因為 `onCreate` 每個 process 只行一次 —— 按 Home 再返嚟、
- * 轉螢幕、切分頁都唔會重複下載。失敗／冇 Wi-Fi 靜默跳過，唔干擾 ETA 查詢。
+ * 轉螢幕、切分頁都唔會重複下載。任何網絡都更新；失敗靜默跳過，唔干擾 ETA 查詢。
  */
 class HkEtaApp : Application() {
     override fun onCreate() {
