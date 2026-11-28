@@ -83,6 +83,8 @@ class RouteDetailActivity : AppCompatActivity() {
     private var bound = ""
     private var selectedId = ""
     private var autoSelected = false
+    /** SECOND_STOP_PREDICTIONS：同一組站序／上車站／方向只查一次官方 ETA。 */
+    private var predictKey = ""
     private var emptyNotified = false
     private var circular = false
     private var auditText = ""
@@ -357,6 +359,7 @@ class RouteDetailActivity : AppCompatActivity() {
             // 通告仍係官方即時 ETA 嘅 remark_tc，保留手動刷新；
             // 日曆 dialog 改讀本機資料，兩者來源清楚分開。
             .setNeutralButton(R.string.detail_notice_refresh) { _, _ ->
+                // NO_NETWORK_GATE：唔預先擋低；失敗由 ViewModel 如實報。
                 vm.refresh()
                 Toast.makeText(this, R.string.detail_trips_refreshed, Toast.LENGTH_SHORT).show()
             }
@@ -405,7 +408,15 @@ class RouteDetailActivity : AppCompatActivity() {
         val trips = (cards.firstOrNull { it.route == route } ?: cards.firstOrNull())
             ?.trips ?: emptyList()
 
-        adapter.submit(visible, selectedId, trips)
+        // SECOND_STOP_PREDICTIONS：第二站起逐站查官方即時 ETA（唔係推算），
+        // 用 key 去重，避免 state patch 觸發嘅 render 又再打一次 API。
+        val key = visible.joinToString("|") { it.stopId } +
+                "#" + selectedId + "#" + route + "#" + state.activeBound
+        if (key != predictKey) {
+            predictKey = key
+            vm.loadStopPredictions(visible, selectedId, route)
+        }
+        adapter.submit(visible, selectedId, trips, state.stopPredictions)
         renderFooter()
 
         if (!autoSelected && visible.isNotEmpty()) {
@@ -431,11 +442,19 @@ class DetailStopAdapter(
     private var stops: List<StopOption> = emptyList()
     private var selectedId = ""
     private var trips: List<Trip> = emptyList()
+    /** SECOND_STOP_PREDICTIONS: stopId -> (分鐘字, HH:mm)。 */
+    private var predictions: Map<String, Pair<String, String>> = emptyMap()
 
-    fun submit(list: List<StopOption>, selected: String, next3: List<Trip>) {
+    fun submit(
+        list: List<StopOption>,
+        selected: String,
+        next3: List<Trip>,
+        predicted: Map<String, Pair<String, String>>
+    ) {
         stops = list
         selectedId = selected
         trips = next3
+        predictions = predicted
         notifyDataSetChanged()
     }
 
@@ -468,6 +487,11 @@ class DetailStopAdapter(
             v.findViewById(R.id.tripTag2),
             v.findViewById(R.id.tripTag3)
         )
+        // SECOND_STOP_PREDICTIONS：兩層「預計到站時間」
+        val predictRoot: View = v.findViewById(R.id.predictContainer)
+        val predictMin: TextView = v.findViewById(R.id.tvPredictMin)
+        val predictClock: TextView = v.findViewById(R.id.tvPredictClock)
+        val predictNa: TextView = v.findViewById(R.id.tvPredictNa)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -490,10 +514,13 @@ class DetailStopAdapter(
         holder.dot.setBackgroundResource(
             if (selected) R.drawable.bg_detail_dot_on else R.drawable.bg_detail_dot_off
         )
-        holder.alight.visibility = if (selected) View.GONE else View.VISIBLE
-        holder.alightTime.visibility = if (selected) View.GONE else View.VISIBLE
+        // 左邊時間軸嘅舊「落車／—」placeholder 唔再顯示；
+        // 第二站起改由右邊內容區嘅兩層「預計到站」表達。
+        holder.alight.visibility = View.GONE
+        holder.alightTime.visibility = View.GONE
 
         if (selected) {
+            holder.predictRoot.visibility = View.GONE
             holder.container.visibility = View.VISIBLE
             if (trips.isEmpty()) {
                 holder.noEta.visibility = View.VISIBLE
@@ -519,6 +546,22 @@ class DetailStopAdapter(
             }
         } else {
             holder.container.visibility = View.GONE
+            // SECOND_STOP_PREDICTIONS：第一層「×× 分鐘」、第二層「××:××」。
+            // 數字係官方即時 ETA；官方冇回報就如實顯示 detail_predict_na。
+            holder.predictRoot.visibility = View.VISIBLE
+            val pred = predictions[stop.stopId]
+            if (pred != null) {
+                holder.predictMin.visibility = View.VISIBLE
+                holder.predictClock.visibility = View.VISIBLE
+                holder.predictNa.visibility = View.GONE
+                holder.predictMin.text = pred.first + " " +
+                        holder.itemView.context.getString(R.string.detail_predict_unit)
+                holder.predictClock.text = pred.second
+            } else {
+                holder.predictMin.visibility = View.GONE
+                holder.predictClock.visibility = View.GONE
+                holder.predictNa.visibility = View.VISIBLE
+            }
         }
         holder.root.setOnClickListener { onClick(stop) }
     }

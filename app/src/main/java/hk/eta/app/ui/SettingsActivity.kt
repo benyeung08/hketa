@@ -60,7 +60,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var btnUpdate: View
     private lateinit var spInterval: Spinner
-    private lateinit var swWifi: SwitchCompat
 
     // --- 更新應用程式：深色版本膠囊 -------------------------------------------
     private lateinit var tvAppVersion: TextView
@@ -162,7 +161,6 @@ class SettingsActivity : AppCompatActivity() {
         progress = findViewById(R.id.progressUpdate)
         btnUpdate = findViewById(R.id.btnUpdate)
         spInterval = findViewById(R.id.spInterval)
-        swWifi = findViewById(R.id.swWifi)
 
         tvAppVersion = findViewById(R.id.tvAppVersion)
         tvAppBuild = findViewById(R.id.tvAppBuild)
@@ -329,11 +327,6 @@ class SettingsActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        swWifi.isChecked = RouteDataPrefs.wifiOnly(this)
-        swWifi.setOnCheckedChangeListener { _, checked ->
-            RouteDataPrefs.setWifiOnly(this@SettingsActivity, checked)
-        }
-
         btnUpdate.setOnClickListener { doUpdate() }
         findViewById<View>(R.id.btnClear).setOnClickListener {
             RouteDataStore.clear()
@@ -345,12 +338,13 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun doUpdate() {
+        // NO_NETWORK_GATE：唔預先擋低；來源失敗由 Report 如實列出。
         btnUpdate.isEnabled = false
         progress.visibility = View.VISIBLE
         tvUpdateStatus.text = getString(R.string.updating)
         lifecycleScope.launch {
-            // Manual update deliberately ignores the Wi-Fi-only restriction.
-            val report = withContext(Dispatchers.IO) { RouteDataStore.refresh(false) }
+            // Any network: the Wi-Fi-only restriction was removed.
+            val report = withContext(Dispatchers.IO) { RouteDataStore.refresh() }
             btnUpdate.isEnabled = true
             progress.visibility = View.GONE
             tvUpdateStatus.text = if (report.skipped || report.busy) {
@@ -511,6 +505,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun checkForUpdate(manual: Boolean) {
+        // NO_NETWORK_GATE：唔預先擋低；catch 會如實報 app_update_failed。
         val repo = etRepo.text.toString().trim()
         if (repo.isEmpty()) {
             tvAppUpdateStatus.text = getString(R.string.app_update_no_repo)

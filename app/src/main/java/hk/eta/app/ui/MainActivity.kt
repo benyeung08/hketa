@@ -610,6 +610,7 @@ class MainActivity : AppCompatActivity() {
             // 下拉刷新都唔可以繞過「先授權、後自動定位」
             autoLocateIfAllowed()
         } else {
+            // NO_NETWORK_GATE：唔預先擋低，直接交畀 ViewModel 如實查詢／降級。
             vm.refresh()
         }
     }

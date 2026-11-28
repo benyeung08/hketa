@@ -13,6 +13,7 @@ import hk.eta.app.api.AppUpdate
 import hk.eta.app.api.CircularRoutes
 import hk.eta.app.api.EtaRepository
 import hk.eta.app.api.JointRoutes
+import hk.eta.app.api.PredictedArrivals
 import hk.eta.app.api.RouteSearch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -44,7 +45,9 @@ data class UiState(
     val loading: Boolean = false,
     val message: String = "輸入路線號，載入沿途車站後點選車站即可看到實時到站時間。",
     val updatedAt: Long = 0L,
-    val stopAudit: String = ""   // CIRCULAR_NAME_CHECK summary for the detail page
+    val stopAudit: String = "",  // CIRCULAR_NAME_CHECK summary for the detail page
+    /** SECOND_STOP_PREDICTIONS: stopId -> (第一層「×× 分鐘」的字, 第二層「HH:mm」)。 */
+    val stopPredictions: Map<String, Pair<String, String>> = emptyMap()
 )
 
 /** Kotlin layer: concurrency, 30-second polling and UI state. */
@@ -475,7 +478,62 @@ class EtaViewModel(app: Application) : AndroidViewModel(app) {
         patch { copy(searchQuery = query) }
     }
 
+    /**
+     * SECOND_STOP_PREDICTIONS — 由「第二站起」（即上車站之後嘅沿途站）
+     * 逐站查**官方即時 ETA**，每站拎同路線最早一班，交畀詳情頁用兩層顯示：
+     * 第一層「×× 分鐘」、第二層「××:××」。
+     *
+     * 唔係推算時間表、唔按站距估：數字同圖一上車站三班次同一個 API。
+     * 官方冇回報就唔入 map，UI 如實顯示「—」。
+     *
+     * 每批 12 個 async + 120ms 讓路，最多 PredictedArrivals.MAX_STOPS 個站，
+     * 唔跟 30 秒 ETA loop 重查（只喺入頁／轉方向／改上車站／下拉時呼叫），
+     * 避免一條長路線撞官方 429。
+     */
+    fun loadStopPredictions(
+        visible: List<StopOption>,
+        selectedId: String,
+        route: String
+    ) {
+        val selectedIndex = visible.indexOfFirst { it.stopId == selectedId }
+        val indices = PredictedArrivals.targets(
+            visible.size, selectedIndex, PredictedArrivals.MAX_STOPS
+        )
+        if (indices.isEmpty()) {
+            patch { copy(stopPredictions = emptyMap()) }
+            return
+        }
+        viewModelScope.launch {
+            val out = LinkedHashMap<String, Pair<String, String>>()
+            val now = System.currentTimeMillis()
+            for (batch in indices.toList().chunked(12)) {
+                val results = batch.map { i ->
+                    async(Dispatchers.IO) {
+                        val s = visible[i]
+                        try {
+                            s to repo.etaFor(s)
+                        } catch (e: Exception) {
+                            s to emptyList<EtaItem>()
+                        }
+                    }
+                }.awaitAll()
+                for ((s, etas) in results) {
+                    val first = PredictedArrivals.firstForRoute(etas, route)
+                    if (first != null) {
+                        out[s.stopId] = PredictedArrivals.minutesLabel(
+                            first.etaMillis, now
+                        ) to PredictedArrivals.clockLabel(first.etaMillis)
+                    }
+                }
+                delay(120L)
+            }
+            patch { copy(stopPredictions = out) }
+        }
+    }
+
     fun refresh() {
+        val app = getApplication<Application>()
+        // NO_NETWORK_GATE：唔預先擋低；下面 try/catch 會如實報「更新失敗」。
         val selection = _state.value?.selection
         if (selection == null) {
             patch { copy(message = "請先載入並點選車站，或輸入站號後按「查 ETA」。") }

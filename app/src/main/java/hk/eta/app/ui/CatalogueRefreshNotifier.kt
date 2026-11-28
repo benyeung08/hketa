@@ -20,4 +20,5 @@ object CatalogueRefreshNotifier {
     fun notifyCompleted(atMillis: Long) {
         _completed.postValue(atMillis)
     }
+
 }
